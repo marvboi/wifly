@@ -1,0 +1,58 @@
+{
+	admin off
+	servers {
+		# Real visitor IP. Railway's edge overwrites X-Real-IP (its documented client-IP header) and X-Forwarded-For,
+		# and reaches us from 100.64.0.0/10 (CGNAT; Railway publishes no stable edge range, so it's listed with the
+		# private ranges). A peer outside these ranges is used as-is and its forwarding headers are ignored.
+		trusted_proxies static private_ranges 100.64.0.0/10
+		client_ip_headers X-Real-IP X-Forwarded-For
+		trusted_proxies_strict
+	}
+}
+:{$PORT:8080} {
+	encode zstd gzip
+	@api path /api/* /uploads/*
+	handle @api {
+		request_body {
+			max_size 21MiB
+		}
+		reverse_proxy {$API_UPSTREAM:http://wifly-api.railway.internal:8787} {
+			flush_interval -1
+			# The api trusts these only from an internal peer (this proxy), so they always carry the resolved client.
+			header_up X-Real-IP {client_ip}
+			header_up X-Forwarded-For {client_ip}
+		}
+	}
+	# old profile links: /u/name → /@name (permanent)
+	@legacyProfileQ {
+		path_regexp legacyProfileQ ^/u/(.+)$
+		expression {query} != ''
+	}
+	redir @legacyProfileQ /@{re.legacyProfileQ.1}?{query} 301
+	@legacyProfile path_regexp legacyProfile ^/u/(.+)$
+	redir @legacyProfile /@{re.legacyProfile.1} 301
+	handle {
+		root * /srv
+		@assets path /assets/*
+		header @assets Cache-Control "public, max-age=31536000, immutable"
+		@static path /brand/* /fonts/* /favicon-180.png /favicon.ico /favicon.svg /favicon-32.png /favicon-192.png /favicon-512.png /apple-touch-icon.png /manifest.webmanifest
+		header @static Cache-Control "public, max-age=86400"
+		@manifest path /manifest.webmanifest
+		header @manifest Content-Type "application/manifest+json"
+		@html path / /index.html
+		header @html Cache-Control "no-cache"
+		try_files {path} /index.html
+		file_server
+	}
+	header {
+		# Generated from security-headers.mjs (npm run check:csp keeps them in sync). Privy CSP guidance + our origins.
+		# SITE_ORIGINS env = our hosts, space-separated (landing, app, Railway URL); read once when Caddy starts.
+		Content-Security-Policy "default-src 'self'; script-src 'self' 'sha256-nSHNzevJZbT2cQrei1TABX3P6NmMiyjxfM72T2g+F40=' https://challenges.cloudflare.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; font-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'self' {$SITE_ORIGINS:https://wifly.fun https://app.wifly.fun https://wifly-web-production.up.railway.app}; child-src https://auth.privy.io https://verify.walletconnect.com https://verify.walletconnect.org; frame-src https://auth.privy.io https://verify.walletconnect.com https://verify.walletconnect.org https://challenges.cloudflare.com; connect-src 'self' https://auth.privy.io wss://relay.walletconnect.com wss://relay.walletconnect.org wss://www.walletlink.org https://*.rpc.privy.systems https://explorer-api.walletconnect.com https://pulse.walletconnect.org https://api.web3modal.org https://rpc.mainnet.chain.robinhood.com {$SITE_ORIGINS:https://wifly.fun https://app.wifly.fun https://wifly-web-production.up.railway.app}; worker-src 'self' blob:; manifest-src 'self'; media-src 'self' blob:"
+		X-Frame-Options SAMEORIGIN
+		X-Content-Type-Options nosniff
+		Referrer-Policy strict-origin-when-cross-origin
+		Permissions-Policy "camera=(), microphone=(), geolocation=(), payment=()"
+		Cross-Origin-Opener-Policy same-origin-allow-popups
+		-Server
+	}
+}

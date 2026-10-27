@@ -1,0 +1,29 @@
+{
+  "name": "wifly-backend",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/server.ts",
+    "start": "tsx src/server.ts",
+    "test": "tsx --test test/api.test.ts test/features.test.ts test/agent.test.ts test/names.test.ts test/keeper.test.ts test/abuse.test.ts test/rank.test.ts test/identity.test.ts test/dca-companion.test.ts test/commandParse.test.ts test/origins.test.ts test/maint.test.ts test/cache.test.ts test/lru.test.ts test/ip-ratekeys.test.ts test/imgsize.test.ts test/names-per-user.test.ts test/fees.test.ts test/pot.test.ts test/onboarding-links.test.ts test/pending-verify.test.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^9.6.0",
+    "@types/node": "^26.6.5",
+    "tsx": "^4.23.15",
+    "typescript": "^7.0.2"
+  },
+  "dependencies": {
+    "@ethereumjs/evm": "^10.1.3",
+    "@ethereumjs/util": "^10.1.3",
+    "@hono/node-server": "^2.1.5",
+    "@libsql/client": "^0.18.0",
+    "@privy-io/node": "^0.36.0",
+    "hono": "^4.13.13",
+    "ioredis": "^5.11.1",
+    "jose": "^6.2.13",
+    "viem": "^2.57.11"
+  }
+}

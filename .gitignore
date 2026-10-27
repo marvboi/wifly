@@ -1,0 +1,50 @@
+# dependencies
+node_modules/
+
+# build output
+dist/
+build/
+*.tsbuildinfo
+contracts/out/
+contracts/cache/
+contracts/broadcast/
+contracts/lib/
+
+# env and secrets
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+keystore/
+keystores/
+**/keystore*.json
+
+# local data
+*.db
+*.db-*
+*.sqlite
+*.sqlite3
+*.sqlite-*
+backend/data/
+backend/uploads/
+
+# logs
+logs/
+*.log
+npm-debug.log*
+
+# archives and local captures
+*.tar
+*.tar.gz
+*.tgz
+*.zip
+screenshots/
+shots/
+brand/name-nft/
+
+# editor / os
+.DS_Store
+.idea/
+.vscode/
+*.swp

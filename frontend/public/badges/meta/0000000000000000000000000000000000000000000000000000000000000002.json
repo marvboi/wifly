@@ -1,0 +1,15 @@
+{
+  "name": "Wifly burn badge: edge walker",
+  "description": "Earned by burning 100,000 $WIF on Wifly. Soulbound.",
+  "image": "/badges/edge-walker.svg",
+  "attributes": [
+    {
+      "trait_type": "burned",
+      "value": 100000
+    },
+    {
+      "trait_type": "tier",
+      "value": 3
+    }
+  ]
+}
