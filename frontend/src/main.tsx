@@ -29,7 +29,7 @@ function sheetFromUrl(): SheetState {
   const p = new URLSearchParams(location.search)
   const g = (k: string) => p.get(k) ?? undefined
   switch (p.get('sheet')) {
-    case 'tip': return { type: 'tip', to: g('to'), postId: g('post'), xHandle: g('x') }
+    case 'tip': return { type: 'tip', to: g('to'), postId: g('post') }
     case 'unlock': return g('post') ? { type: 'unlock', postId: g('post')! } : null
     case 'subscribe': return g('handle') ? { type: 'subscribe', handle: g('handle')!, tierId: g('tier') } : null
     case 'bid': return { type: 'bid' }

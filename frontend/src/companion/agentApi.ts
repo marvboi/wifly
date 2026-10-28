@@ -1,5 +1,6 @@
 /** Thin client for the companion's agent endpoints (backend/src/agent). The agent key never leaves the server. */
 import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { checkEpoch, epochSignal, sessionEpoch } from '../api/client'
 
 export type AgentState = {
   enabled: boolean; cap: number; spentToday: number; remaining: number; deposited: number; maxCap: number
@@ -17,12 +18,14 @@ export type Activity = { id: number; kind: string; command: string; recipient: s
 
 /** Like api(), but hands back the JSON body for 4xx/5xx too (refusals carry a reason). */
 export async function call<T>(path: string, method = 'GET', json?: unknown): Promise<T> {
+  const started = sessionEpoch()
   const res = await fetch(`/api${path}`, {
-    method, credentials: 'same-origin',
+    method, credentials: 'same-origin', signal: epochSignal(),
     headers: { ...(json !== undefined ? { 'content-type': 'application/json' } : {}), ...(method !== 'GET' ? { 'x-wifly': '1' } : {}) },
     body: json !== undefined ? JSON.stringify(json) : undefined,
   })
   const body = await res.json().catch(() => ({ error: res.statusText }))
+  checkEpoch(started)
   if (!res.ok && !('status' in body)) throw new Error(body.error ?? res.statusText)
   return body as T
 }

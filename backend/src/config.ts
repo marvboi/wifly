@@ -78,7 +78,7 @@ export const namesRendererContract = () => addr(process.env.NAMES_RENDERER_ADDRE
 export const badgesContract = () => addr(process.env.BADGES_CONTRACT_ADDRESS)
 /** Wifly (Plus renewal lives inside it). */
 export const wiflyContract = () => addr(process.env.WIFLY_CONTRACT_ADDRESS)
-/** WiflyDCA proxy. Empty = DCA runs as a preview: plans are saved, nothing is sent, no fills. */
+/** WiflyDCA. Empty = DCA runs as a preview: plans are saved, nothing is sent, no fills. */
 export const dcaContract = () => addr(process.env.DCA_CONTRACT_ADDRESS)
 export const plusCreator = () => addr(process.env.PLUS_CREATOR_ADDRESS)
 /**

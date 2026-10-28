@@ -70,8 +70,8 @@ export const explorerAddress = (a: string) => `${EXPLORER}/address/${a}`
 export const DEXSCREENER = 'https://dexscreener.com/robinhood/0x71ef4106340f0a3b9c19ec994eef4fc44a1d2513f38faac39d7636b156548c79'
 
 /**
- * Wifly contract (contracts/src/Wifly.sol), the proxy address.
- * Set VITE_WIFLY_ADDRESS at build time. While it's empty, contract reads return nothing and screens show empty states.
+ * Wifly contract (contracts/src/Wifly.sol). NOT DEPLOYED YET, so this is empty.
+ * Set VITE_WIFLY_ADDRESS in frontend/.env.local after deploy. While it's empty, contract reads return nothing and screens show empty states.
  */
 const envAddr = (v: unknown): Address | undefined =>
   typeof v === 'string' && /^0x[0-9a-fA-F]{40}$/.test(v.trim()) ? (v.trim() as Address) : undefined
@@ -95,7 +95,7 @@ export const LIVE = !!WIFLY_ADDRESS
  * Hard off switch for writes. Every approve and contract call goes through lib/wifly.ts → sendPlan(),
  * which refuses to send while this is false. Flip it only after the contract is deployed and reviewed.
  */
-export const TX_ENABLED = import.meta.env.VITE_TX_ENABLED === 'true' // default false; this build ships with it off
+export const TX_ENABLED = import.meta.env.VITE_TX_ENABLED === 'true' // on in the live service's build env; off in local builds unless set
 
 /** WiflyNames (ERC-721 usernames) and WiflyBadges (soulbound burn badges). Empty until deployed. */
 export const NAMES_ADDRESS: Address | undefined = envAddr(import.meta.env.VITE_NAMES_ADDRESS)
@@ -113,7 +113,7 @@ export const BADGE_LEVELS = [
   { id: 'edge-walker', min: 100_000, name: 'edge walker' }, { id: 'the-disc', min: 1_000_000, name: 'the disc' },
 ]
 
-/** WiflyDCA proxy. Empty = the DCA screen saves preview plans and sends nothing. */
+/** WiflyDCA. Empty = the DCA screen saves preview plans and sends nothing. */
 export const DCA_ADDRESS: Address | undefined = envAddr(import.meta.env.VITE_DCA_ADDRESS)
 
 /** The rentable AI agent is live only with the contract, txs on and its address set. Agent page, landing and docs all read this. */

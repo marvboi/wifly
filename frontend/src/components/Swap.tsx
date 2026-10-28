@@ -1,5 +1,5 @@
 /**
- * "get $WIF": our own swap modal. Routing is lib/wifSwap.ts (exact-in) plus lib/wifSwapOut.ts (exact-out
+ * "get $WIF": our own swap modal. Routing is lib/wifSwap.ts, exact-in) plus lib/wifSwapOut.ts (exact-out
  * for "get WIF for …" shortcuts). One pool: Uniswap v4 ETH/WIF on Robinhood Chain, executed through the Universal Router
  * 0x8876…0904. The pool hook takes a 1% fee, already inside every quote.
  *

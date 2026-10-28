@@ -1,12 +1,10 @@
-import { LinkList, useLinked } from '../components/LinkAccounts'
-import { InfoTip } from '../components/InfoTip'
+import { useLinked } from '../components/LinkAccounts'
 import { ListNameButton } from '../components/ListName'
-import { NameCard } from '../components/WifName'
-import { BumpNotice, MakeItYours } from '../components/Identity'
+import { NameCard, nameArtUrl } from '../components/WifName'
+import { BumpNotice } from '../components/Identity'
 import { at } from '../lib/format'
 import { PlusMark, TipJar } from '../components/BrandSlots'
-import { BadgeShelf } from '../components/Badges'
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { AnimatePresence, motion } from 'motion/react'
 import { Sheet } from '../sheets/Sheets'
 import { Link, Navigate, useNavigate, useParams } from 'react-router-dom'
@@ -27,13 +25,40 @@ import { Mascot } from '../components/Mascot'
 import { FollowButton, RichText, Sentinel, UserRow, useNeedLink } from '../components/Social'
 import { Blank, PostSkel, ProfileSkel, SkelRows } from '../components/Delight'
 import { AnimatedNumber } from '../components/Motion'
+import { useReadContract } from 'wagmi'
+import { zeroAddress } from 'viem'
+import { NAMES_ADDRESS, robinhoodChain } from '../config'
+import { namesAbi } from '../contracts/namesAbi'
+import { CopyBtn } from '../components/WalletsSection'
+import { shortAddr } from '../components/WalletProofs'
 
-type Tab = 'drops' | 'replies' | 'media' | 'likes' | 'badges' | 'shop' | 'support'
+/** the wallet that holds the .wif onchain (ownerOfName), else the profile's main wallet. */
+function NameHolder({ name, fallback }: { name: string; fallback?: string | null }) {
+  const q = useReadContract({ address: NAMES_ADDRESS ?? zeroAddress, abi: namesAbi, functionName: 'ownerOfName', args: [name], chainId: robinhoodChain.id, query: { enabled: !!NAMES_ADDRESS } })
+  const onchain = typeof q.data === 'string' && q.data !== zeroAddress ? q.data.toLowerCase() : null
+  const a = onchain ?? fallback?.toLowerCase() ?? null
+  if (!a) return null
+  return <p className="muted small wifsheet__held" data-testid="wif-holder"><span>held in <span className="mono">{shortAddr(a)}</span></span><CopyBtn text={a} label={`copy ${shortAddr(a)}`} /></p>
+}
 
-function DropList({ handle, tab }: { handle: string; tab: 'drops' | 'replies' | 'media' | 'likes' }) {
+type Tab = 'drops' | 'replies' | 'media' | 'names' | 'shop' | 'support'
+
+const EMPTY = {
+  drops: ['no drops yet', 'your first drop shows up here.', 'nothing posted yet.'],
+  replies: ['no replies yet', 'replies you make show up here.', 'no replies yet.'],
+  media: ['no images yet', 'drops with photos collect here.', 'no photos yet.'],
+} as const
+function DropList({ handle, tab, mine }: { handle: string; tab: 'drops' | 'replies' | 'media'; mine?: boolean }) {
   const q = usePaged(['udrops', handle, tab], `/users/${handle}/drops?tab=${tab}`)
+  const { openSheet } = useStore()
   if (q.isLoading) return <PostSkel n={3} />
-  if (!q.rows.length) return <Blank size={56} title={{ drops: 'no drops yet', replies: 'no replies yet', media: 'no images yet', likes: 'no likes yet' }[tab]} />
+  if (!q.rows.length) return (
+    <div className="pro-empty" data-testid={`empty-${tab}`}>
+      <p className="strong">{EMPTY[tab][0]}</p>
+      <p className="muted small">{mine ? EMPTY[tab][1] : EMPTY[tab][2]}</p>
+      {mine && tab === 'drops' && <button className="btn btn--ghost btn--sm" onClick={() => openSheet({ type: 'compose' })}>write a drop</button>}
+    </div>
+  )
   return (
     <>
       <div className="feed">{q.rows.map(r => <div className="feed__item" key={r.key}><PostCard post={r.post} passedBy={r.passedBy} /></div>)}</div>
@@ -69,6 +94,57 @@ export function Profile(props: { handle?: string }) {
   return <ProfileOf key={handle} handle={handle} />
 }
 
+type HeldName = { name: string; display: string; current: boolean; minted: boolean; theme: number; listing: { price: number } | null }
+
+/** The "names" tab: every .wif this person holds, their current name first. */
+function NamesTab({ handle, mine }: { handle: string; mine: boolean }) {
+  const q = useQuery({ queryKey: ['unames', handle], queryFn: () => api<{ names: HeldName[] }>(`/users/${handle}/names`) })
+  if (q.isLoading) return <SkelRows n={2} />
+  const names = q.data?.names ?? []
+  if (!names.length) return (
+    <div className="pro-empty" data-testid="names-empty">
+      <p className="strong">{mine ? 'no .wif names yet' : 'no .wif names yet'}</p>
+      <p className="muted small">{mine ? 'a .wif is your name, onchain. it can go with you anywhere.' : `${at(handle)} doesn’t hold a .wif yet.`}</p>
+      {mine && <Link className="btn btn--ghost btn--sm" to="/names">get a .wif</Link>}
+    </div>
+  )
+  return (
+    <ul className="pro-names" data-testid="names-tab">
+      {names.map(n => (
+        <li key={n.name}>
+          <Link to={`/n/${n.name}`} className="pro-names__row">
+            <img className="pro-names__art" src={nameArtUrl(n.name, n.theme)} alt="" loading="lazy" width={56} height={56} />
+            <span className="pro-names__txt"><b>{n.name}<span className="wifsfx">.wif</span></b>
+              <span className="muted tiny">{n.current ? 'current name' : n.listing ? `for sale · ${n.listing.price} WIF` : 'held'}</span></span>
+            <Icon name="chevron" size={16} />
+          </Link>
+        </li>
+      ))}
+    </ul>
+  )
+}
+
+/** "..." on a profile: the quieter actions, in a small menu. */
+function MoreMenu({ items }: { items: Array<{ label: string; icon: Parameters<typeof Icon>[0]['name']; on: () => void; pressed?: boolean }> }) {
+  const [open, setOpen] = useState(false)
+  const box = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    if (!open) return
+    const off = (e: MouseEvent) => { if (!box.current?.contains(e.target as Node)) setOpen(false) }
+    const esc = (e: KeyboardEvent) => { if (e.key === 'Escape') setOpen(false) }
+    document.addEventListener('mousedown', off); document.addEventListener('keydown', esc)
+    return () => { document.removeEventListener('mousedown', off); document.removeEventListener('keydown', esc) }
+  }, [open])
+  return (
+    <div className="pro-more" ref={box}>
+      <button type="button" className="btn btn--ghost btn--icon pro-act" aria-label="more" aria-expanded={open} aria-haspopup="menu" onClick={() => setOpen(o => !o)}><Icon name="more" size={18} /></button>
+      {open && <div className="pro-more__menu" role="menu">
+        {items.map(i => <button key={i.label} role="menuitem" type="button" aria-pressed={i.pressed} onClick={() => { setOpen(false); i.on() }}><Icon name={i.icon} size={16} /> {i.label}</button>)}
+      </div>}
+    </div>
+  )
+}
+
 function ProfileOf({ handle }: { handle: string }) {
   const q = useProfile(handle)
   const u = useUser(handle)
@@ -85,10 +161,9 @@ function ProfileOf({ handle }: { handle: string }) {
   if (!u) return <><PageHead title="profile" back /><NotFound kind="profile" handle={handle} /></>
   const me = !!session && u.handle === session.handle
   const live = !!q.data
-  const isFollowing = !!u.youFollow
   const sub = subs[u.handle]
   const subTier = u.tiers?.find(t => t.id === sub)
-  const tabs: Array<[Tab, string]> = [['drops', 'drops'], ['replies', 'replies'], ['media', 'media'], ['likes', 'likes'], ['badges', 'badges'], ...(u.shop ? [['shop', 'shop'] as [Tab, string]] : []), ...(u.tiers ? [['support', 'tiers'] as [Tab, string]] : [])]
+  const tabs: Array<[Tab, string]> = [['drops', 'drops'], ['replies', 'replies'], ['media', 'media'], ['names', 'names'], ...(u.shop ? [['shop', 'shop'] as [Tab, string]] : []), ...(u.tiers ? [['support', 'tiers'] as [Tab, string]] : [])]
   const mute = async () => {
     if (!session) { openSheet({ type: 'signin' }); return }
     try {
@@ -96,67 +171,73 @@ function ProfileOf({ handle }: { handle: string }) {
       adoptUser(r.user); qc.invalidateQueries({ queryKey: ['feed'] }); toast(r.user.muted ? `muted @${u.handle}. you won’t see their drops.` : `unmuted @${u.handle}`)
     } catch (e) { toast('that didn’t go through', (e as Error).message) }
   }
-
   const message = () => need(() => {
     if (u.dmPrice && !u.followsYou && !paidDms.has(u.handle)) openSheet({ type: 'paydm', handle: u.handle })
     else nav(`/messages/${u.handle}`)
   }, 'sign in to message')
+  const share = async () => {
+    const url = `${location.origin}${profilePath(u.handle)}`
+    try {
+      if (navigator.share) await navigator.share({ url, title: u.wifName ? `${u.wifName}.wif` : u.name })
+      else { await navigator.clipboard.writeText(url); toast('link copied') }
+    } catch { /* closed the share sheet */ }
+  }
+  const stat = (n: number, label: string) => <><b className="num"><AnimatedNumber from={0} value={n} /></b> {label}</>
 
   return (
     <>
-      <PageHead title="profile" back />
+      <PageHead title={u.wifName ? `${u.wifName}.wif` : u.name || 'profile'} back />
       <div className="profile">
-        <section className="pcard">
-          <div className="pcard__banner" aria-hidden="true">
-            <FlatDisc className="pcard__disc" />
-            <span className="pcard__stamp">{u.creator ? 'creator since' : 'since'} {u.joined.toLowerCase()}</span>
+        <section className="pro" data-testid="profile-head">
+          <div className="pro__cover" aria-hidden="true"><FlatDisc className="pro__disc" /></div>
+          <div className="pro__top">
+            <motion.span className="pro__av" initial={{ scale: 0.85, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} transition={{ type: 'spring', stiffness: 380, damping: 22 }}><Avatar handle={u.handle} size={92} /></motion.span>
+            <div className="pro__acts" data-testid="profile-actions">
+              {me ? <>
+                <button className="btn btn--ghost pro-act" onClick={() => openSheet({ type: 'profile' })}>edit profile</button>
+                <button className="btn btn--ghost btn--icon pro-act" aria-label="share profile" title="share" onClick={share}><Icon name="share" size={17} /></button>
+                <Link className="btn btn--ghost btn--icon pro-act" to="/settings" aria-label="settings" title="settings"><Icon name="more" size={18} /></Link>
+              </> : <>
+                {live && <FollowButton handle={u.handle} />}
+                <button className="btn btn--ghost btn--icon pro-act" aria-label={`tip ${at(u.handle)}`} title="tip" onClick={() => openSheet({ type: 'tip', to: u.handle })}><TipJar size={17} title="" /></button>
+                <button className="btn btn--ghost btn--icon pro-act" aria-label="share profile" title="share" onClick={share}><Icon name="share" size={17} /></button>
+                <MoreMenu items={[
+                  { label: 'vote', icon: 'vote', on: () => openSheet({ type: 'vote', handle: u.handle }) },
+                  { label: 'message', icon: 'mail', on: message },
+                  ...(live ? [{ label: u.muted ? 'unmute' : 'mute', icon: 'mute' as const, on: mute, pressed: !!u.muted }] : []),
+                ]} />
+              </>}
+            </div>
           </div>
-          <div className="pcard__body">
-            <div className="pcard__id">
-              <motion.span className="pcard__av" initial={{ scale: 0.7, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} transition={{ type: 'spring', stiffness: 380, damping: 18 }}><Avatar handle={u.handle} size={84} /></motion.span>
-              <div className="pcard__names">
-                <h2 className="profile__name">{u.name} {u.plus && <PlusMark size={20} />}</h2>
-                <div className="muted small">{at(u.handle)} {u.followsYou && <span className="chip-soft">follows you</span>}</div>
-                {u.wifName && <button type="button" className="profile__wifpill" data-testid="wif-pill" onClick={() => setWifOpen(true)} aria-label={`${u.wifName}.wif name card`}>{u.wifName}.wif</button>}
-                {u.wifName && q.data?.formerly && <div className="muted tiny profile__formerly">formerly @{q.data.formerly.name}</div>}
-              </div>
+          <div className="pro__id">
+            <h1 className="pro__name" data-testid="profile-name">
+              {u.wifName
+                ? <button type="button" className="pro__wif" data-testid="wif-name" onClick={() => setWifOpen(true)} aria-label={`${u.wifName}.wif, open the name card`}>{u.wifName}<span className="wifsfx">.wif</span></button>
+                : <span className="clamp-1">{u.name}</span>}
+              {u.plus && <PlusMark size={20} />}
+            </h1>
+            <div className="pro__handle">{at(u.handle)}{u.followsYou && <span className="chip-soft">follows you</span>}</div>
+            {u.wifName && q.data?.formerly && <div className="muted tiny">formerly @{q.data.formerly.name}</div>}
+            {u.bio && <RichText text={u.bio} className="pro__bio" />}
+            <div className="pro__row" data-testid="profile-stats">
+              <span className="pro__stat">{stat(u.drops ?? 0, 'drops')}</span>
+              <Link className="pro__stat" to={followPath(u.handle, 'followers')}>{stat(u.followers, u.followers === 1 ? 'follower' : 'followers')}</Link>
+              <Link className="pro__stat" to={followPath(u.handle, 'following')}>{stat(u.following, 'following')}</Link>
+              {u.supporters !== undefined && <span className="pro__stat">{stat(u.supporters, 'supporters')}</span>}
+              <span className="pro__stat pro__stat--quiet">joined {u.joined.toLowerCase()}</span>
+              {u.location && <span className="pro__stat pro__stat--quiet">{u.location}</span>}
+              {u.dmPrice && <span className="pro__stat pro__stat--quiet">messages {u.dmPrice} WIF</span>}
             </div>
-            <AnimatePresence>{wifOpen && u.wifName && (
-              <Sheet title={`${u.wifName}.wif`} onClose={() => setWifOpen(false)}
-                footer={<div className="listsheet__acts">
-                  <Link className="btn btn--dark btn--block" to={`/n/${u.wifName}`} onClick={() => setWifOpen(false)}>open the name page</Link>
-                  {session?.handle === u.handle && <ListNameButton name={u.wifName} />}</div>}>
-                <div className="profile__wifsheet" data-testid="wif-card"><NameCard size="md" label={u.wifName} state="yours" theme={(u as { wifTheme?: number }).wifTheme} />
-                  <p className="muted small">held by {at(u.handle)}<InfoTip label="about .wif names">an onchain name in this wallet. the card is drawn onchain.</InfoTip></p></div>
-              </Sheet>)}</AnimatePresence>
-            {u.bio && <RichText text={u.bio} className="profile__bio" />}
-            <div className="profile__meta muted small">
-              {u.location && <span><Icon name="globe" size={14} /> {u.location}</span>}
-              <span><Icon name="calendar" size={14} /> joined {u.joined.toLowerCase()}</span>
-              {u.dmPrice && <span><Icon name="mail" size={14} /> messages {u.dmPrice} WIF</span>}
-            </div>
-            <div className="pcard__stats">
-              <div><b className="num"><AnimatedNumber from={0} value={u.drops ?? 0} /></b><span>drops</span></div>
-              <Link to={followPath(u.handle, 'followers')}><b className="num"><AnimatedNumber from={0} value={u.followers} /></b><span>followers</span></Link>
-              <Link to={followPath(u.handle, 'following')}><b className="num"><AnimatedNumber from={0} value={u.following} /></b><span>following</span></Link>
-              {u.supporters !== undefined && <div><b className="num"><AnimatedNumber from={0} value={u.supporters} /></b><span>supporters</span></div>}
-            </div>
-            <div className="pcard__actions">
-              {me ? (
-                <><button className="btn btn--ghost" onClick={() => openSheet({ type: 'profile' })}>edit profile</button><Link className="btn btn--ghost btn--icon" to="/settings" aria-label="settings" title="settings"><Icon name="more" size={18} /></Link>{!u.wifName && <MakeItYours />}</>
-              ) : (
-                <>
-                  {live && <FollowButton handle={u.handle} />}
-                  {!live && <span className="muted small">{isFollowing ? 'following' : ''}</span>}
-                  <button className="chip chip--tip" onClick={() => openSheet({ type: 'tip', to: u.handle })}><TipJar size={15} title="" /> tip</button>
-                  <button className="chip chip--vote" onClick={() => openSheet({ type: 'vote', handle: u.handle })}><Icon name="vote" size={15} /> vote</button>
-                  <button className="chip" onClick={message}><Icon name="mail" size={15} /> message</button>
-                  {live && <motion.button whileTap={{ scale: 0.95 }} className={`chip ${u.muted ? 'is-on' : ''}`} onClick={mute} aria-pressed={!!u.muted}><Icon name="mute" size={15} /> {u.muted ? 'muted' : 'mute'}</motion.button>}
-                </>
-              )}
-            </div>
-            {me && <OwnLinks />}
           </div>
+          {me && <KeepNudge />}
+          <AnimatePresence>{wifOpen && u.wifName && (
+            <Sheet title={`${u.wifName}.wif`} onClose={() => setWifOpen(false)}
+              footer={<div className="listsheet__acts">
+                <Link className="btn btn--dark btn--block" to={`/n/${u.wifName}`} onClick={() => setWifOpen(false)}>open the name page</Link>
+                {me && <ListNameButton name={u.wifName} />}</div>}>
+              <div className="profile__wifsheet" data-testid="wif-card"><NameCard size="md" label={u.wifName} state={me ? 'yours' : 'idle'} theme={(u as { wifTheme?: number }).wifTheme} />
+                <NameHolder name={u.wifName} fallback={u.address} /></div>
+            </Sheet>)}</AnimatePresence>
         </section>
 
         {u.tiers && !me && (
@@ -171,21 +252,16 @@ function ProfileOf({ handle }: { handle: string }) {
 
         {me && <BumpNotice />}
 
-
-        <div className="feed-switch">
-          <div className="seg seg--feed" role="tablist" aria-label="profile sections">
-            {tabs.map(([id, label]) => (
-              <button key={id} role="tab" aria-selected={tab === id} className={tab === id ? 'is-on' : ''} onClick={() => setTab(id)}>
-                {tab === id && <motion.span layoutId="profile-tab" className="seg__pill" transition={{ type: 'spring', stiffness: 420, damping: 34 }} />}
-                <span className="seg__label">{label}</span>
-              </button>
-            ))}
-          </div>
+        <div className="pro-tabs" role="tablist" aria-label="profile sections">
+          {tabs.map(([id, label]) => (
+            <button key={id} role="tab" aria-selected={tab === id} className={tab === id ? 'is-on' : ''} onClick={() => setTab(id)}>
+              {label}{tab === id && <motion.span layoutId="profile-tab" className="pro-tabs__bar" transition={{ type: 'spring', stiffness: 420, damping: 34 }} />}
+            </button>
+          ))}
         </div>
 
-        {(tab === 'drops' || tab === 'replies' || tab === 'media' || tab === 'likes') && (live ? <DropList key={tab} handle={u.handle} tab={tab} /> : <p className="empty">no drops yet.</p>)}
-
-        {tab === 'badges' && <BadgeShelf handle={u.handle} mine={me} />}
+        {(tab === 'drops' || tab === 'replies' || tab === 'media') && (live ? <DropList key={tab} handle={u.handle} tab={tab} mine={me} /> : <p className="empty">no drops yet.</p>)}
+        {tab === 'names' && <NamesTab handle={u.handle} mine={me} />}
 
         {tab === 'shop' && u.shop && (
           <div className="shop">
@@ -247,9 +323,19 @@ export function FollowList({ kind, handle: given }: { kind: 'followers' | 'follo
   )
 }
 
-/** On your own profile: link x or a wallet right here until both are linked. */
-function OwnLinks() {
-  const { all } = useLinked()
-  if (all) return null
-  return <div className="profile__links" data-testid="profile-links"><p className="tiny muted">link x or a wallet so you can always get back into this account.</p><LinkList compact /></div>
+const NUDGE_KEY = 'wifly:keep-nudge-off'
+/** Your own profile, one way in so far (a guest key, or just one of x / email / wallet): one slim, dismissible line. */
+function KeepNudge() {
+  const { me, login } = useSession()
+  const { x, wallets } = useLinked()
+  const [off, setOff] = useState(() => { try { return localStorage.getItem(NUDGE_KEY) === '1' } catch { return false } })
+  const ways = (x ? 1 : 0) + wallets.length + (login?.method === 'email' ? 1 : 0)
+  if (off || !me || ways > 1) return null
+  return (
+    <div className="pro-nudge" data-testid="keep-nudge">
+      <span className="small">link x or a wallet to keep this account.</span>
+      <Link className="linkbtn small" to="/settings#accounts">link</Link>
+      <button type="button" className="pro-nudge__x" aria-label="dismiss" onClick={() => { setOff(true); try { localStorage.setItem(NUDGE_KEY, '1') } catch { /* private mode */ } }}><Icon name="close" size={14} /></button>
+    </div>
+  )
 }

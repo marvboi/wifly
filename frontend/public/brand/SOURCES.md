@@ -38,4 +38,4 @@ Falling coins and celebrations still use wif-coin-256.png.
 - wif-token-flat.webp: wif-token-flat.png at full 800x800, WebP q85, 109KB (was 788KB). Used by wifly-tip-jar.svg.
 - wifly-tip-jar-1200.webp: wifly-tip-jar-1200.png at full 1000x1350, WebP q85, 104KB (was 607KB).
 The PNG originals stay in place as the master files for anyone linking them directly.
-- wif-coin-96.webp: wif-coin-256.png resampled to 96x96 (Lanczos), WebP q85. Used by the landing's falling coins.
+- wif-coin-96.webp (speed.5): wif-coin-256.png resampled to 96x96 (Lanczos), WebP q85. Used by the landing's falling coins.

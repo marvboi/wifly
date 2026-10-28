@@ -20,6 +20,7 @@ export type PrivyState = {
   xUsername: string | null       // linked X account, if any
   linkedWallet: string | null     // an external wallet linked to the account, if any
   activeWallet: string | null     // the wallet Privy signs with: embedded (X/email logins) or external (MetaMask, Rabby, WalletConnect)
+  wallets: string                 // every wallet Privy can sign with right now, lowercase, comma separated
 }
 /** What the api accepts for a Privy sign-in: the identity token when the dashboard returns one, else the access token. */
 export type PrivyTokens = { identityToken: string } | { accessToken: string }
@@ -33,6 +34,12 @@ type Actions = {
   linkWallet: () => Promise<void>
   /** Send one tx from activeWallet on chainId. Embedded and external Privy wallets go through the same EIP-1193 path. */
   sendTx?: (to: `0x${string}`, data: `0x${string}`, chainId: number, value?: bigint) => Promise<`0x${string}`>
+  /** The same, from one named Privy wallet (the embedded one, for withdraw). */
+  sendTxFrom?: (from: string, to: `0x${string}`, data: `0x${string}`, chainId: number, value?: bigint) => Promise<`0x${string}`>
+  /** personal_sign with one named Privy wallet. A signature, never a transaction. */
+  signMessageFrom?: (from: string, message: string) => Promise<`0x${string}`>
+  /** Privy's own export modal (the key shows only inside Privy's iframe, never in this app). */
+  exportWallet?: (address: string) => Promise<void>
 }
 
 /** Lazy loading: the Privy chunk (~1.5MB) mounts only once something wants it: a sign-in tap or sheet, an account
@@ -59,7 +66,7 @@ export const privyWanted = {
 export function wantPrivy() { if (!privyEnabled || wanted) return; wanted = true; wantSubs.forEach(f => f()) }
 export function usePrivyWanted() { return useSyncExternalStore(privyWanted.subscribe, privyWanted.get) }
 
-let state: PrivyState = { loaded: false, ready: false, authenticated: false, identityToken: null, smartWallet: null, embeddedWallet: null, xUsername: null, linkedWallet: null, activeWallet: null }
+let state: PrivyState = { loaded: false, ready: false, authenticated: false, identityToken: null, smartWallet: null, embeddedWallet: null, xUsername: null, linkedWallet: null, activeWallet: null, wallets: '' }
 let actions: Actions | null = null
 const subs = new Set<() => void>()
 
@@ -121,6 +128,20 @@ export const privyBridge = {
   sendTx(to: `0x${string}`, data: `0x${string}`, chainId: number, value?: bigint) {
     if (!actions?.sendTx) return Promise.reject(new Error('connect a wallet first'))
     return actions.sendTx(to, data, chainId, value)
+  },
+  /** True when Privy can sign with this exact wallet in this browser right now. */
+  has: (address?: string | null) => !!address && state.authenticated && state.wallets.split(',').includes(address.toLowerCase()),
+  signFrom(from: string, message: string) {
+    if (!actions?.signMessageFrom || !privyBridge.has(from)) return Promise.reject(new Error('sign in with x or email to use this wallet'))
+    return actions.signMessageFrom(from, message)
+  },
+  sendFrom(from: string, to: `0x${string}`, data: `0x${string}`, chainId: number, value?: bigint) {
+    if (!actions?.sendTxFrom || !privyBridge.has(from)) return Promise.reject(new Error('sign in with x or email to use this wallet'))
+    return actions.sendTxFrom(from, to, data, chainId, value)
+  },
+  exportWallet(address: string) {
+    if (!actions?.exportWallet || !privyBridge.has(address)) return Promise.reject(new Error('sign in with x or email to use this wallet'))
+    return actions.exportWallet(address)
   },
   /** Logging out also clears a Privy session that was never loaded this visit. */
   async logout() { if (!actions && hasPrivyTrace()) { wantPrivy(); await until(() => !!actions && state.ready, 8000).catch(() => {}) } if (actions && state.authenticated) await actions.logout().catch(() => {}) },

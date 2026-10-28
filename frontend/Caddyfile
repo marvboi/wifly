@@ -31,8 +31,39 @@
 	redir @legacyProfileQ /@{re.legacyProfileQ.1}?{query} 301
 	@legacyProfile path_regexp legacyProfile ^/u/(.+)$
 	redir @legacyProfile /@{re.legacyProfile.1} 301
+	# link previews: crawlers (x, telegram, discord, imessage, slack, whatsapp…) asking for a page get a small preview page
+	# built and escaped by the api (/api/og/page + the shared path). caddy only forwards it: no request or user text is
+	# ever evaluated here. files that exist (assets, images, fonts) and people always get the static files untouched.
+	@crawlerHome {
+		header_regexp ua User-Agent (?i)(twitterbot|facebookexternalhit|facebot|meta-externalagent|telegrambot|discordbot|slackbot|slack-imgproxy|whatsapp|linkedinbot|applebot|skypeuripreview|redditbot|embedly|pinterest|iframely|mastodon|bluesky|cardyb|vkshare|tumblr|snapchat|viber|line-poker|kakaotalk|zoominfobot|googlebot|bingbot|duckduckbot|yandex)
+		method GET HEAD
+		path / /index.html
+	}
+	@crawlerPage {
+		header_regexp ua User-Agent (?i)(twitterbot|facebookexternalhit|facebot|meta-externalagent|telegrambot|discordbot|slackbot|slack-imgproxy|whatsapp|linkedinbot|applebot|skypeuripreview|redditbot|embedly|pinterest|iframely|mastodon|bluesky|cardyb|vkshare|tumblr|snapchat|viber|line-poker|kakaotalk|zoominfobot|googlebot|bingbot|duckduckbot|yandex)
+		method GET HEAD
+		not path /assets/* /brand/* /fonts/*
+		not file {
+			root {$WEB_ROOT:/srv}
+			try_files {path}
+		}
+	}
+	handle @crawlerHome {
+		rewrite * /api/og/page/
+		reverse_proxy {$API_UPSTREAM:http://wifly-api.railway.internal:8787} {
+			header_up X-Real-IP {client_ip}
+			header_up X-Forwarded-For {client_ip}
+		}
+	}
+	handle @crawlerPage {
+		rewrite * /api/og/page{path}
+		reverse_proxy {$API_UPSTREAM:http://wifly-api.railway.internal:8787} {
+			header_up X-Real-IP {client_ip}
+			header_up X-Forwarded-For {client_ip}
+		}
+	}
 	handle {
-		root * /srv
+		root * {$WEB_ROOT:/srv}
 		@assets path /assets/*
 		header @assets Cache-Control "public, max-age=31536000, immutable"
 		@static path /brand/* /fonts/* /favicon-180.png /favicon.ico /favicon.svg /favicon-32.png /favicon-192.png /favicon-512.png /apple-touch-icon.png /manifest.webmanifest

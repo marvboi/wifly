@@ -24,7 +24,7 @@ const STEPS = ['you', 'wif', 'follow', 'link'] as const
 const TITLES = ['about you', 'onchain name', 'your feed', 'links']
 
 export function Welcome() {
-  const { me, ready, setMe, refresh } = useSession()
+  const { me, ready, setMe, refresh, signOut } = useSession()
   const { toast } = useStore()
   const nav = useNavigate()
   const [sp] = useSearchParams()
@@ -186,6 +186,10 @@ export function Welcome() {
                 {!owned && suggestion && handle !== suggestion && <p className="welcome__sub">{onb.data?.x ? 'from your x: ' : 'idea: '}<button className="linkbtn" onClick={() => setHandle(suggestion)}>@{suggestion}</button></p>}
               </div>
               <button className="btn btn--dark btn--lg btn--block" disabled={!okHandle || busy} onClick={renaming ? saveName : next}>{renaming ? (busy ? 'saving…' : 'save my @name') : 'continue'}</button>
+              {!renaming && !onb.data?.notice && <p className="welcome__sub welcome__already" data-testid="already-have">already have an account? <button type="button" className="linkbtn" onClick={async () => {
+                // this fresh sign-up stays empty (no @name, nothing posted); linking its wallet later folds it into the real account
+                await signOut('signin').catch(() => {})
+              }}>sign in with x or email instead</button></p>}
             </>}
             {step === 1 && (NAMES_LIVE ? <>
               <h1>want {handle}.wif too?</h1>

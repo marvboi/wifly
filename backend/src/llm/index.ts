@@ -1,7 +1,7 @@
 /**
  * Companion chat model: OpenRouter (OpenAI-compatible chat/completions with tool calling), server-side only.
  *
- * - OPENROUTER_API_KEY: set in the hosting env. Never in code, never sent to the browser, never logged. Unset = chat off.
+ * - OPENROUTER_API_KEY: set in Railway. Never in code, never sent to the browser, never logged. Unset = chat off.
  * - AI_MODELS: comma-separated, tried in order. FREE MODELS ONLY: anything that isn't a ":free" model or
  *   the openrouter/free router is dropped, for Plus users too. Default:
  *   nvidia/nemotron-3-super-120b-a12b:free, google/gemma-4-31b-it:free, openrouter/free
@@ -24,7 +24,7 @@ export interface LlmProvider {
 
 export class LlmBusy extends Error { constructor() { super('busy') } }
 
-/** Free models only, no paid models for now. */
+/** Free models only (no paid AI for now). */
 export const DEFAULT_MODELS = ['nvidia/nemotron-3-super-120b-a12b:free', 'google/gemma-4-31b-it:free', 'openrouter/free']
 /** Only free OpenRouter models: "<model>:free" or the openrouter/free router. No paid model anywhere. */
 export const isFreeModel = (m: string) => /^[\w.-]+\/[\w.:-]+:free$/.test(m) || m === 'openrouter/free'

@@ -27,27 +27,50 @@ export class ApiError extends Error { constructor(public status: number, message
 /** A guest tried a write that needs a linked wallet, x or email: the app opens the link sheet. */
 export const LINK_REQUIRED_EVENT = 'wifly:link-required'
 
+/**
+ * Session epoch. Every request is tagged with the epoch it started in; sign-out moves the epoch on and aborts what
+ * is in flight, so a late answer from the old session can never land in the next account's screens.
+ */
+let epoch = 0
+let inflight = new AbortController()
+export const sessionEpoch = () => epoch
+export function endSessionEpoch() { epoch++; inflight.abort(); inflight = new AbortController() }
+export class StaleSessionError extends ApiError { constructor() { super(0, 'signed out', 'stale_session') } }
+/** Throws when a response belongs to an older session than the one now on screen. */
+export function checkEpoch(started: number) { if (started !== epoch) throw new StaleSessionError() }
+export function epochSignal(own?: AbortSignal | null): AbortSignal {
+  if (!own) return inflight.signal
+  const any = (AbortSignal as unknown as { any?: (s: AbortSignal[]) => AbortSignal }).any
+  return any ? any([own, inflight.signal]) : own
+}
+
 export async function api<T>(path: string, init: RequestInit & { json?: unknown } = {}): Promise<T> {
   const { json, headers, ...rest } = init
   const method = (rest.method ?? 'GET').toUpperCase()
+  const started = epoch
   const res = await fetch(`/api${path}`, {
     credentials: 'same-origin',
     ...rest,
+    signal: epochSignal(rest.signal),
     headers: {
       ...(json !== undefined ? { 'content-type': 'application/json' } : {}),
       ...(method !== 'GET' ? { 'x-wifly': '1' } : {}),
       ...headers,
     },
     body: json !== undefined ? JSON.stringify(json) : rest.body,
-  })
+  }).catch(e => { checkEpoch(started); throw e })
+  checkEpoch(started)
   if (!res.ok) {
     let msg = res.statusText, code: string | undefined
     try { const b = await res.json(); msg = b.error ?? msg; code = typeof b.code === 'string' ? b.code : undefined } catch { /* not json */ }
     if (res.status === 502 || res.status === 504) msg = 'the wifly api isn’t running (cd backend && npm run dev)'
     if (code === 'link_required' && typeof window !== 'undefined') window.dispatchEvent(new CustomEvent(LINK_REQUIRED_EVENT))
+    checkEpoch(started)
     throw new ApiError(res.status, msg, code)
   }
-  return res.json() as Promise<T>
+  const body = await res.json() as T
+  checkEpoch(started)
+  return body
 }
 
 export async function uploadImage(file: File): Promise<string> {

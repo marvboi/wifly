@@ -6,6 +6,8 @@ COPY package.json package-lock.json ./
 RUN npm ci --omit=dev --no-audit --no-fund && npm i -g tsx@4.23.15 && npm cache clean --force
 COPY tsconfig.json ./
 COPY src ./src
+# fonts for the link-preview images (og.ts); resvg loads no system fonts
+COPY assets ./assets
 EXPOSE 8787
 # Railway injects PORT. /healthz checks the database.
 CMD ["tsx", "src/server.ts"]

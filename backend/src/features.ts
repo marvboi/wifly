@@ -20,6 +20,7 @@ import { charCount, fail, rateLimit } from './util'
 import { audit, isAdmin, listAccounts, softDeleteUser, uidForWallet, walletsOfUser } from './accounts'
 import { MAX_THEME, renderNameSvg, unclaimedPreview } from './names-art'
 import { setReconcileNotify } from './reconcile'
+import { lazyPlusSync, plusWalletOf, syncPlusFromChain, verifyPlusTx } from './plusSync'
 import { chainListing, mirrorListing } from './market'
 
 const now = () => Date.now()
@@ -76,7 +77,7 @@ export async function checkHandle(raw: string, uid: number | null): Promise<Hand
 }
 
 /** The .wif this account's wallets hold that would be "yours" as an @name: each wallet's onchain primary (reverseName), then a minted mirror row. */
-async function ownedWifFor(uid: number): Promise<string | null> {
+async function ownedWifFor(uid: number, skip?: string | null): Promise<string | null> {
   const N = namesContract()
   const tries: string[] = []
   if (N) for (const w of await walletsOfUser(uid)) {
@@ -85,7 +86,7 @@ async function ownedWifFor(uid: number): Promise<string | null> {
     if (label) tries.push(label)
   }
   for (const r of await all<{ name: string }>('SELECT name FROM names WHERE owner_id = ? AND (minted = 1 OR ?) ORDER BY created_at ASC LIMIT 4', [uid, N ? 0 : 1]).catch(() => [])) tries.push(r.name)
-  for (const t of [...new Set(tries)]) if (HANDLE_RE.test(t) && !RESERVED.has(t) && (await checkHandle(t, uid)).reason === 'yours') return t
+  for (const t of [...new Set(tries)]) if (t !== skip && HANDLE_RE.test(t) && !RESERVED.has(t) && (await checkHandle(t, uid)).reason === 'yours') return t
   return null
 }
 
@@ -245,7 +246,7 @@ type PlusRow = { user_id: number; expires_at: number; plan: PlusPlan; auto_renew
  *  active  → now < expiry
  *  grace   → expiry ≤ now < expiry + 5 days (check still shown; renew to keep it)
  *  expired → after the grace period (the check is gone)
- * Auto-renew rules: opt-in; only after expiry or during the grace period; only while it is on; takes exactly the
+ * Auto-renew: opt-in; only after expiry or during the grace period; only while it is on; takes exactly the
  * agreed price; once per period; if the plan price goes above the agreed price it stops and asks to confirm the new price;
  * pulls from the in-app deposit first, then the WIF approval; turning it off stops it at once.
  */
@@ -462,8 +463,11 @@ export function registerFeatures(app: Hono<Env>, h: Helpers) {
     const offersIn = await all<{ id: number; name: string; buyer: string; price: number; expires_at: number }>(`SELECT o.id, o.name, u.handle AS buyer, o.price, o.expires_at FROM name_offers o
       JOIN users u ON u.id = o.buyer_id JOIN names n ON n.name = o.name WHERE n.owner_id = ? AND o.status = 'open' AND o.expires_at > ? ORDER BY o.price DESC`, [uid, now()])
     const offersOut = await all<{ id: number; name: string; price: number; expires_at: number }>(`SELECT id, name, price, expires_at FROM name_offers WHERE buyer_id = ? AND status = 'open' AND expires_at > ? ORDER BY created_at DESC`, [uid, now()])
+    // a .wif this account holds (wifly records or a linked wallet onchain) that isn't its name here yet: settings offers "use it" only then
+    const current = String(JSON.parse((await one<{ extras: string | null }>('SELECT extras FROM users WHERE id = ?', [uid]))?.extras || '{}').wifName ?? '').toLowerCase() || null
+    const usable = await ownedWifFor(uid, current).catch(() => null)
     return c.json({
-      primary,
+      primary, current, usable,
       names: names.map(n => { const l = listed.get(n.name.toLowerCase()); return { name: n.name, display: `${n.name}.wif`, primary: n.name.toLowerCase() === primary, minted: !!Number(n.minted), theme: Number(n.theme ?? 0), listing: l ? { price: Number(l.price), private: l.buyer_id !== null } : null } }),
       offersIn: offersIn.map(o => ({ id: Number(o.id), name: o.name, buyer: o.buyer, price: Number(o.price), expiresAt: Number(o.expires_at) })),
       offersOut: offersOut.map(o => ({ id: Number(o.id), name: o.name, price: Number(o.price), expiresAt: Number(o.expires_at) })),
@@ -741,7 +745,8 @@ export function registerFeatures(app: Hono<Env>, h: Helpers) {
   // ---- Plus
   app.get('/api/plus', async c => {
     const uid = c.get('uid')
-    return c.json(uid ? await plusView(uid) : { state: 'none', plan: 'month', price: plusPlans().month.price, plans: Object.values(plusPlans()), graceDays: PLUS_GRACE_MS / 86400_000, signedOut: true })
+    if (uid) await lazyPlusSync(uid)
+    return c.json(uid ? { ...(await plusView(uid)), wallet: plusWalletOf(uid) } : { state: 'none', plan: 'month', price: plusPlans().month.price, plans: Object.values(plusPlans()), graceDays: PLUS_GRACE_MS / 86400_000, signedOut: true })
   })
   /** Opt in with an agreed price (at least the current plan price), or turn off (stops renewals at once). */
   app.post('/api/plus/auto-renew', async c => {
@@ -752,7 +757,9 @@ export function registerFeatures(app: Hono<Env>, h: Helpers) {
       await run('UPDATE plus_subs SET auto_renew = 0, updated_at = ? WHERE user_id = ?', [now(), uid])
       return c.json(await plusView(uid))
     }
-    const v = await plusView(uid)
+    let v = await plusView(uid)
+    // the mirror may lag the chain (a sub paid a moment ago, or from another wallet on the account): read the chain first
+    if (v.state === 'none') { await syncPlusFromChain(uid); v = await plusView(uid) }
     if (v.state === 'none') fail(409, 'get plus first, then turn on auto-renew')
     const plan: PlusPlan = b.plan === 'year' ? 'year' : b.plan === 'month' ? 'month' : v.plan
     const agreed = money(b.agreedPrice, 1e8)
@@ -768,8 +775,22 @@ export function registerFeatures(app: Hono<Env>, h: Helpers) {
     if (!wiflyContract()) fail(503, 'the Wifly contract isn’t live yet, so nothing was paid')
     if (!isTx(b.txHash)) fail(400, 'send the payment onchain first, then share its tx hash')
     const plan: PlusPlan = b.plan === 'year' ? 'year' : 'month'
-    await run('INSERT OR IGNORE INTO plus_payments (user_id, kind, plan, price, tx_hash, created_at) VALUES (?, ?, ?, ?, ?, ?)', [uid, b.kind === 'renew' ? 'renew' : 'buy', plan, plusPlans()[plan].price, b.txHash!.toLowerCase(), now()])
-    return c.json({ ok: true, pending: true })
+    const hash = b.txHash!.toLowerCase()
+    await run('INSERT OR IGNORE INTO plus_payments (user_id, kind, plan, price, tx_hash, created_at) VALUES (?, ?, ?, ?, ?, ?)', [uid, b.kind === 'renew' ? 'renew' : 'buy', plan, plusPlans()[plan].price, hash, now()])
+    // the server checks the chain itself: the receipt (confirmed, to Wifly, from a wallet on this account), then subStatus
+    // for every wallet on the account, so plus turns on right away whichever wallet paid
+    const verified = await verifyPlusTx(uid, hash as `0x${string}`)
+    if (verified) await run('UPDATE plus_payments SET verified = 1 WHERE tx_hash = ? AND user_id = ?', [hash, uid])
+    const sync = await syncPlusFromChain(uid)
+    const view = await plusView(uid)
+    return c.json({ ok: true, verified, pending: !view.check, plus: { ...view, wallet: sync.wallet }, me: await h.me(uid), ...(sync.reason ? { note: sync.reason } : {}) })
+  })
+  /** Re-read Plus from the chain for every wallet on this account (the page calls it after a payment confirms). */
+  app.post('/api/plus/sync', async c => {
+    const uid = needUser(c)
+    rateLimit(`plus-sync:${uid}`, 20, 60_000)
+    const sync = await syncPlusFromChain(uid)
+    return c.json({ ok: sync.synced, plus: { ...(await plusView(uid)), wallet: sync.wallet }, me: await h.me(uid), ...(sync.reason ? { note: sync.reason } : {}) })
   })
 
   // ---- badges

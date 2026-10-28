@@ -1,6 +1,6 @@
 /**
- * /deploy: admin-only, not linked anywhere. An admin connects the treasury (or another admin) wallet and deploys the
- * contracts one step at a time, signing each step. Mirrors contracts/script/DeployWifly.s.sol (UUPS proxy version):
+ * /deploy: admin-only, not linked anywhere. the owner connects the treasury (or another admin) wallet and deploys the
+ * contracts one step at a time, signing each himself. Mirrors contracts/script/DeployWifly.s.sol (UUPS proxy version):
  * every Wifly contract except the renderer is an implementation + an ERC1967Proxy whose constructor calls
  * initialize(...) in the same transaction (so nobody can front-run initialization). The owner of every proxy (the only
  * one who can upgrade) defaults to the treasury. Works only while the contract addresses are unset, or with VITE_DEPLOY_PAGE=true.

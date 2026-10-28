@@ -14,7 +14,7 @@ import { HANDLE_RE, RESERVED, syncName } from './features'
 import { useOwnedName } from './reconcile'
 import { fail, rateLimit } from './util'
 
-export type Purpose = 'wif' | 'tips'
+export type Purpose = 'wif' | 'tips' | 'main'
 const TTL = 10 * 60_000
 const ADDR = /^0x[0-9a-fA-F]{40}$/
 const NS = parseAbi(['function ownerOfName(string) view returns (address)', 'function reverseName(address) view returns (string)', 'function resolve(string) view returns (address)'])
@@ -25,6 +25,7 @@ const parse = (s: string | null | undefined) => { try { return JSON.parse(s || '
 const lines: Record<Purpose, string> = {
   wif: 'use the .wif this wallet holds on my wifly account.',
   tips: 'send my wifly tips to this wallet.',
+  main: 'make this the main wallet of my wifly account.',
 }
 /** The exact text the wallet signs. Built by the server and stored with the nonce; the client never supplies it. */
 function proofMessage(p: Purpose, handle: string, address: string, nonce: string, exp: number) {
@@ -79,7 +80,7 @@ export function registerProofs(app: Hono<Env>, h: { me: (uid: number) => Promise
     const uid = needUser(c)
     await rateLimit(`proof:${uid}`, 20, 60_000)
     const b = await c.req.json<{ purpose: Purpose; address: string }>().catch(() => ({ purpose: '' as Purpose, address: '' }))
-    if (b.purpose !== 'wif' && b.purpose !== 'tips') fail(400, 'unknown request')
+    if (b.purpose !== 'wif' && b.purpose !== 'tips' && b.purpose !== 'main') fail(400, 'unknown request')
     return c.json(await issueProof(uid, b.purpose, String(b.address ?? '')))
   })
 
@@ -129,6 +130,28 @@ export function registerProofs(app: Hono<Env>, h: { me: (uid: number) => Promise
     await run('INSERT INTO tip_wallet_log (user_id, address, prev, created_at) VALUES (?, ?, ?, ?)', [uid, a, prev, Date.now()])
     logEvent(`[tips] destination u=${shortId(uid)} ${shortAddr(prev)} -> ${shortAddr(a)}`)
     return c.json({ ok: true, payout: await payoutOf(uid) })
+  })
+
+  /**
+   * Make another linked wallet (the Privy one included) the account's main wallet. Needs a fresh signature from that wallet.
+   * The old main stays linked (it still signs in). Where tips land doesn't move: if none was chosen, it stays on the old payout wallet.
+   */
+  app.post('/api/settings/main', async c => {
+    const uid = needUser(c)
+    await rateLimit(`mainw:${uid}`, 10, 60_000)
+    const b = await c.req.json<{ address: string; nonce: string; signature: string }>().catch(() => ({} as never))
+    const a = await consumeProof(uid, 'main', String(b.address ?? ''), String(b.nonce ?? ''), String(b.signature ?? ''))
+    if (!(await walletsOfUser(uid)).has(a)) fail(400, 'link that wallet to this account first')
+    const u = await one<{ address: string | null; extras: string | null }>('SELECT address, extras FROM users WHERE id = ?', [uid])
+    const prev = lc(u?.address)
+    if (prev === a) return c.json({ ok: true, already: true, me: await h.me(uid) })
+    const pay = await payoutOf(uid)
+    if (!parse(u?.extras).tipWallet && pay.address && (await walletsOfUser(uid)).has(lc(pay.address)))
+      await run(`UPDATE users SET extras = json_set(COALESCE(extras, '{}'), '$.tipWallet', ?) WHERE id = ?`, [lc(pay.address), uid])
+    if (prev) await run(`INSERT INTO user_wallets (address, user_id, kind, created_at) VALUES (?, ?, 'linked', ?) ON CONFLICT(address) DO NOTHING`, [prev, uid, Date.now()])
+    await run('UPDATE users SET address = ? WHERE id = ?', [a, uid])
+    logEvent(`[wallets] main u=${shortId(uid)} ${shortAddr(prev)} -> ${shortAddr(a)}`)
+    return c.json({ ok: true, me: await h.me(uid) })
   })
 
   /** Public: where a tip to @handle lands, so the sender sees it before signing. */

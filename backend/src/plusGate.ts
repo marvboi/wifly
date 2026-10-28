@@ -11,6 +11,7 @@ import { parseAbi, type Address } from 'viem'
 import { chainClient } from './chain'
 import { plusCreator, wiflyContract } from './config'
 import { one } from './db'
+import { walletsOfUser } from './accounts'
 import { plusView } from './features'
 
 const SUB_ABI = parseAbi(['function subStatus(address user, address creator) view returns (bool active, bool hasAccess, uint8 tier, uint64 expiry, uint256 graceEndsAt, uint8 plan)'])
@@ -20,11 +21,8 @@ const TTL = 30_000
 const cache = new Lru<number, { at: number; v: PlusAccess }>({ max: 5000, ttlMs: TTL })
 export function clearPlusGateCache() { cache.clear() }
 
-async function walletOf(uid: number): Promise<Address | null> {
-  const u = await one<{ address: string | null; wallet: string | null }>(`SELECT address,
-    (SELECT wallet FROM privy_accounts p WHERE p.user_id = users.id ORDER BY updated_at DESC LIMIT 1) AS wallet FROM users WHERE id = ?`, [uid])
-  const a = u?.address ?? u?.wallet
-  return a && /^0x[0-9a-fA-F]{40}$/.test(a) ? (a as Address) : null
+async function walletsOf(uid: number): Promise<Address[]> {
+  return [...(await walletsOfUser(uid))].filter(a => /^0x[0-9a-f]{40}$/.test(a)) as Address[]
 }
 
 /** `fresh` skips the 30 s cache (the DCA keeper reads fresh before every scheduled buy). */
@@ -34,13 +32,17 @@ export async function plusAccess(uid: number, fresh = false): Promise<PlusAccess
   let v: PlusAccess
   const W = wiflyContract(), team = plusCreator()
   if (W && team) {
-    const user = await walletOf(uid)
-    if (!user) v = { ok: false, state: 'none', source: 'chain', graceEndsAt: null, reason: 'no wallet on your account' }
+    // every wallet on the account counts (main, linked, embedded): plus paid from any of them is plus here
+    const users = await walletsOf(uid)
+    if (!users.length) v = { ok: false, state: 'none', source: 'chain', graceEndsAt: null, reason: 'no wallet on your account' }
     else {
-      try {
-        const [active, hasAccess, , expiry, graceEndsAt] = await chainClient().readContract({ address: W, abi: SUB_ABI, functionName: 'subStatus', args: [user, team] })
+      const reads = await Promise.all(users.map(u => chainClient().readContract({ address: W, abi: SUB_ABI, functionName: 'subStatus', args: [u, team] }).catch(() => null)))
+      const ok = reads.filter(r => r !== null) as (readonly [boolean, boolean, number, bigint, bigint, number])[]
+      if (!ok.length) v = { ok: false, state: 'unknown', source: 'chain', graceEndsAt: null, reason: 'couldn’t check Plus onchain right now' }
+      else {
+        const [active, hasAccess, , expiry, graceEndsAt] = ok.reduce((a, r) => (r[1] && !a[1]) || (r[1] === a[1] && r[3] > a[3]) ? r : a)
         v = { ok: hasAccess, state: active ? 'active' : hasAccess ? 'grace' : Number(expiry) ? 'expired' : 'none', source: 'chain', graceEndsAt: Number(graceEndsAt) ? Number(graceEndsAt) * 1000 : null }
-      } catch { v = { ok: false, state: 'unknown', source: 'chain', graceEndsAt: null, reason: 'couldn’t check Plus onchain right now' } }
+      }
     }
   } else {
     const p = await plusView(uid)

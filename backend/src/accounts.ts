@@ -19,9 +19,11 @@ const lc = (a: string | null | undefined) => String(a ?? '').toLowerCase()
 export async function uidForWallet(address: string): Promise<number | null> {
   const a = lc(address)
   if (!/^0x[0-9a-f]{40}$/.test(a)) return null
-  const r = await one<{ id: number }>(`SELECT id FROM users WHERE address = ? AND deleted_at IS NULL
-    UNION ALL SELECT w.user_id FROM user_wallets w JOIN users u ON u.id = w.user_id WHERE w.address = ? AND u.deleted_at IS NULL
-    UNION ALL SELECT p.user_id FROM privy_accounts p JOIN users u ON u.id = p.user_id WHERE p.wallet = ? AND u.deleted_at IS NULL LIMIT 1`, [a, a, a])
+  // exact match first (indexed, every write path stores lowercase), then a case-insensitive pass for any older checksummed row
+  const q = (cmp: (col: string) => string) => one<{ id: number }>(`SELECT id FROM users WHERE ${cmp('address')} AND deleted_at IS NULL
+    UNION ALL SELECT w.user_id FROM user_wallets w JOIN users u ON u.id = w.user_id WHERE ${cmp('w.address')} AND u.deleted_at IS NULL
+    UNION ALL SELECT p.user_id FROM privy_accounts p JOIN users u ON u.id = p.user_id WHERE ${cmp('p.wallet')} AND u.deleted_at IS NULL LIMIT 1`, [a, a, a])
+  const r = (await q(c => `${c} = ?`)) ?? (await q(c => `lower(${c}) = ?`))
   return r ? Number(r.id) : null
 }
 /** Every wallet of an account: main address, linked and guest wallets, and the Privy embedded wallet. */

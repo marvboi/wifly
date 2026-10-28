@@ -1,6 +1,6 @@
 /**
- * The agent's signing key lives ONLY in the backend. It is read from the AGENT_PRIVATE_KEY env var (set in the
- * hosting dashboard; it is never committed, logged, returned by the API or bundled into the web app).
+ * The agent's signing key lives ONLY in the backend. It is read from the AGENT_PRIVATE_KEY env var (set in
+ * Railway; it is never committed, logged, returned by the API or bundled into the web app).
  *
  * Everything else talks to the AgentSigner interface, so a KMS / key-vault signer can replace the env signer later
  * without touching the agent logic: implement AgentSigner and return it from loadAgentSigner() for AGENT_SIGNER=kms.

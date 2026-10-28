@@ -106,7 +106,7 @@ async function takeName(uid: number, u: Row, n: string, opts: { url?: string; no
   try {
     if (holder) await tx.execute({ sql: `UPDATE users SET handle = ?, extras = json_set(json_remove(COALESCE(extras, '{}'), '$.handlePicked'), '$.handleNotice', ?) WHERE id = ?`, args: [pendingHandle(), n, Number(holder.id)] })
     await tx.execute({ sql: `UPDATE users SET handle = ?, name = CASE WHEN name IS NULL OR name = '' OR lower(name) = lower(?) THEN ? ELSE name END,
-      extras = json_set(json_remove(COALESCE(extras, '{}'), '$.guest', '$.handleNotice'), '$.wifName', ?, '$.handlePicked', 1) WHERE id = ?`, args: [n, u.handle, n, n, uid] })
+      extras = json_set(json_remove(COALESCE(extras, '{}'), '$.guest', '$.handleNotice'), '$.wifName', ?, '$.handlePicked', 1), onboarded = 1 WHERE id = ?`, args: [n, u.handle, n, n, uid] })
     await tx.execute({ sql: `INSERT INTO names (name, owner_id, minted, created_at) VALUES (?, ?, 1, ?) ON CONFLICT(name) DO UPDATE SET owner_id = excluded.owner_id, minted = 1`, args: [n, uid, t] })
     await tx.execute({ sql: 'DELETE FROM handle_history WHERE old_handle = ? OR old_handle = ?', args: [n, lc(u.handle)] })
     await tx.execute({ sql: 'UPDATE handle_bumps SET settled_at = ? WHERE handle = ? AND settled_at IS NULL', args: [t, n] }).catch(() => null)

@@ -1,3 +1,4 @@
+// Swap engine, same as swap/src/wifSwap.ts (fork-tested). Keep the two in sync.
 // Wifly in-app swap: ETH <-> WIF on Robinhood Chain (4663) through the Uniswap v4 Pons pool.
 // Quote = V4Quoter eth_call (includes the pool hook's 1% cut). Swap = Universal Router V4_SWAP.
 import {

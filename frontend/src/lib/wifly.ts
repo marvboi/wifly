@@ -1,3 +1,4 @@
+import { plusOpen } from './plusOpen'
 import { useAnyAccount } from '../auth/privyBridge'
 import { privyBridge, usePrivyState } from '../auth/privyBridge'
 /**
@@ -194,23 +195,31 @@ export function usePlusStatus(localPlus: boolean) {
     contracts: [
       { ...base, functionName: 'subStatus', args: [address ?? zeroAddress, team] },
       { ...base, functionName: 'autoRenewOf', args: [address ?? zeroAddress, team] },
-      { ...base, functionName: 'tierPrices', args: [team] },
-      { ...base, functionName: 'yearlyPrices', args: [team] },
     ],
     query: { enabled: live && !!address, refetchInterval: 30_000 },
   })
-  const [st, ar, mp, yp] = r.data?.map(x => x.result) ?? []
+  // prices don't depend on who's looking: read them without a wallet so a 0 (not set yet) shows as "opens soon", never a fallback
+  const pr = useReadContracts({
+    contracts: [
+      { ...base, functionName: 'tierPrices', args: [team] },
+      { ...base, functionName: 'yearlyPrices', args: [team] },
+    ],
+    query: { enabled: live, refetchInterval: 60_000 },
+  })
+  const [st, ar] = r.data?.map(x => x.result) ?? []
+  const [mp, yp] = pr.data?.map(x => x.result) ?? []
   const s = st as readonly [boolean, boolean, number, bigint, bigint, number] | undefined
   const a = ar as readonly [number, number, bigint] | undefined
   const m = (mp as readonly bigint[] | undefined)?.[PLUS_TIER]
   const y = (yp as readonly bigint[] | undefined)?.[PLUS_TIER]
   const price = m && m > 0n ? fromWei(m) : PLUS_PRICE_FALLBACK
   const yearPrice = y && y > 0n ? fromWei(y) : PLUS_PRICE_YEAR_FALLBACK
+  const { monthOpen, yearOpen } = plusOpen(live, !!pr.data, m, y)
   const plan: PlusPlanId = s?.[5] === 1 ? 'year' : 'month'
   const maxPrice = a ? fromWei(a[2]) : 0
   const current = (a?.[1] === 1 ? 'year' : 'month') === 'year' ? yearPrice : price
   return {
-    live, team: WIFLY_TEAM_WALLET, price, yearPrice, plan,
+    live, team: WIFLY_TEAM_WALLET, price, yearPrice, plan, monthOpen, yearOpen, pricesLoading: live && !pr.data,
     active: live ? !!s?.[0] : localPlus, hasAccess: live ? !!s?.[1] : localPlus,
     expiry: s ? Number(s[3]) : undefined, graceEndsAt: s ? Number(s[4]) : undefined,
     autoRenew: maxPrice > 0, maxPrice, priceChanged: maxPrice > 0 && current > maxPrice,

@@ -17,12 +17,11 @@ import { Composer } from '../components/Composer'
 import { useNavigate } from 'react-router-dom'
 import { useAccount, useConnect } from 'wagmi'
 import type { Address } from 'viem'
-import { APP_NAME } from '../brand'
 import { FEE_SPLIT, LIVE, TOPSPOT_FEE_SHARE, TOPSPOT_HOLDER_SHARE, TOPSPOT_MIN_RAISE, VOTE_PRICE } from '../config'
 import { posts, users } from '../state/registry'
 import { PREVIEW_NOTE, useStore, type SheetState } from '../state/store'
 import { FEE_SPLIT_LABEL, topSpotMinBid, topSpotSplit } from '../lib/fees'
-import { failTitle, plans, useQuoteFee, resolveXUserId, useHasUnlocked, useIsSubscribed, useSendPlan, useTopSpotRules, xHandleHash, id32, type Plan } from '../lib/wifly'
+import { failTitle, plans, useQuoteFee, useHasUnlocked, useIsSubscribed, useSendPlan, useTopSpotRules, id32, type Plan } from '../lib/wifly'
 import { Amount, Avatar, Name, Token, WifUsd } from '../components/Bits'
 import { BurnSheet, BadgeSheet, TiersSheet } from './NewSheets'
 import { HumanCheck } from '../components/HumanCheck'
@@ -36,7 +35,7 @@ import { isWifName, useResolve } from '../lib/names'
 // Top Spot shares as labels (TOP_SPOT_PREV_BPS 9000 onchain)
 const pct = (x: number) => `${Math.round(x * 100)}%`
 
-export function Sheet({ title, onClose, children, footer, size }: { title: string; onClose: () => void; children: ReactNode; footer?: ReactNode; size?: 'sm' }) {
+export function Sheet({ title, onClose, children, footer, size, className }: { title: string; onClose: () => void; children: ReactNode; footer?: ReactNode; size?: 'sm'; className?: string }) {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
     document.addEventListener('keydown', onKey)
@@ -47,7 +46,7 @@ export function Sheet({ title, onClose, children, footer, size }: { title: strin
   return (
     <motion.div className="sheet-wrap" role="presentation" onMouseDown={e => { if (e.target === e.currentTarget) onClose() }}
       initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0, transition: { duration: 0.2 } }}>
-      <motion.div className={size ? `sheet sheet--${size}` : 'sheet'} role="dialog" aria-modal="true" aria-label={title}
+      <motion.div className={[size ? `sheet sheet--${size}` : 'sheet', className].filter(Boolean).join(' ')} role="dialog" aria-modal="true" aria-label={title}
         initial={phone ? { y: '100%' } : { opacity: 0, y: 36, scale: 0.96 }}
         animate={phone ? { y: 0 } : { opacity: 1, y: 0, scale: 1 }}
         exit={phone ? { y: '100%', transition: { duration: 0.22, ease: [0.4, 0, 1, 1] } } : { opacity: 0, y: 20, scale: 0.97, transition: { duration: 0.16 } }}
@@ -163,20 +162,18 @@ function TipHero({ amount, phase, base }: { amount: number; phase: TipPhase; bas
   )
 }
 
-function TipSheet({ to, postId, xHandle }: { to?: string; postId?: string; xHandle?: string }) {
+function TipSheet({ to, postId }: { to?: string; postId?: string }) {
   const { run, busy } = useAction()
   const [amount, setAmount] = useState(100)
   const direct = !!to && (isWifName(to) || /^0x[0-9a-fA-F]{40}$/.test(to))
   const target = to && !direct ? users[to] : undefined
-  const [mode, setMode] = useState<'member' | 'name' | 'x'>(direct ? 'name' : xHandle ? 'x' : target ? 'member' : 'name')
+  const [mode, setMode] = useState<'member' | 'name'>(direct ? 'name' : target ? 'member' : 'name')
   const [dest, setDest] = useState(direct ? to! : '')
   const res = useResolve(mode === 'name' ? dest : '')
   const resolved = mode === 'name' ? res.data ?? null : null
-  const [x, setX] = useState(xHandle ?? '')
-  const [xId, setXId] = useState('')
   const post = postId ? posts.find(p => p.id === postId) : undefined
   const self = useIsSelf(mode === 'member' ? to : undefined)
-  const recipient = mode === 'x' ? (x ? `@${x.replace(/^@/, '')}` : 'X account') : mode === 'name' ? resolved?.label ?? 'recipient' : target?.name ?? 'creator'
+  const recipient = mode === 'name' ? resolved?.label ?? 'recipient' : target?.name ?? 'creator'
   const [phase, setPhase] = useState<TipPhase>('idle')
   const reduced = useReducedMotion()
   const net = useQuoteFee(amount).receives
@@ -189,12 +186,7 @@ function TipSheet({ to, postId, xHandle }: { to?: string; postId?: string; xHand
     setPhase('sending')
     let plan: Plan | null = null
     if (mode === 'member') { if (payTo) plan = plans.tip(payTo, amount, postId) }
-    else if (mode === 'name') { if (!resolved?.address) { setPhase('idle'); return } plan = plans.tip(resolved.address as Address, amount, postId) }
-    else {
-      // resolveXUserId knows people who signed in to wifly with X (id from Privy's verified token); anyone else needs the pasted id.
-      const id = (await resolveXUserId(x)) ?? (/^\d+$/.test(xId) ? xId : null)
-      if (id) plan = plans.tipHandle(xHandleHash(id), amount, postId)
-    }
+    else { if (!resolved?.address) { setPhase('idle'); return } plan = plans.tip(resolved.address as Address, amount, postId) }
     // live: the jar stays idle while the wallet signs and the chain confirms; the coin drop, wobble, total tick and
     // burst play only after the receipt says success. with payments off it plays straight away and nothing is sent.
     const celebrate = async () => {
@@ -208,8 +200,8 @@ function TipSheet({ to, postId, xHandle }: { to?: string; postId?: string; xHand
       // record it so the creator gets a notification; the WIF itself already went to their wallet onchain
       if (postId && mode === 'member') api(`/drops/${postId}/tips`, { method: 'POST', body: JSON.stringify({ amount, txHash: hash }) }).catch(() => {})
     }
-    const title = mode === 'x' ? `tip of ${amount.toLocaleString()} WIF sent to ${recipient}` : `${recipient} got ${netLabel} WIF`
-    const doneNote = mode === 'x' ? 'it goes to their wallet as soon as they link this X account' : 'it’s in their wallet now'
+    const title = `${recipient} got ${netLabel} WIF`
+    const doneNote = 'it’s in their wallet now'
     const ok = await run(plan, title, () => {}, { celebrate, onConfirmed, doneNote })
     if (!ok) setPhase('idle')
   }
@@ -217,8 +209,8 @@ function TipSheet({ to, postId, xHandle }: { to?: string; postId?: string; xHand
   return (
     <Sheet title="send a tip" onClose={useStore().closeSheet}
       footer={<>
-        <TxSteps pull={amount} action={mode === 'x' ? 'send tip, held until they join' : 'send tip'} />
-        <button className="btn btn--dark btn--block btn--lg" disabled={!amount || self || (mode === 'x' && !x) || (mode === 'name' && !resolved?.address) || phase !== 'idle' || busy} onClick={confirm}>
+        <TxSteps pull={amount} action="send tip" />
+        <button className="btn btn--dark btn--block btn--lg" disabled={!amount || self || (mode === 'name' && !resolved?.address) || phase !== 'idle' || busy} onClick={confirm}>
           {phase === 'idle' ? `tip ${amount ? amount.toLocaleString() : ''} WIF` : phase === 'sending' ? 'sending…' : 'sent'}
         </button>
         <PreviewNote />
@@ -227,7 +219,6 @@ function TipSheet({ to, postId, xHandle }: { to?: string; postId?: string; xHand
       <div className="seg" role="tablist">
         <button role="tab" aria-selected={mode === 'member'} className={mode === 'member' ? 'is-on' : ''} onClick={() => setMode('member')} disabled={!target}>member</button>
         <button role="tab" aria-selected={mode === 'name'} className={mode === 'name' ? 'is-on' : ''} onClick={() => setMode('name')}>name.wif / address</button>
-        <button role="tab" aria-selected={mode === 'x'} className={mode === 'x' ? 'is-on' : ''} onClick={() => setMode('x')}>any X account</button>
       </div>
       {mode === 'member' && target ? (
         <>
@@ -237,7 +228,7 @@ function TipSheet({ to, postId, xHandle }: { to?: string; postId?: string; xHand
         </div>
         <PayoutLine address={payTo ?? null} />
         </>
-      ) : mode === 'name' ? (
+      ) : (
         <>
         <div className="xfield">
           <label className="field">
@@ -248,24 +239,10 @@ function TipSheet({ to, postId, xHandle }: { to?: string; postId?: string; xHand
         </div>
         <PayoutLine address={resolved?.address ?? null} />
         </>
-      ) : (
-        <div className="xfield">
-          <label className="field">
-            <span className="field__label">X handle</span>
-            <span className="field__input"><Icon name="x" size={16} /><input value={x} onChange={e => setX(e.target.value)} placeholder="handle" aria-label="X handle" /></span>
-          </label>
-          {LIVE && (
-            <label className="field">
-              <span className="field__label">their X account number</span>
-              <span className="field__input"><input value={xId} inputMode="numeric" onChange={e => setXId(e.target.value.replace(/\D/g, ''))} placeholder="e.g. 1449012345678901248" /></span>
-            </label>
-          )}
-          <p className="muted small">held until they join<InfoTip label="about tips to x accounts">it goes to their wallet when they link this x account on {APP_NAME}. not claimed in 30 days? take it back.</InfoTip></p>
-        </div>
       )}
       {self && <SelfNote what="tip" />}
       <AmountPicker value={amount} onChange={setAmount} presets={[25, 100, 500, 1000]} />
-      {amount > 0 && <p className="tip-lands"><Icon name="check" size={14} /> <b>they get {netLabel} WIF</b> · {mode === 'x' ? 'sent to their wallet when they link X' : 'lands in their wallet right away'}</p>}
+      {amount > 0 && <p className="tip-lands"><Icon name="check" size={14} /> <b>they get {netLabel} WIF</b> · lands in their wallet right away</p>}
       <FeeSplit amount={amount} recipientLabel={`${recipient} gets`} />
       <LowBalance need={amount} />
     </Sheet>

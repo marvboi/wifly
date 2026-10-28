@@ -5,6 +5,7 @@ import { getAddress, verifyMessage, type Hex } from 'viem'
 import { generateSiweNonce, parseSiweMessage, validateSiweMessage } from 'viem/siwe'
 import { chainClient } from './chain'
 import { ALLOWED_HOSTS, ALLOWED_ORIGINS, ALLOWED_ORIGINS_SET, COOKIE_DOMAIN, COOKIE_SECURE, SESSION_SECRET, SIWE_DOMAINS } from './config'
+import { createHash, randomBytes } from 'node:crypto'
 import { one, run } from './db'
 import { fail } from './util'
 
@@ -21,6 +22,8 @@ export const session: MiddlewareHandler<Env> = async (c, next) => {
     try {
       const p = await verify(tok, SESSION_SECRET, 'HS256')
       const id = Number(p.sub)
+      // signed out on the server: a copied or late cookie stays dead
+      if (await one('SELECT 1 FROM revoked_sessions WHERE tok = ?', [tokKey(tok)])) throw new Error('revoked')
       if (id && (await one('SELECT id FROM users WHERE id = ? AND deleted_at IS NULL', [id]))) { c.set('uid', id); c.set('via', p.via === 'wallet' || p.via === 'privy' ? p.via : null) }
     } catch { /* expired or tampered: treat as signed out */ }
   }
@@ -94,10 +97,24 @@ export async function verifySiwe(c: Context, message: string, signature: Hex) {
 
 export async function startSession(c: Context, uid: number, via: LoginVia) {
   const exp = Math.floor(Date.now() / 1000) + SESSION_DAYS * 86400
-  const tok = await sign({ sub: String(uid), exp, via }, SESSION_SECRET, 'HS256')
+  // sid: every sign-in gets its own token, so signing one out never touches another
+  const tok = await sign({ sub: String(uid), exp, via, sid: randomBytes(9).toString('base64url') }, SESSION_SECRET, 'HS256')
   setCookie(c, COOKIE, tok, { httpOnly: true, sameSite: 'Lax', path: '/', maxAge: SESSION_DAYS * 86400, ...cookieScope(c) })
 }
-export function endSession(c: Context) { deleteCookie(c, COOKIE, { path: '/', ...cookieScope(c) }) }
+const tokKey = (tok: string) => createHash('sha256').update(tok).digest('base64url')
+/** Sign out: the token is revoked on the server (until it would have expired anyway), then the cookie is cleared. */
+export async function endSession(c: Context) {
+  const tok = getCookie(c, COOKIE)
+  if (tok) {
+    try {
+      const p = await verify(tok, SESSION_SECRET, 'HS256')
+      const now = Math.floor(Date.now() / 1000)
+      await run('DELETE FROM revoked_sessions WHERE exp < ?', [now])
+      await run('INSERT OR IGNORE INTO revoked_sessions (tok, exp) VALUES (?, ?)', [tokKey(tok), Number(p.exp) || now + SESSION_DAYS * 86400])
+    } catch { /* not a valid token: nothing to revoke */ }
+  }
+  deleteCookie(c, COOKIE, { path: '/', ...cookieScope(c) })
+}
 
 /**
  * Session cookie scope from ALLOWED_ORIGINS: Secure whenever the request comes from an allowed https origin (or

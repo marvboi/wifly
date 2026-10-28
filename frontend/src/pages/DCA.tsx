@@ -15,6 +15,7 @@ import { Mascot } from '../components/Mascot'
 import { DCA_ADDRESS, EXPLORER } from '../config'
 import { WIFLY_DCA_ABI } from '../contracts/wiflyDca'
 import { call } from '../companion/agentApi'
+import { utcLabel } from '../lib/tzLabel'
 import { useWifPrice } from '../lib/price'
 import { explainError, failTitle, useSendPlan, type Plan } from '../lib/wifly'
 import { PREVIEW_NOTE, useStore } from '../state/store'
@@ -37,6 +38,7 @@ const STATUS: Record<PlanView['status'], string> = { active: 'active', paused: '
 const f = (n: number, d = 6) => Number(n.toFixed(d)).toLocaleString('en-US', { maximumFractionDigits: d })
 const everyText = (s: number) => s % SEC.week === 0 && s / SEC.week === 1 ? 'every week' : s === SEC.day ? 'every day' : s === SEC.hour ? 'every hour' : s === SEC.month ? 'every month' : `every ${f(s / 3600, 1)}h`
 
+const PER_DEFAULT = { usd: '5', eth: '0.01' } as const
 /** Next local wall-clock time for the schedule (seconds, unix). */
 function firstAt(every: Every, weekday: number, time: string): number {
   const [h, m] = time.split(':').map(Number)
@@ -59,11 +61,16 @@ export function DCA() {
   // only signed-in people have plans, and only once the contract exists: no request otherwise (it would just 401)
   const st = useQuery({ queryKey: ['dca', me?.handle], queryFn: () => call<State>('/dca'), refetchInterval: 30_000, enabled: !!DCA_ADDRESS && !!me })
   const live = !!st.data?.live && !!DCA_ADDRESS
+  // stored with the plan so the keeper can keep wall-clock times; never shown (a raw zone name reads badly)
   const tz = Intl.DateTimeFormat().resolvedOptions().timeZone
+  // scheduled buys only look live while the keeper really runs; until then the schedule is a calm "coming soon"
+  const keeper = useQuery({ queryKey: ['dca-keeper'], queryFn: () => call<{ enabled?: boolean }>('/dca/keeper'), staleTime: 60_000, enabled: !!DCA_ADDRESS })
+  const scheduled = !!keeper.data?.enabled
 
   const [deposit, setDeposit] = useState(q.get('deposit') ?? '0.05')
   const [unit, setUnit] = useState<'usd' | 'eth'>(q.get('eth') ? 'eth' : 'usd')
-  const [per, setPer] = useState(q.get('eth') ?? q.get('usd') ?? '5')
+  const [per, setPer] = useState(q.get('eth') ?? q.get('usd') ?? PER_DEFAULT[q.get('eth') ? 'eth' : 'usd'])
+  const pickUnit = (u: 'usd' | 'eth') => { if (u === unit) return; setUnit(u); setPer(PER_DEFAULT[u]) }
   const [every, setEvery] = useState<Every>((['hour', 'day', 'week', 'month'].includes(q.get('every') ?? '') ? q.get('every') : 'week') as Every)
   const [weekday, setWeekday] = useState(Number(q.get('weekday') ?? 1))
   const [time, setTime] = useState(`${String(Number(q.get('hour') ?? 9)).padStart(2, '0')}:${String(Number(q.get('minute') ?? 0)).padStart(2, '0')}`)
@@ -160,11 +167,12 @@ export function DCA() {
         <section className="card">
           <b>new plan</b>
           <label className="field"><span className="field__label">deposit (ETH)</span><span className="field__input"><input inputMode="decimal" value={deposit} onChange={e => setDeposit(e.target.value)} /></span></label>
-          <div className="seg"><button className={unit === 'usd' ? 'is-on' : ''} onClick={() => setUnit('usd')}>per buy in $</button><button className={unit === 'eth' ? 'is-on' : ''} onClick={() => setUnit('eth')}>per buy in ETH</button></div>
+          <div className="seg"><button className={unit === 'usd' ? 'is-on' : ''} onClick={() => pickUnit('usd')}>per buy in $</button><button className={unit === 'eth' ? 'is-on' : ''} onClick={() => pickUnit('eth')}>per buy in ETH</button></div>
           <label className="field"><span className="field__label">each buy ({unit === 'usd' ? '$' : 'ETH'}){unit === 'usd' && perEth > 0 ? ` ≈ ${f(perEth, 6)} ETH${stale ? ' (price may be out of date)' : ''}` : ''}</span><span className="field__input"><input inputMode="decimal" value={per} onChange={e => setPer(e.target.value)} /></span></label>
-          <div className="seg">{(['hour', 'day', 'week', 'month'] as Every[]).map(e => <button key={e} className={every === e ? 'is-on' : ''} onClick={() => setEvery(e)}>{e === 'day' ? 'daily' : `${e}ly`}</button>)}</div>
-          {every === 'week' && <div className="dca__days">{DAYS.map((d, i) => <button key={d} className={`chip ${weekday === i ? 'chip--ink' : ''}`} onClick={() => setWeekday(i)}>{d.slice(0, 3)}</button>)}</div>}
-          {every !== 'hour' && <label className="field"><span className="field__label">time ({tz})</span><span className="field__input"><input type="time" value={time} onChange={e => setTime(e.target.value)} /></span></label>}
+          {!scheduled && <div className="dca__soon" data-testid="dca-soon"><b>scheduled buys coming soon</b><span className="muted small">the schedule switches on by itself once it’s running. buying WIF once works now.</span><Link className="btn btn--dark btn--sm" to="/swap">buy WIF once</Link></div>}
+          <div className={`seg ${scheduled ? '' : 'is-disabled'}`} aria-disabled={!scheduled}>{(['hour', 'day', 'week', 'month'] as Every[]).map(e => <button key={e} disabled={!scheduled} className={every === e ? 'is-on' : ''} onClick={() => setEvery(e)}>{e === 'day' ? 'daily' : `${e}ly`}</button>)}</div>
+          {scheduled && every === 'week' && <div className="dca__days">{DAYS.map((d, i) => <button key={d} className={`chip ${weekday === i ? 'chip--ink' : ''}`} onClick={() => setWeekday(i)}>{d.slice(0, 3)}</button>)}</div>}
+          {scheduled && every !== 'hour' && <label className="field"><span className="field__label">time (your local time, {utcLabel()})</span><span className="field__input"><input type="time" value={time} onChange={e => setTime(e.target.value)} /></span></label>}
           <details className="dca__adv">
             <summary>advanced settings</summary>
             <div className="dca__row">
@@ -174,7 +182,7 @@ export function DCA() {
             <label className="field"><span className="field__label">price floor, WIF per 1 ETH (optional)</span><span className="field__input"><input inputMode="decimal" value={floor} onChange={e => setFloor(e.target.value)} placeholder="none" /></span></label>
           </details>
           <span className="muted">{summary}. {buys > 0 ? `${buys} buys from this deposit.` : ''} scheduled buys run for wifly plus members. you can pause, top up or withdraw any time.</span>
-          <button className="btn btn--lg btn--neon" disabled={!!problem || !!busy} onClick={create}>{busy === 'create' ? 'waiting…' : problem ?? (live ? `deposit ${deposit} ETH and start` : 'save plan')}</button>
+          <button className="btn btn--lg btn--neon" disabled={!scheduled || !!problem || !!busy} onClick={create}>{!scheduled ? 'scheduled buys coming soon' : busy === 'create' ? 'waiting…' : problem ?? (live ? `deposit ${deposit} ETH and start` : 'save plan')}</button>
         </section>
 
         <section className="card">

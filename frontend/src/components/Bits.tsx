@@ -10,6 +10,7 @@ import { explorerAddress } from '../config'
 import { users } from '../state/registry'
 import { shortAddr, at } from '../lib/format'
 import { Icon } from './Icon'
+import { HEAD_D, INK, NEON, bodyTransform, eyeBox, mouthD, restState } from '../brand/wiflyFaceCore'
 
 /**
  * LOGO SLOT. Placeholder wordmark: styled text from APP_NAME, set in WIF Par.
@@ -84,11 +85,6 @@ export function WifUsd({ wif, className }: { wif: number; className?: string }) 
   return <Usd value={usd !== undefined ? wif * usd : undefined} className={className} />
 }
 
-const tones = [
-  ['#110E08', '#F7F5F0'], ['#35322D', '#F7F5F0'], ['#E9E5DC', '#35322D'],
-  ['#B3884F', '#FFFFFF'], ['#D9D4C7', '#110E08'], ['#6F6A60', '#FFFFFF'],
-]
-
 /** Two letters from the @username: "luna_tiles" -> "LT", "alice" -> "AL". */
 export function initialsOf(handle: string) {
   const parts = handle.replace(/^@/, '').split(/[_.\-\s]+/).filter(Boolean)
@@ -96,18 +92,38 @@ export function initialsOf(handle: string) {
   return (s || '?').toUpperCase()
 }
 
+const REST = restState(), EYE_L = eyeBox(REST.eyeL), EYE_R = eyeBox(REST.eyeR)
+/** The still wifly face on its lime tile: the avatar for anyone who hasn't added a photo. Same geometry as the logo. */
+export function WiflyFace({ size = 40, className }: { size?: number; className?: string }) {
+  return (
+    <svg viewBox="0 0 100 100" width={size} height={size} className={className} aria-hidden="true" focusable="false">
+      <rect width="100" height="100" fill={NEON} />
+      <g transform="translate(50 50.5) scale(0.62) translate(-50 -52)">
+        <g transform={bodyTransform(REST)}>
+          <path d={HEAD_D} fill={INK} />
+          <rect {...EYE_L} fill={NEON} /><rect {...EYE_R} fill={NEON} />
+          <path d={mouthD(REST.mouth)} fill="none" stroke={NEON} strokeWidth={REST.mouthW} strokeLinecap="round" strokeLinejoin="round" />
+        </g>
+      </g>
+    </svg>
+  )
+}
+
 export function Avatar({ handle, size = 40, ring }: { handle: string; size?: number; ring?: boolean }) {
   useSyncExternalStore(subscribe, getVersion) // re-render when the api registry learns about this user
   const u = users[handle]
-  const [bg, fg] = tones[(u?.tone ?? 0) % tones.length]
-  const initials = initialsOf(handle)
   const px = Math.round(size)
   if (u?.avatar) return <img className={`avatar avatar--img ${ring ? 'avatar--ring' : ''}`} src={u.avatar} width={px} height={px} alt="" aria-hidden="true" loading="lazy" decoding="async" />
   return (
-    <span className={`avatar ${ring ? 'avatar--ring' : ''}`} style={{ width: px, height: px, background: bg, color: fg, fontSize: Math.round(px * 0.38) }} aria-hidden="true">
-      {initials}
+    <span className={`avatar avatar--face ${ring ? 'avatar--ring' : ''}`} style={{ width: px, height: px }} aria-hidden="true" data-avatar="face">
+      <WiflyFace size={px} />
     </span>
   )
+}
+
+/** A display name: someone holding a .wif (server-checked) shows as "name.wif" with a softer suffix. Never "@name.wif". */
+export function DisplayName({ user }: { user: { name: string; wifName?: string | null } }) {
+  return user.wifName ? <>{user.wifName}<span className="wifsfx">.wif</span></> : <>{user.name}</>
 }
 
 export function Name({ handle, showHandle = true }: { handle: string; showHandle?: boolean }) {
@@ -115,7 +131,7 @@ export function Name({ handle, showHandle = true }: { handle: string; showHandle
   if (!u) return <span className="name">{at(handle)}</span>
   return (
     <span className="name">
-      <Link to={profilePath(u.handle)} className="name__display">{u.name}</Link>
+      <Link to={profilePath(u.handle)} className="name__display"><DisplayName user={u} /></Link>
       {u.plus && <PlusMark size={14} />}
       {showHandle && <span className="name__handle">{at(u.handle)}</span>}
     </span>

@@ -84,8 +84,7 @@ const sections: Section[] = [
   {
     id: 'tips', title: 'tips',
     body: <>
-      <p>tip a drop, a person, or any X account. the tip goes straight to their wallet, minus a {FEE} fee.</p>
-      <p>tipping an X account that isn’t on wifly yet? it reaches their wallet as soon as they link that X account.</p>
+      <p>tip a drop, a member, a name.wif or a wallet. the tip goes straight to their wallet, minus a {FEE} fee.</p>
       <p className="dx-note">the {FEE} fee splits {SPLIT}.</p>
     </>,
   },

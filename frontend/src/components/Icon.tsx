@@ -44,6 +44,7 @@ const paths = {
   x: <path d="M5 4.5h3.6L19 19.5h-3.6zM18.5 4.5l-5.6 6.4M5.5 19.5l5.6-6.4" />,
   send: <path d="M20.5 3.5 10 14M20.5 3.5 14 20.5l-4-6.5-6.5-4z" />,
   search: <><circle cx="11" cy="11" r="6.5" /><path d="m20 20-4.4-4.4" /></>,
+  grid: <><rect x="4" y="4" width="6.5" height="6.5" rx="2.2" /><rect x="13.5" y="4" width="6.5" height="6.5" rx="2.2" /><rect x="4" y="13.5" width="6.5" height="6.5" rx="2.2" /><circle cx="16.75" cy="16.75" r="3.25" /></>,
   more: <><circle cx="6" cy="12" r="1" /><circle cx="12" cy="12" r="1" /><circle cx="18" cy="12" r="1" /></>,
   arrowUp: <path d="M12 19V5M6 11l6-6 6 6" />,
   power: <><path d="M12 3.5v8" /><path d="M7 6.3a7.5 7.5 0 1 0 10 0" /></>,

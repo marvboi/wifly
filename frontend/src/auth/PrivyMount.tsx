@@ -9,7 +9,7 @@ import { robinhoodChain } from '../config'
 import { PRIVY_APP_ID, privyBridge } from './privyBridge'
 
 function Sync() {
-  const { ready, authenticated, user, getAccessToken } = usePrivy()
+  const { ready, authenticated, user, getAccessToken, exportWallet } = usePrivy()
   const { identityToken } = useIdentityToken()
   const { logout } = useLogout()
   const linking = useRef<{ resolve: () => void; reject: (e: Error) => void } | null>(null)
@@ -24,6 +24,9 @@ function Sync() {
   const active = wallets[0] ?? null
   const activeRef = useRef(active)
   activeRef.current = active
+  const walletsRef = useRef(wallets)
+  walletsRef.current = wallets
+  const walletOf = (a: string) => walletsRef.current.find(w => w.address.toLowerCase() === a.toLowerCase())
   const pending = useRef<{ resolve: () => void; reject: (e: Error) => void } | null>(null)
   const { login } = useLogin({
     onComplete: () => { pending.current?.resolve(); pending.current = null },
@@ -38,6 +41,20 @@ function Sync() {
       getAccessToken: () => getAccessToken(),
       linkTwitter: () => startLink(() => linkTwitter()),
       linkWallet: () => startLink(() => linkWallet()),
+      sendTxFrom: async (from, to, data, chainId, value) => {
+        const w = walletOf(from)
+        if (!w) throw new Error('sign in with x or email to use this wallet')
+        await w.switchChain(chainId)
+        const p = await w.getEthereumProvider()
+        return await p.request({ method: 'eth_sendTransaction', params: [{ from: w.address, to, data, ...(value ? { value: `0x${value.toString(16)}` } : {}) }] }) as `0x${string}`
+      },
+      signMessageFrom: async (from, message) => {
+        const w = walletOf(from)
+        if (!w) throw new Error('sign in with x or email to use this wallet')
+        const p = await w.getEthereumProvider()
+        return await p.request({ method: 'personal_sign', params: [message, w.address] }) as `0x${string}`
+      },
+      exportWallet: address => exportWallet({ address }),
       sendTx: async (to, data, chainId, value) => {
         const w = activeRef.current
         if (!w) throw new Error('connect a wallet first')
@@ -46,7 +63,7 @@ function Sync() {
         return await p.request({ method: 'eth_sendTransaction', params: [{ from: w.address, to, data, ...(value ? { value: `0x${value.toString(16)}` } : {}) }] }) as `0x${string}`
       },
     })
-  }, [login, logout, linkTwitter, linkWallet, getAccessToken])
+  }, [login, logout, linkTwitter, linkWallet, getAccessToken, exportWallet])
 
   useEffect(() => {
     const smart = null // smart wallets are off in this app
@@ -56,10 +73,11 @@ function Sync() {
     privyBridge.set({
       xUsername: x, linkedWallet: ext && 'address' in ext ? String(ext.address).toLowerCase() : null,
       activeWallet: active ? active.address.toLowerCase() : null,
+      wallets: wallets.map(w => w.address.toLowerCase()).join(','),
       loaded: true, ready, authenticated, identityToken: identityToken ?? null, smartWallet: smart,
       embeddedWallet: embedded && 'address' in embedded ? String(embedded.address).toLowerCase() : null,
     })
-  }, [ready, authenticated, user, identityToken, active])
+  }, [ready, authenticated, user, identityToken, active, wallets])
   return null
 }
 

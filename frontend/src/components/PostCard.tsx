@@ -10,7 +10,7 @@ import { Link, useNavigate } from 'react-router-dom'
 import type { Post } from '../state/registry'
 import { useStore } from '../state/store'
 import { compact } from '../lib/format'
-import { Amount, Avatar, FlatDisc, Sparkline, Token } from './Bits'
+import { Amount, Avatar, DisplayName, FlatDisc, Sparkline, Token } from './Bits'
 import { Icon } from './Icon'
 import { useQueryClient } from '@tanstack/react-query'
 import { api, deleteDrop, toggleDrop } from '../api/client'
@@ -274,7 +274,7 @@ function Byline({ post, big }: { post: Post; big?: boolean }) {
     <Link to={profilePath(post.author)} onClick={e => e.stopPropagation()} className="drop__who">
       <Avatar handle={post.author} size={big ? 48 : 40} />
       <span className="drop__byline">
-        <span className="drop__name"><span className="clamp-1">{u?.name ?? post.author}</span>{u?.plus && <PlusMark size={14} />}</span>
+        <span className="drop__name"><span className="clamp-1">{u ? <DisplayName user={u} /> : post.author}</span>{u?.plus && <PlusMark size={14} />}</span>
         <span className="drop__when">@{post.author}{big ? '' : ` · ${ago(post.time)}`}</span>
       </span>
     </Link>

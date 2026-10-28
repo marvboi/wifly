@@ -14,6 +14,7 @@ import { GuestNudge, GuestWall } from '../components/GuestWall'
 import { Mascot } from '../components/Mascot'
 import { BumpNotice, NameNudge } from '../components/Identity'
 import { FEE_SPLIT } from '../config'
+import { ShortcutRow, ToolsRail } from '../components/Tools'
 
 const tabs: Array<{ id: FeedTab; label: string }> = [
   { id: 'foryou', label: 'for you' },
@@ -50,6 +51,7 @@ export function Home() {
             <h1 className="home-head__title">post anything. get tipped in $WIF.</h1>
           </header>
           <div className="home-compose home-compose--first"><Composer compact /></div>
+          <ShortcutRow />
           {me && <div className="home-id"><BumpNotice /><NameNudge /></div>}
           <WorldStrip />
           <div className="feed-switch">
@@ -128,14 +130,7 @@ export function Home() {
           <Link to="/search" className="rail__search"><Icon name="search" size={18} /> search wifly</Link>
           <Trending limit={6} />
           <WhoToFollow limit={3} />
-          <section className="card rail__card" aria-label="get started">
-            <h3 className="section-title">get started</h3>
-            <ul className="rail__links small">
-              <li><Link to="/swap"><Icon name="swap" size={16} /> get $WIF with ETH</Link></li>
-              <li><Link to="/names"><Icon name="at" size={16} /> claim a name.wif</Link></li>
-              <li><Link to="/vote"><Icon name="vote" size={16} /> vote for creator of the week</Link></li>
-            </ul>
-          </section>
+          <ToolsRail />
         </aside>
       </div>
     </>

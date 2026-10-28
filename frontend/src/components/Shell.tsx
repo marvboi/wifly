@@ -3,7 +3,7 @@ import { FEED_PATH } from '../lib/hosts'
 import { Companion } from '../companion/Companion'
 import { NavLink, Link, useLocation, useOutlet } from 'react-router-dom'
 import { AnimatePresence, motion } from 'motion/react'
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { useSession } from '../api/session'
 import { useStore } from '../state/store'
 import { Avatar, Token, Wordmark } from './Bits'
@@ -11,6 +11,7 @@ import { Icon, type IconName } from './Icon'
 import { WalletChip } from './WalletChip'
 import { PlusMark } from './BrandSlots'
 import { GuestBanner } from './LinkAccounts'
+import { MoreSheet } from './Tools'
 
 type DockItem = { to: string; label: string; icon: IconName | 'plusmark'; phone?: boolean }
 const left: DockItem[] = [
@@ -82,6 +83,13 @@ export function AppShell() {
   const { pathname } = useLocation()
   const { openSheet } = useStore()
   const outlet = useOutlet()
+  const [more, setMore] = useState(false)
+  useEffect(() => { setMore(false) }, [pathname])
+  const moreBtn = (
+    <button type="button" className={`dock__link dock__more${more ? ' is-on' : ''}`} aria-label="more" title="more" aria-haspopup="dialog" aria-expanded={more} onClick={() => setMore(true)}>
+      <Icon name="grid" size={20} /><span className="dock__label">more</span>
+    </button>
+  )
   useEffect(() => { window.scrollTo(0, 0) }, [pathname])
   const seg = pathname.split('/')[1] || ''
   useEffect(() => { if (out && PRIVATE[seg]) openSheet({ type: 'signin', reason: PRIVATE[seg] }) }, [out, seg]) // eslint-disable-line react-hooks/exhaustive-deps
@@ -126,13 +134,17 @@ export function AppShell() {
 
       {out ? <nav className="dock dock--out" aria-label="main">
         {guestDock.map(n => <DockLink key={n.to} n={n} />)}
+        {moreBtn}
       </nav> : <nav className="dock" aria-label="main">
         {left.map(n => <DockLink key={n.to} n={n} />)}
         <motion.button className="dock__new" whileTap={{ scale: 0.92 }} whileHover={{ y: -2 }} transition={{ type: 'spring', stiffness: 500, damping: 22 }} onClick={() => openSheet({ type: 'compose' })} aria-label="new drop">
           <Icon name="plus" size={20} /><span className="dock__new-label">new drop</span>
         </motion.button>
-        {right.map(n => <DockLink key={n.to} n={n.to === '/@you' && me && !me.needsHandle ? { ...n, to: profilePath(me.handle) } : n} />)}
+        {right.map(n => n.to === '/@you' ? null : <DockLink key={n.to} n={n} />)}
+        {moreBtn}
+        {right.filter(n => n.to === '/@you').map(n => <DockLink key={n.to} n={me && !me.needsHandle ? { ...n, to: profilePath(me.handle) } : n} />)}
       </nav>}
+      <AnimatePresence>{more && <MoreSheet key="more" onClose={() => setMore(false)} />}</AnimatePresence>
       {out && <JoinBar />}
       <Companion />
     </div>

@@ -6,22 +6,53 @@ import { api, type ApiUser } from '../api/client'
 import { useSession } from '../api/session'
 import { useStore } from '../state/store'
 import { InfoTip } from './InfoTip'
+import { privyBridge } from '../auth/privyBridge'
 
 type Addr = `0x${string}`
 export const shortAddr = (a?: string | null) => a ? `${a.slice(0, 6)}…${a.slice(-4)}` : ''
 
-/** Connect (if needed), ask the server for a proof message, sign it with `want` (or the connected wallet). */
+/** Ask the connected browser wallet to let the person pick an account (MetaMask, Rabby…). Returns the accounts it now exposes. */
+export async function pickWalletAccount(connector: { getProvider: () => Promise<unknown> } | undefined): Promise<Addr[]> {
+  if (!connector) return []
+  const prov = await connector.getProvider() as { request: (a: { method: string; params?: unknown[] }) => Promise<unknown> } | undefined
+  if (!prov?.request) return []
+  await prov.request({ method: 'wallet_requestPermissions', params: [{ eth_accounts: {} }] })
+  return ((await prov.request({ method: 'eth_accounts' })) as Addr[] | undefined) ?? []
+}
+const waitFor = async (ok: () => boolean, ms = 6000) => { const end = Date.now() + ms; while (!ok() && Date.now() < end) await new Promise(r => setTimeout(r, 200)); return ok() }
+
+/**
+ * Ask the server for a proof message and sign it with `want` (or the connected wallet).
+ * The Privy embedded wallet signs through Privy (a sign-in with x or email starts first if needed); a browser wallet on
+ * another account is asked to switch accounts instead of failing.
+ */
 export function useWalletProof() {
-  const { address } = useAccount()
+  const { address, connector } = useAccount()
   const { connectAsync, connectors } = useConnect()
   const { signMessageAsync } = useSignMessage()
-  return async (purpose: 'wif' | 'tips', want?: string) => {
+  const { me, unlockPrivy } = useSession()
+  return async (purpose: 'wif' | 'tips' | 'main', want?: string) => {
+    const w = want?.toLowerCase()
+    const embedded = !!w && !!me?.links?.walletList?.some(x => x.address === w && x.privy)
+    if (w && (privyBridge.has(w) || (embedded && address?.toLowerCase() !== w))) {
+      if (!privyBridge.has(w)) {
+        if (!(await unlockPrivy())) throw new Error('closed')
+        if (!(await waitFor(() => privyBridge.has(w)))) throw new Error('that wallet belongs to another x or email sign-in. sign in with that one to use it')
+      }
+      const p = await api<{ nonce: string; message: string }>('/wallet/proof', { method: 'POST', json: { purpose, address: w } })
+      return { address: w as Addr, nonce: p.nonce, signature: await privyBridge.signFrom(w, p.message) }
+    }
     let a = address as Addr | undefined
+    let conn = connector
     if (!a) {
       const c = connectors[0]; if (!c) throw new Error('no wallet found in this browser')
-      a = (await connectAsync({ connector: c })).accounts[0]
+      a = (await connectAsync({ connector: c })).accounts[0]; conn = c
     }
-    if (want && a.toLowerCase() !== want.toLowerCase()) throw new Error(`switch your wallet to ${shortAddr(want)} and try again`)
+    if (w && a.toLowerCase() !== w) {
+      const accts = await pickWalletAccount(conn).catch(() => [] as Addr[])
+      a = accts.find(x => x.toLowerCase() === w) ?? a
+      if (a.toLowerCase() !== w) throw new Error(`switch your wallet to ${shortAddr(want)} and try again`)
+    }
     const p = await api<{ nonce: string; message: string }>('/wallet/proof', { method: 'POST', json: { purpose, address: a } })
     const signature = await signMessageAsync({ message: p.message, account: a })
     return { address: a, nonce: p.nonce, signature }
@@ -62,13 +93,14 @@ export function UseMyWif({ onDone, compact }: { onDone?: (name: string) => void;
 
 type Tips = { wallets: { address: string; kind: string }[]; payout: { address: string | null; via: 'chosen' | 'name' | 'main'; name: string | null; resolves: string | null }; changes: { address: string; at: number }[] }
 
-/** Settings card: pick which linked wallet receives tips. A fresh signature from that wallet is required each time. */
-export function TipDestination() {
+/** Settings: where tips land. One wallet is a single calm line; with more, "change" opens the picker. A fresh signature from the new wallet is required each time. */
+export function TipDestination({ bare }: { bare?: boolean } = {}) {
   const q = useQuery({ queryKey: ['settings', 'tips'], queryFn: () => api<Tips>('/settings/tips') })
   const prove = useWalletProof()
   const { toast } = useStore()
   const [busy, setBusy] = useState<string | null>(null)
   const [err, setErr] = useState<string | null>(null)
+  const [choosing, setChoosing] = useState(false)
   const d = q.data
   const cur = d?.payout.address?.toLowerCase() ?? null
   const pick = async (a: string) => {
@@ -77,6 +109,7 @@ export function TipDestination() {
       const p = await prove('tips', a)
       await api('/settings/tips', { method: 'POST', json: p })
       await q.refetch()
+      setChoosing(false)
       toast(`tips now go to ${shortAddr(a)}`, undefined, 'ok')
     } catch (e) {
       const m = (e as Error).message || 'couldn’t save'
@@ -84,10 +117,15 @@ export function TipDestination() {
     } finally { setBusy(null) }
   }
   const mismatch = d?.payout.name && d.payout.resolves && cur && d.payout.resolves.toLowerCase() !== cur
-  return (
-    <section className="card settings-card tipdest" data-testid="tip-destination">
-      <h3 className="settings-card__title">tip destination<InfoTip label="about the tip destination">tips go straight to this wallet. changing it needs a signature from the new wallet.</InfoTip></h3>
-      {!d ? <p className="muted small">loading…</p> : !d.wallets.length ? <p className="muted small">link a wallet first.</p> : (
+  const many = (d?.wallets.length ?? 0) > 1
+  const target = cur ?? d?.wallets[0]?.address ?? null
+  const body = !d ? <p className="muted small">loading…</p> : !d.wallets.length ? <p className="muted small">link a wallet first. tips land there.</p> : (
+    <>
+      <div className="tipdest__line" data-testid="tip-line">
+        <span className="small">tips go to <span className="mono">{shortAddr(target)}</span></span>
+        {many && <button type="button" className="linkbtn" aria-expanded={choosing} onClick={() => setChoosing(c => !c)}>{choosing ? 'done' : 'change'}</button>}
+      </div>
+      {many && choosing && (
         <ul className="tipdest__list" role="radiogroup" aria-label="tip destination">
           {d.wallets.map(w => {
             const on = w.address.toLowerCase() === cur
@@ -103,8 +141,16 @@ export function TipDestination() {
             )
           })}
         </ul>)}
-      {mismatch && <p className="tiny muted">{d!.payout.name}.wif points elsewhere<InfoTip label="about your .wif address">your .wif resolves to {shortAddr(d!.payout.resolves)}. tips here use the wallet above.</InfoTip></p>}
-      {err && <p className="tiny bad" role="alert">{err}</p>}
+    </>)
+  const extra = <>
+    {mismatch && <p className="tiny muted">{d!.payout.name}.wif points elsewhere<InfoTip label="about your .wif address">your .wif resolves to {shortAddr(d!.payout.resolves)}. tips here use the wallet above.</InfoTip></p>}
+    {err && <p className="tiny bad" role="alert">{err}</p>}
+  </>
+  if (bare) return <div className="tipdest" data-testid="tip-destination">{body}{extra}</div>
+  return (
+    <section className="card settings-card tipdest" data-testid="tip-destination">
+      <h3 className="settings-card__title">tip destination<InfoTip label="about the tip destination">tips go straight to this wallet. changing it needs a signature from the new wallet.</InfoTip></h3>
+      {body}{extra}
     </section>
   )
 }

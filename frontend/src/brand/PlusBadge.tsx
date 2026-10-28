@@ -1,6 +1,7 @@
 // Wifly Plus badge: a green scalloped rosette with a white check (verified-style, drawn from scratch).
 // Inline sizes are pixel-tuned on 14 / 16 / 20 / 24 px grids (8 lobes at 14-16, 10 lobes at 20-24, tuned check
 // stroke per size). variant="hero" is the 12-lobe Plus-page version. Flat colour only: no gradients or glows.
+// Generated from brand/final/_src/plus.py + plus_tsx.py. Edit there and regenerate if the geometry changes.
 import type { CSSProperties } from 'react';
 
 export const PLUS_GREEN = '#16A34A';

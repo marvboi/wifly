@@ -4,17 +4,20 @@
  */
 import { useEffect, useState } from 'react'
 import { useAccount, useConnect } from 'wagmi'
-import { useSession } from '../api/session'
+import { linkError, useSession } from '../api/session'
+import { pickWalletAccount } from './WalletProofs'
 import { privyEnabled } from '../auth/privyBridge'
 import { useStore } from '../state/store'
 import { Icon } from './Icon'
 
 const short = (a: string) => `${a.slice(0, 6)}…${a.slice(-4)}`
 
-export function useLinker() {
+/** `keptErrors: false` for anything that isn't the accounts rows (the wallets list, a hidden guest bar), so the x error kept across the trip to x.com shows where the x row is, not wherever mounted first. */
+export function useLinker({ keptErrors = true }: { keptErrors?: boolean } = {}) {
   const { linkX, linkWallet } = useSession()
   const { toast } = useStore()
-  const { address, isConnected } = useAccount()
+  const { address, isConnected, connector } = useAccount()
+  const { me } = useSession()
   const { connectAsync, connectors } = useConnect()
   const [busy, setBusy] = useState<'x' | 'wallet' | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -25,21 +28,30 @@ export function useLinker() {
       if (kind === 'x') { if (await linkX()) toast('x linked', undefined, 'ok') }
       else {
         let a = isConnected ? address : undefined
-        if (!a) { const c = connectors[0]; if (!c) throw new Error('no wallet found in this browser'); a = (await connectAsync({ connector: c })).accounts[0] }
-        await linkWallet(a!)
-        toast('wallet linked', undefined, 'ok')
+        let conn = connector
+        if (!a) { const c = connectors[0]; if (!c) throw new Error('no wallet found in this browser'); a = (await connectAsync({ connector: c })).accounts[0]; conn = c }
+        // the connected wallet is already here: let the person pick another account in their wallet
+        const have = new Set((me?.links?.wallets ?? []).map(w => w.toLowerCase()))
+        if (a && have.has(a.toLowerCase())) {
+          const accts = await pickWalletAccount(conn).catch(() => [] as `0x${string}`[])
+          a = accts.find(x => !have.has(x.toLowerCase())) ?? a
+        }
+        const r = await linkWallet(a!)
+        toast(r.already ? 'already linked' : 'wallet linked', undefined, 'ok')
       }
     } catch (e) {
       const m = (e as Error).message || 'that didn’t go through'
       if (!/rejected|denied|closed/i.test(m)) setError(m.toLowerCase())
     } finally { setBusy(null) }
   }
-  // an X link finished (or failed) after the trip to x.com and back
+  // an X link finished (or failed) after the trip to x.com and back (kept until shown, even if this wasn't mounted yet)
   useEffect(() => {
+    const kept = keptErrors ? linkError.take() : null; if (kept) setError(kept)
     const err = (e: Event) => setError((e as CustomEvent<{ message: string }>).detail.message)
-    window.addEventListener('wifly:link-error', err)
-    return () => window.removeEventListener('wifly:link-error', err)
-  }, [])
+    const ok = () => setError(null)
+    window.addEventListener('wifly:link-error', err); window.addEventListener('wifly:linked', ok)
+    return () => { window.removeEventListener('wifly:link-error', err); window.removeEventListener('wifly:linked', ok) }
+  }, [keptErrors])
   return { run, busy, error, canX: privyEnabled }
 }
 
@@ -89,7 +101,8 @@ export function useUnownedGuest() {
 /** A calm strip on top of the app for guest accounts until X or a wallet is linked. */
 export function GuestBanner() {
   const show = useUnownedGuest()
-  const { run, busy, error, canX } = useLinker()
+  // always mounted, so it only takes a kept x error while it is actually showing
+  const { run, busy, error, canX } = useLinker({ keptErrors: show })
   if (!show) return null
   return (
     <div className="guestbar" role="region" aria-label="guest account" data-testid="guest-banner">

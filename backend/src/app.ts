@@ -12,11 +12,14 @@ import { HTTPException } from 'hono/http-exception'
 import type { Hex } from 'viem'
 import { csrf, endSession, needUser, session, startSession, verifySiwe, issueNonce, type Env, type LoginVia } from './auth'
 import { ALLOWED_ORIGINS, AVATAR_MAX_BYTES, AVATAR_TOO_BIG, LIMITS, TIP_FEE_BPS, UPLOAD_DIR } from './config'
-import { all, one, run } from './db'
+import { all, one, run, writeTx } from './db'
+import { lazyPlusSync } from './plusSync'
+import { registerOg } from './og'
+import { registerXLookup } from './xlookup'
 import { adoptWalletNames, verifyTip } from './verify'
 import { reconcileUser } from './reconcile'
 import { registerProofs } from './proofs'
-import { audit, failLog, guestWriteGate, isAdmin, isGuestAccount, listAccounts, softDeleteUser, uidForWallet } from './accounts'
+import { audit, failLog, guestWriteGate, isAdmin, isGuestAccount, listAccounts, logEvent, shortId, softDeleteUser, uidForWallet } from './accounts'
 import { attestLinkHandle, attesterEnabled, privyEnabled, verifyPrivyAny, verifyPrivyToken, type PrivyIdentity } from './privy'
 import { isPendingHandle, needsHandle, pendingHandle } from './pending'
 import { hydrateDrops, hydrateUsers, type DropRow, type UserRow } from './hydrate'
@@ -27,7 +30,9 @@ import { HANDLE_RE, registerFeatures, setHandle } from './features'
 import { registerAgent } from './agent'
 import { registerDca } from './dca'
 import { registerCompanion } from './companion'
-import { registerPrice } from './price'
+import { registerPrice, UNI } from './price'
+import { chainClient } from './chain'
+import { erc20Abi } from 'viem'
 import { imageSize, sizedName } from './imgsize'
 import { errLine } from './errline'
 
@@ -83,16 +88,37 @@ async function dropRow(id: string) {
   if (!d || Number(d.deleted)) fail(404, 'this drop is gone')
   return d!
 }
+/** Every wallet on an account, once each (case-insensitive): the main address, linked and guest wallets, and the Privy (embedded) wallet.
+ *  main = users.address; receiving = where tips land (the chosen tip wallet, else main); privy = signs through Privy. */
+export type MeWallet = { address: string; kind: 'main' | 'linked' | 'guest' | 'privy'; main: boolean; receiving: boolean; privy: boolean }
+async function walletsForMe(uid: number): Promise<MeWallet[]> {
+  const u = await one<{ address: string | null; extras: string | null }>('SELECT address, extras FROM users WHERE id = ?', [uid])
+  const rows = await all<{ address: string; kind: string }>(`SELECT address, kind FROM user_wallets WHERE user_id = ? ORDER BY created_at`, [uid])
+  const pw = new Set((await all<{ wallet: string | null }>('SELECT wallet FROM privy_accounts WHERE user_id = ? AND wallet IS NOT NULL', [uid])).map(r => String(r.wallet).toLowerCase()))
+  for (const r of rows) if (r.kind === 'privy') pw.add(r.address.toLowerCase())
+  let ex: { tipWallet?: string; guest?: number } = {}; try { ex = JSON.parse(u?.extras || '{}') } catch { /* keep */ }
+  const main = u?.address ? u.address.toLowerCase() : null
+  // a guest's main is the in-browser guest key, not a wallet they hold; it isn't listed
+  const guestMain = !!ex.guest && await isGuestAccount(uid)
+  const order: string[] = [], kinds = new Map<string, string>()
+  const add = (a: string | null | undefined, k: string) => { const l = (a ?? '').toLowerCase(); if (!/^0x[0-9a-f]{40}$/.test(l)) return; if (!kinds.has(l)) { order.push(l); kinds.set(l, k) } }
+  add(main, 'main')
+  for (const r of rows) add(r.address, r.kind === 'privy' ? 'privy' : r.kind === 'guest' ? 'guest' : 'linked')
+  for (const a of pw) add(a, 'privy')
+  const tip = ex.tipWallet && kinds.has(ex.tipWallet.toLowerCase()) ? ex.tipWallet.toLowerCase() : main ?? order[0] ?? null
+  return order.filter(a => !(guestMain && a === main) && kinds.get(a) !== 'guest')
+    .map(a => ({ address: a, kind: (a === main ? 'main' : pw.has(a) ? 'privy' : kinds.get(a)) as MeWallet['kind'], main: a === main, receiving: a === tip, privy: pw.has(a) }))
+}
 async function me(uid: number) {
   const u = (await hydrateUsers([uid], uid)).get(uid)!
   const r = await one<{ onboarded: number; handle: string; extras: string | null }>('SELECT onboarded, handle, extras FROM users WHERE id = ?', [uid])
   const pending = needsHandle(r)
   const p = await one<{ x_username: string | null }>('SELECT x_username FROM privy_accounts WHERE user_id = ? AND x_username IS NOT NULL ORDER BY updated_at DESC LIMIT 1', [uid])
-  const w = await all<{ address: string }>(`SELECT address FROM user_wallets WHERE user_id = ? AND kind = 'linked' ORDER BY created_at`, [uid])
+  const walletList = await walletsForMe(uid)
   const privy = await one('SELECT 1 FROM privy_accounts WHERE user_id = ? LIMIT 1', [uid])
   return {
     ...u, handle: isPendingHandle(u.handle) ? '' : u.handle, name: isPendingHandle(u.name) ? '' : u.name, onboarded: !!Number(r?.onboarded) && !pending, needsHandle: pending, renaming: !!Number(r?.onboarded) && pending,
-    links: { x: p?.x_username ?? null, wallets: w.map(r => r.address), privy: !!privy },
+    links: { x: p?.x_username ?? null, wallets: walletList.map(w => w.address), walletList, privy: !!privy },
     guest: await isGuestAccount(uid),
   }
 }
@@ -146,6 +172,18 @@ async function userByWallet(address: string): Promise<{ id: number } | null> {
   const id = await uidForWallet(address) // main address, linked or guest wallet, or the Privy wallet of an X/email account
   return id ? { id } : null
 }
+/** Every EVM wallet on a Privy user, lowercase: embedded first, then smart, then external wallets used to log in. */
+const privyWallets = (id: PrivyIdentity) => [...new Set([id.embeddedWallet, id.smartWallet, ...(id.wallets ?? [])].filter((w): w is string => !!w).map(w => w.toLowerCase()))]
+/** The live account a Privy login already belongs to, by wallet (any of them), then X user id, then email. Never creates. */
+async function existingForPrivy(id: PrivyIdentity): Promise<number | null> {
+  const hits: number[] = []
+  for (const w of privyWallets(id)) { const u = await uidForWallet(w); if (u) hits.push(u) }
+  if (id.xUserId) { const r = await one<{ user_id: number }>('SELECT p.user_id FROM privy_accounts p JOIN users u ON u.id = p.user_id WHERE p.x_user_id = ? AND u.deleted_at IS NULL ORDER BY p.updated_at DESC LIMIT 1', [id.xUserId]); if (r) hits.push(Number(r.user_id)) }
+  if (id.email) { const r = await one<{ user_id: number }>('SELECT p.user_id FROM privy_accounts p JOIN users u ON u.id = p.user_id WHERE lower(p.email) = ? AND u.deleted_at IS NULL ORDER BY p.updated_at DESC LIMIT 1', [id.email.toLowerCase()]); if (r) hits.push(Number(r.user_id)) }
+  // prefer an account that got going (picked @name / posted / holds names) over an empty sign-up
+  for (const h of hits) if (!(await isShell(h))) return h
+  return hits[0] ?? null
+}
 /** A sign-up that never got going (no @name, no posts, no names): safe to fold into the account that's linking it. */
 async function isShell(uid: number) {
   const u = await one<{ handle: string; onboarded: number }>('SELECT handle, onboarded FROM users WHERE id = ? AND deleted_at IS NULL', [uid])
@@ -154,33 +192,30 @@ async function isShell(uid: number) {
 }
 // Privy: the frontend posts the identity token it got after X/email login. We verify it, then find or create the user.
 async function userForPrivy(id: PrivyIdentity, onCreate: () => Promise<unknown> = async () => {}): Promise<number> {
-  const linked = await one<{ user_id: number }>('SELECT user_id FROM privy_accounts WHERE did = ?', [id.did])
+  const linked = await one<{ user_id: number }>('SELECT user_id FROM privy_accounts p JOIN users u ON u.id = p.user_id WHERE p.did = ? AND u.deleted_at IS NULL', [id.did])
   const wallet = id.embeddedWallet ?? id.smartWallet // smart wallets are off; embedded EVM wallet first
   let uid = linked ? Number(linked.user_id) : 0
-  if (!uid && wallet) {
-    // Someone who already signed in with this wallet (SIWE) keeps their account.
-    const u = await one<{ id: number }>('SELECT u.id FROM users u LEFT JOIN privy_accounts p ON p.user_id = u.id WHERE u.address = ? AND p.did IS NULL', [wallet])
-    if (u) uid = Number(u.id)
-  }
-  if (!uid && wallet) {
-    const u = await one<{ id: number }>('SELECT w.user_id AS id FROM user_wallets w LEFT JOIN privy_accounts p ON p.user_id = w.user_id WHERE w.address = ? AND p.did IS NULL', [wallet])
-    if (u) uid = Number(u.id)
-  }
-  if (!uid && wallet) uid = (await uidForWallet(wallet)) ?? 0 // the wallet already belongs to an account: never a second one
+  // an existing account is found through ANY wallet on the Privy user (an external wallet used to log in
+  // through Privy has no embedded wallet), then the X account and email, before anything new is created.
+  const existing = await existingForPrivy(id)
+  // the did was first seen by an empty sign-up (no @name, nothing posted): the real account behind the wallet / X / email wins
+  if (uid && existing && existing !== uid && await isShell(uid)) uid = existing
+  if (!uid && existing) uid = existing
   if (!uid) {
     await onCreate()
     // no made-up @name: the X username is only a suggestion in onboarding
     const name = (id.xName ?? '').slice(0, LIMITS.nameChars)
-    const free = wallet && !(await one('SELECT 1 FROM users WHERE address = ?', [wallet]))
+    let address: string | null = null
+    for (const w of privyWallets(id)) if (!(await uidForWallet(w))) { address = w; break }
     const r = await run('INSERT INTO users (address, handle, name, tone, created_at) VALUES (?, ?, ?, ?, ?)',
-      [free ? wallet : null, pendingHandle(), name, parseInt(id.did.slice(-2), 36) % 6 || 0, now()])
+      [address, pendingHandle(), name, parseInt(id.did.slice(-2), 36) % 6 || 0, now()])
     uid = Number(r.lastInsertRowid)
   }
   // one privy login per account: a second privy user reaching this account through its wallet signs in, it doesn't re-link
   const other = await one<{ did: string }>('SELECT did FROM privy_accounts WHERE user_id = ? AND did <> ?', [uid, id.did])
   if (!other) await run(`INSERT INTO privy_accounts (did, user_id, x_user_id, x_username, email, wallet, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)
     ON CONFLICT(did) DO UPDATE SET x_user_id = excluded.x_user_id, x_username = excluded.x_username, email = excluded.email,
-    wallet = excluded.wallet, updated_at = excluded.updated_at`, [id.did, uid, id.xUserId, id.xUsername, id.email, wallet, now()])
+    wallet = excluded.wallet, user_id = excluded.user_id, updated_at = excluded.updated_at`, [id.did, uid, id.xUserId, id.xUsername, id.email, wallet, now()])
   return uid
 }
 
@@ -200,41 +235,127 @@ app.post('/api/auth/privy', async c => {
 })
 
 // ---------- linking: a guest (or any account) adds X or a wallet and keeps the SAME wifly account ----------
-const TAKEN_X = 'that x account already belongs to another wifly account'
-const TAKEN_WALLET = 'that wallet already belongs to another wifly account'
-/** Attach a verified Privy login (X, email or its wallet) to the signed-in account. Never creates a user. */
+/** "@name" for an account that picked one, else a calm stand-in. Used in "this x is already on @name". */
+async function accountTag(uid: number): Promise<string> {
+  const u = await one<{ handle: string }>('SELECT handle FROM users WHERE id = ?', [uid])
+  return u && !isPendingHandle(u.handle) ? `@${u.handle}` : 'another wifly account'
+}
+const takenText = async (what: 'x' | 'wallet' | 'email', other: number) => `this ${what} is already on ${await accountTag(other)}`
+/** Wallets on an account: main, linked, guest and the Privy one. */
+async function walletsOf(uid: number): Promise<string[]> {
+  const rows = await all<{ a: string | null }>(`SELECT address AS a FROM users WHERE id = ?1 UNION SELECT address AS a FROM user_wallets WHERE user_id = ?1
+    UNION SELECT wallet AS a FROM privy_accounts WHERE user_id = ?1`, [uid])
+  return [...new Set(rows.map(r => String(r.a ?? '').toLowerCase()).filter(a => /^0x[0-9a-f]{40}$/.test(a)))]
+}
+/** Any ETH or $WIF on these wallets? true / false, or null when the chain can't be read right now (then nothing folds). */
+type BalanceCheck = (wallets: string[]) => Promise<boolean | null>
+const chainBalanceCheck: BalanceCheck = async wallets => {
+  if (!wallets.length) return false
+  try {
+    const c = chainClient()
+    const token = UNI.poolKey.currency1
+    const t = <T>(p: Promise<T>) => Promise.race([p, new Promise<T>((_, r) => setTimeout(() => r(new Error('timeout')), 4000))])
+    for (const w of wallets) {
+      const [eth, wif] = await Promise.all([
+        t(c.getBalance({ address: w as `0x${string}` })),
+        t(c.readContract({ address: token, abi: erc20Abi, functionName: 'balanceOf', args: [w as `0x${string}`] })),
+      ])
+      if (eth > 0n || wif > 0n) return true
+    }
+    return false
+  } catch { return null }
+}
+let leftoverBalanceCheck = chainBalanceCheck
+/** Tests swap in a fake so nothing touches the network. */
+export function setLeftoverBalanceCheckForTests(f: BalanceCheck | null) { leftoverBalanceCheck = f ?? chainBalanceCheck }
+/**
+ * A leftover sign-up: never picked an @name and holds nothing. No drops, names, tips (either way), likes, follows (either way), plus,
+ * plus payments, dca, unlocks, listings, offers, sales, badge burns, agent deposits, and no ETH or $WIF on its wallets.
+ * Only these fold into the account that links their X / email / wallet. Two real accounts are never merged.
+ * 'unknown': the chain couldn't be read, so we don't know yet (nothing folds, the person is asked to try again).
+ */
+async function leftoverState(uid: number): Promise<'leftover' | 'real' | 'unknown'> {
+  const u = await one<{ handle: string; plus: number; onboarded: number }>('SELECT handle, plus, onboarded FROM users WHERE id = ? AND deleted_at IS NULL', [uid])
+  if (!u || !isPendingHandle(u.handle) || Number(u.plus) || Number(u.onboarded)) return 'real' // onboarded + pending = a real account mid-rename
+  const busy = await one(`SELECT 1 FROM drops WHERE author_id = ?1 UNION ALL SELECT 1 FROM names WHERE owner_id = ?1 UNION ALL SELECT 1 FROM tips WHERE from_id = ?1 OR to_id = ?1
+    UNION ALL SELECT 1 FROM likes WHERE user_id = ?1 UNION ALL SELECT 1 FROM follows WHERE followee_id = ?1 OR follower_id = ?1 UNION ALL SELECT 1 FROM plus_subs WHERE user_id = ?1
+    UNION ALL SELECT 1 FROM plus_payments WHERE user_id = ?1 UNION ALL SELECT 1 FROM dca_plans WHERE user_id = ?1 UNION ALL SELECT 1 FROM unlocks WHERE user_id = ?1
+    UNION ALL SELECT 1 FROM name_listings WHERE seller_id = ?1 UNION ALL SELECT 1 FROM name_offers WHERE buyer_id = ?1 UNION ALL SELECT 1 FROM name_sales WHERE seller_id = ?1 OR buyer_id = ?1
+    UNION ALL SELECT 1 FROM badge_burns WHERE user_id = ?1 UNION ALL SELECT 1 FROM agent_caps WHERE user_id = ?1 AND deposited > 0 LIMIT 1`, [uid])
+  if (busy) return 'real'
+  const funded = await leftoverBalanceCheck(await walletsOf(uid))
+  return funded === null ? 'unknown' : funded ? 'real' : 'leftover'
+}
+const CHECK_LATER = 'couldn’t check that account’s wallets right now. try again in a minute'
+/** Fold a leftover account into `into`: its wallets come along (as linked / privy wallets), then it is soft-deleted (backed up in deleted_users). */
+async function foldInto(into: number, other: number) {
+  const ws = await all<{ address: string; kind: string }>(`SELECT address, 'main' AS kind FROM users WHERE id = ? AND address IS NOT NULL
+    UNION SELECT address, kind FROM user_wallets WHERE user_id = ? UNION SELECT wallet AS address, 'privy' AS kind FROM privy_accounts WHERE user_id = ? AND wallet IS NOT NULL`, [other, other, other])
+  await softDeleteUser(other, { actor: 'self' })
+  for (const w of ws) {
+    const a = String(w.address).toLowerCase()
+    if (!/^0x[0-9a-f]{40}$/.test(a) || w.kind === 'guest') continue
+    await run(`INSERT INTO user_wallets (address, user_id, kind, created_at) VALUES (?, ?, ?, ?) ON CONFLICT(address) DO NOTHING`, [a, into, w.kind === 'privy' ? 'privy' : 'linked', now()])
+  }
+  logEvent(`[link] folded leftover u=${shortId(other)} into u=${shortId(into)}`)
+}
+type PrivyRow = { did: string; user_id: number; x_user_id: string | null; x_username: string | null; email: string | null; wallet: string | null }
+/**
+ * Attach a verified Privy login (X, email or its wallet) to the signed-in account. Never creates a user, never merges two real accounts.
+ * An account keeps one Privy row (user_id is unique): a second Privy login (say X after a Privy wallet sign-in) merges into it as long as
+ * the two don't carry different X accounts. The replaced login's wallet stays on the account, so it still signs in.
+ */
 app.post('/api/auth/link/privy', async c => {
   const uid = needUser(c)
   await rateLimit(`link:${uid}`, 20, 60_000)
   const b = await c.req.json<{ identityToken?: string; accessToken?: string }>().catch(() => ({}))
   const id = await verifyPrivyAny(b)
-  // the same X/email login used once on its own (an empty sign-up) merges into this account instead of a 409
-  const shellOf = async (other: number | null | undefined) => { if (other && other !== uid && await isShell(other)) { await softDeleteUser(other, { actor: 'self' }); return true } return false }
-  await shellOf(Number((await one<{ user_id: number }>('SELECT user_id FROM privy_accounts WHERE did = ?', [id.did]))?.user_id ?? 0))
-  if (id.embeddedWallet ?? id.smartWallet) await shellOf(await uidForWallet((id.embeddedWallet ?? id.smartWallet)!))
-  const byDid = await one<{ user_id: number }>('SELECT user_id FROM privy_accounts WHERE did = ?', [id.did])
-  if (byDid && Number(byDid.user_id) !== uid) fail(409, id.xUserId ? TAKEN_X : 'that sign-in already belongs to another wifly account')
-  const mine = await one<{ did: string }>('SELECT did FROM privy_accounts WHERE user_id = ?', [uid])
-  if (mine && mine.did !== id.did) fail(409, 'this account already has a different x or email sign-in linked')
-  if (id.xUserId) {
-    const byX = await one<{ user_id: number }>('SELECT user_id FROM privy_accounts WHERE x_user_id = ? AND user_id <> ? LIMIT 1', [id.xUserId, uid])
-    if (byX) fail(409, TAKEN_X)
-  }
+  const what: 'x' | 'email' | 'wallet' = id.xUserId ? 'x' : id.email ? 'email' : 'wallet'
+  // whoever already has this login, X account, email or wallet: a leftover folds in, a real account is a clear "already on @name"
+  const holders = new Set<number>()
+  const byDid = await one<{ user_id: number }>('SELECT p.user_id FROM privy_accounts p JOIN users u ON u.id = p.user_id WHERE p.did = ? AND u.deleted_at IS NULL', [id.did])
+  if (byDid) holders.add(Number(byDid.user_id))
+  if (id.xUserId) for (const r of await all<{ user_id: number }>('SELECT p.user_id FROM privy_accounts p JOIN users u ON u.id = p.user_id WHERE p.x_user_id = ? AND u.deleted_at IS NULL', [id.xUserId])) holders.add(Number(r.user_id))
+  if (id.email) for (const r of await all<{ user_id: number }>('SELECT p.user_id FROM privy_accounts p JOIN users u ON u.id = p.user_id WHERE lower(p.email) = ? AND u.deleted_at IS NULL', [id.email.toLowerCase()])) holders.add(Number(r.user_id))
+  const walletHolders = new Map<number, string>()
+  for (const a of privyWallets(id)) { const w = await uidForWallet(a); if (w) walletHolders.set(w, a) }
+  for (const [w] of walletHolders) holders.add(w)
+  holders.delete(uid)
+  // decide for every holder before anything changes: one real holder means nothing folds
+  const states = new Map<number, Awaited<ReturnType<typeof leftoverState>>>()
+  for (const h of holders) states.set(h, await leftoverState(h))
+  for (const [h, st] of states) if (st === 'real') fail(409, await takenText(walletHolders.has(h) && !byDid && what === 'wallet' ? 'wallet' : what, h))
+  for (const [, st] of states) if (st === 'unknown') fail(503, CHECK_LATER)
+  for (const h of holders) await foldInto(uid, h)
   const wallet = id.embeddedWallet ?? id.smartWallet
-  if (wallet) {
-    const w = await userByWallet(wallet)
-    if (w && Number(w.id) !== uid) fail(409, TAKEN_WALLET)
+  const mine = await one<PrivyRow>('SELECT did, user_id, x_user_id, x_username, email, wallet FROM privy_accounts WHERE user_id = ?', [uid])
+  if (mine && mine.did !== id.did) {
+    if (mine.x_user_id && id.xUserId && mine.x_user_id !== id.xUserId) fail(409, `this account already has x @${mine.x_username ?? 'linked'}. one x per account`)
+    // keep both logins' wallets on the account (either still signs in), then keep the row that carries X
+    for (const a of [mine.wallet, ...privyWallets(id)]) if (a) await run(`INSERT INTO user_wallets (address, user_id, kind, created_at) VALUES (?, ?, 'privy', ?) ON CONFLICT(address) DO NOTHING`, [a.toLowerCase(), uid, now()])
+    const keepNew = !!id.xUserId || !mine.x_user_id
+    const x_user_id = id.xUserId ?? mine.x_user_id, x_username = id.xUsername ?? mine.x_username, email = id.email ?? mine.email, w = wallet ?? mine.wallet
+    if (keepNew) {
+      await writeTx(async exec => {
+        await exec('DELETE FROM privy_accounts WHERE did = ?', [mine.did])
+        await exec(`INSERT INTO privy_accounts (did, user_id, x_user_id, x_username, email, wallet, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)`, [id.did, uid, x_user_id, x_username, email, w, now()])
+      })
+    } else {
+      await run('UPDATE privy_accounts SET email = ?, wallet = COALESCE(wallet, ?), updated_at = ? WHERE did = ?', [email, w, now(), mine.did])
+    }
+  } else {
+    await run(`INSERT INTO privy_accounts (did, user_id, x_user_id, x_username, email, wallet, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(did) DO UPDATE SET x_user_id = COALESCE(excluded.x_user_id, privy_accounts.x_user_id), x_username = COALESCE(excluded.x_username, privy_accounts.x_username),
+      email = COALESCE(excluded.email, privy_accounts.email), wallet = COALESCE(excluded.wallet, privy_accounts.wallet), user_id = excluded.user_id, updated_at = excluded.updated_at`,
+      [id.did, uid, id.xUserId, id.xUsername, id.email, wallet, now()])
   }
-  await run(`INSERT INTO privy_accounts (did, user_id, x_user_id, x_username, email, wallet, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)
-    ON CONFLICT(did) DO UPDATE SET x_user_id = excluded.x_user_id, x_username = excluded.x_username, email = excluded.email,
-    wallet = excluded.wallet, updated_at = excluded.updated_at`, [id.did, uid, id.xUserId, id.xUsername, id.email, wallet, now()])
-  if (wallet) {
-    await run('UPDATE users SET address = ? WHERE id = ? AND address IS NULL', [wallet, uid])
+  for (const a of privyWallets(id)) {
+    await run('UPDATE users SET address = ? WHERE id = ? AND address IS NULL', [a, uid])
     // the Privy wallet signs in to (and holds names for) this account too, even when the account already had an address
-    await run(`INSERT OR IGNORE INTO user_wallets (address, user_id, kind, created_at) VALUES (?, ?, 'privy', ?)`, [wallet, uid, now()])
-    await adoptWalletNames(uid, wallet).catch(() => null)
+    await run(`INSERT INTO user_wallets (address, user_id, kind, created_at) VALUES (?, ?, 'privy', ?) ON CONFLICT(address) DO NOTHING`, [a, uid, now()])
+    await adoptWalletNames(uid, a).catch(() => null)
   }
-  // the account is owned by this login now; the session follows it
+  // the session stays on this same account; it now also signs in with this login
   await startSession(c, uid, 'privy')
   return c.json({ me: await me(uid), login: await loginOf(uid, 'privy') })
 })
@@ -244,21 +365,28 @@ app.post('/api/auth/link/wallet', async c => {
   await rateLimit(`link:${uid}`, 20, 60_000)
   const b = await c.req.json<{ message: string; signature: Hex; guest?: boolean }>()
   const address = await verifySiwe(c, b.message, b.signature)
-  let owner = await userByWallet(address)
-  if (owner && Number(owner.id) !== uid && await isShell(Number(owner.id))) { await softDeleteUser(Number(owner.id), { actor: 'self' }); owner = null }
-  if (owner && Number(owner.id) !== uid) fail(409, TAKEN_WALLET)
+  const owner = await uidForWallet(address)
+  if (owner === uid && !b.guest) return c.json({ me: await me(uid), login: await loginOf(uid, c.get('via')), already: true })
+  if (owner && owner !== uid) {
+    const st = await leftoverState(owner)
+    if (st === 'real') fail(409, await takenText('wallet', owner))
+    if (st === 'unknown') fail(503, CHECK_LATER)
+    await foldInto(uid, owner)
+  }
   const cur = await one<{ address: string | null }>('SELECT address FROM users WHERE id = ?', [uid])
-  if (cur?.address === address) return c.json({ me: await me(uid), login: await loginOf(uid, c.get('via')) })
+  if (cur?.address === address) return c.json({ me: await me(uid), login: await loginOf(uid, c.get('via')), already: true })
   const privyWallet = cur?.address ? await one('SELECT 1 FROM privy_accounts WHERE user_id = ? AND wallet = ?', [uid, cur.address]) : null
   if (!cur?.address || (b.guest && !privyWallet)) {
     if (cur?.address) await run(`INSERT OR IGNORE INTO user_wallets (address, user_id, kind, created_at) VALUES (?, ?, 'guest', ?)`, [cur.address, uid, now()])
     await run('UPDATE users SET address = ? WHERE id = ?', [address, uid])
   }
   await run(`INSERT INTO user_wallets (address, user_id, kind, created_at) VALUES (?, ?, 'linked', ?)
-    ON CONFLICT(address) DO UPDATE SET kind = 'linked'`, [address, uid, now()])
+    ON CONFLICT(address) DO UPDATE SET kind = CASE WHEN user_wallets.kind = 'privy' THEN 'privy' ELSE 'linked' END`, [address, uid, now()])
   await adoptWalletNames(uid, address).catch(() => null)
-  await startSession(c, uid, 'wallet')
-  return c.json({ me: await me(uid), login: await loginOf(uid, 'wallet') })
+  // an x / email session stays one (its embedded wallet keeps signing); otherwise this is now a wallet session
+  const via = c.get('via') === 'privy' ? 'privy' : 'wallet'
+  await startSession(c, uid, via)
+  return c.json({ me: await me(uid), login: await loginOf(uid, via) })
 })
 
 /** linkHandle attestation for the signed-in user's own X account (numeric id read from the verified Privy token). */
@@ -279,7 +407,7 @@ app.get('/api/x/resolve', async c => {
   const r = await one<{ x_user_id: string }>('SELECT x_user_id FROM privy_accounts WHERE lower(x_username) = ? AND x_user_id IS NOT NULL ORDER BY updated_at DESC LIMIT 1', [h])
   return c.json({ xUserId: r?.x_user_id ?? null })
 })
-app.post('/api/auth/logout', c => { endSession(c); return c.json({ ok: true }) })
+app.post('/api/auth/logout', async c => { await endSession(c); c.header('cache-control', 'no-store'); return c.json({ ok: true }) })
 
 // ---------- delete my account (soft) ----------
 app.post('/api/me/delete', async c => {
@@ -292,7 +420,7 @@ app.post('/api/me/delete', async c => {
   if (String(confirm ?? '').trim().replace(/^@/, '').toLowerCase() !== want) fail(400, isPendingHandle(u?.handle) ? 'type delete to confirm' : 'type your @name to confirm')
   await softDeleteUser(uid, { actor: 'self' })
   clearRankCache()
-  endSession(c)
+  await endSession(c)
   return c.json({ ok: true })
 })
 
@@ -367,6 +495,8 @@ async function loginOf(uid: number, via: LoginVia | null): Promise<Login | null>
 app.get('/api/me', async c => {
   const uid = c.get('uid')
   if (!uid) return c.json({ me: null })
+  // plus paid onchain from any wallet on the account shows up here without waiting (bounded, never blocks long)
+  await Promise.race([lazyPlusSync(uid), new Promise(r => setTimeout(r, 1500))])
   const unread = await one<{ n: number }>('SELECT COUNT(*) AS n FROM notifications WHERE user_id = ? AND read = 0', [uid])
   return c.json({ me: await me(uid), unread: Number(unread?.n ?? 0), login: await loginOf(uid, c.get('via')), ...((await isAdmin(uid)) ? { admin: true } : {}) })
 })
@@ -696,6 +826,17 @@ async function userDrops(uid: number | null, handle: string, tab: string, cursor
   const items: FeedItem[] = rows.slice(0, PAGE).map(r => ({ id: r.id, passedBy: r.passer ? { handle: r.passer, at: Number(r.ts) } : undefined }))
   return capForGuest(await feedResponse(items, uid, rows.length > PAGE ? encCursor(off + PAGE) : null), uid)
 }
+/** The .wif names someone holds (public): the profile "names" tab. Their current name first, then the rest; listed ones carry a price. */
+app.get('/api/users/:handle/names', async c => {
+  const u = await userByHandle(c.req.param('handle').replace(/^@/, '').replace(/\.wif$/i, ''))
+  const rows = await all<{ name: string; minted: number; theme: number; price: number | null; private: number | null }>(`SELECT n.name, n.minted, n.theme, l.price, l.buyer_id AS private
+    FROM names n LEFT JOIN name_listings l ON l.name = n.name AND l.seller_id = n.owner_id WHERE n.owner_id = ? ORDER BY n.created_at`, [u.id])
+  const cur = String(JSON.parse((u as { extras?: string | null }).extras || '{}').wifName ?? '').toLowerCase()
+  const names = rows.map(r => ({ name: r.name.toLowerCase(), display: `${r.name.toLowerCase()}.wif`, current: r.name.toLowerCase() === cur, minted: !!Number(r.minted), theme: Number(r.theme ?? 0),
+    listing: r.price !== null && r.private === null ? { price: Number(r.price) } : null }))
+  names.sort((a, b) => Number(b.current) - Number(a.current))
+  return c.json({ names })
+})
 app.get('/api/users/:handle/:list{followers|following}', async c => {
   const u = await userByHandle(c.req.param('handle'))
   const followers = c.req.param('list') === 'followers'
@@ -882,6 +1023,8 @@ app.post('/api/notifications/read', async c => {
 })
 
 registerFeatures(app, { me, notify })
+registerOg(app)
+registerXLookup(app)
 registerProofs(app, { me })
 registerAgent(app)
 registerDca(app)

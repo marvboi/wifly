@@ -301,7 +301,8 @@ export type OwnerPlus = (owner: Address) => Promise<PlusAccess>
 let lastKeeper: { at: number; balanceEth: number | null; neededEth: number | null; low: boolean; address: string | null } = { at: 0, balanceEth: null, neededEth: null, low: false, address: null }
 async function keeperStatus() {
   const runs = await all<{ plan_id: number; action: string; tx_hash: string | null; created_at: number }>('SELECT plan_id, action, tx_hash, created_at FROM dca_actions WHERE action LIKE ? ORDER BY id DESC LIMIT 10', ['keeper%'])
-  return { enabled: dcaKeeperEnabled(), live: dcaLive(), ...lastKeeper, runs }
+  // enabled = the keeper is really running in this process (flag on AND contract AND signer), not just the env flag
+  return { enabled: keeperState === 'started', flag: dcaKeeperEnabled(), state: keeperState, live: dcaLive(), ...lastKeeper, runs }
 }
 
 const BATCH = 20
@@ -398,7 +399,7 @@ export function viemDcaChain(contract: Address, signer: AgentSigner): DcaChain {
 
 let dcaSigner: AgentSigner | null | undefined
 export function setDcaKeeperSigner(s: AgentSigner | null | undefined) { dcaSigner = s }
-/** WIFLY_KEEPER_PRIVATE_KEY (set in the hosting env; never logged or returned). Only pays gas for executeBatch:
+/** WIFLY_KEEPER_PRIVATE_KEY (set in Railway; never logged or returned). Only pays gas for executeBatch:
  *  the contract sends WIF straight to plan owners. KEEPER_SIGNER=kms is the placeholder for a vault signer. */
 export function loadDcaKeeperSigner(): AgentSigner | null {
   if (dcaSigner !== undefined) return dcaSigner
@@ -407,13 +408,15 @@ export function loadDcaKeeperSigner(): AgentSigner | null {
 }
 
 let timer: ReturnType<typeof setInterval> | null = null
+let keeperState: 'off' | 'no-contract' | 'no-signer' | 'started' | 'not-started' = 'not-started'
 /** Called from server.ts. Off unless DCA_KEEPER_ENABLED=true and the contract + keeper signer are set. */
 export function startDcaKeeper(): 'off' | 'no-contract' | 'no-signer' | 'started' {
-  if (!dcaKeeperEnabled()) { console.log('[dca-keeper] off (DCA_KEEPER_ENABLED is not true)'); return 'off' }
+  if (!dcaKeeperEnabled()) { console.log(`[dca-keeper] off (DCA_KEEPER_ENABLED=${JSON.stringify(process.env.DCA_KEEPER_ENABLED ?? '')}, only "true" turns it on)`); return (keeperState = 'off') }
   const contract = dcaContract()
-  if (!contract) { console.log('[dca-keeper] off: DCA_CONTRACT_ADDRESS not set'); return 'no-contract' }
+  if (!contract) { console.log('[dca-keeper] off: DCA_KEEPER_ENABLED=true but DCA_CONTRACT_ADDRESS not set'); return (keeperState = 'no-contract') }
   const signer = loadDcaKeeperSigner()
-  if (!signer) { console.log('[dca-keeper] off: WIFLY_KEEPER_PRIVATE_KEY not set'); return 'no-signer' }
+  if (!signer) { console.log('[dca-keeper] off: DCA_KEEPER_ENABLED=true but WIFLY_KEEPER_PRIVATE_KEY not set'); return (keeperState = 'no-signer') }
+  keeperState = 'started'
   const chain = viemDcaChain(contract as Address, signer)
   let busy = false
   const tick = async () => {
@@ -424,8 +427,8 @@ export function startDcaKeeper(): 'off' | 'no-contract' | 'no-signer' | 'started
   timer = setInterval(tick, Math.max(30_000, Number(process.env.DCA_KEEPER_INTERVAL_MS || 60_000)))
   timer.unref?.()
   void tick()
-  console.log(`[dca-keeper] on: signer ${signer.address} (needs setKeeper(${signer.address}, true) on WiflyDCA)`)
+  console.log(`[dca-keeper] on (DCA_KEEPER_ENABLED=true): signer ${signer.address} (needs setKeeper(${signer.address}, true) on WiflyDCA). set DCA_KEEPER_ENABLED=false to turn it off`)
   return 'started'
 }
-export function stopDcaKeeper() { if (timer) clearInterval(timer); timer = null }
+export function stopDcaKeeper() { if (timer) clearInterval(timer); timer = null; if (keeperState === 'started') keeperState = 'off' }
 export { parseEther }

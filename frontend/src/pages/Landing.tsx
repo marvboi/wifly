@@ -415,7 +415,7 @@ export function Landing() {
                     <span className="lp-wallet__row"><span>to their wallet <b>{KEEP}</b></span><span>fee <b>{FEE}</b></span></span></div>
                 </div>
               }>
-                <p>anyone can tip a drop, a person, or any X account. {KEEP} lands in their wallet the moment it's sent. no payout button, no waiting.</p>
+                <p>anyone can tip a drop, a member, a name.wif or a wallet. {KEEP} lands in their wallet the moment it's sent. no payout button, no waiting.</p>
               </Chapter>
 
               <Chapter id="names" n="03" title="own your .wif name." art={<NameCards />}>
