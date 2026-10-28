@@ -17,6 +17,8 @@ export type ApiUser = {
   plus: boolean; plusGrace?: boolean; badge?: string | null; creator: boolean; joined: number; address: string | null; wifName?: string | null
   followers: number; following: number; drops: number
   youFollow: boolean; followsYou: boolean; you: boolean; muted: boolean
+  /** blocked: you blocked them. blocksYou: they blocked you (no messages either way). Only sent when true. */
+  blocked?: boolean; blocksYou?: boolean
   supporters?: number; dmPrice?: number; tiers?: unknown; shop?: unknown; seed: boolean
 }
 export type ApiDrop = {
@@ -46,11 +48,13 @@ export async function hydrateUsers(ids: number[], viewer: number | null): Promis
   // Primary .wif name (reverseName): only while the user still holds it.
   const held = new Set((await all<{ name: string; owner_id: number }>(`SELECT name, owner_id FROM names WHERE owner_id IN (${qs(uniq.length)})`, uniq)).map(r => `${Number(r.owner_id)}:${String(r.name).toLowerCase()}`))
   const t = Date.now()
-  const fol = new Set<number>(), fby = new Set<number>(), mut = new Set<number>()
+  const fol = new Set<number>(), fby = new Set<number>(), mut = new Set<number>(), blk = new Set<number>(), bby = new Set<number>()
   if (viewer) {
     for (const r of await all<{ followee_id: number }>(`SELECT followee_id FROM follows WHERE follower_id = ? AND followee_id IN (${qs(uniq.length)})`, [viewer, ...uniq])) fol.add(Number(r.followee_id))
     for (const r of await all<{ follower_id: number }>(`SELECT follower_id FROM follows WHERE followee_id = ? AND follower_id IN (${qs(uniq.length)})`, [viewer, ...uniq])) fby.add(Number(r.follower_id))
     for (const r of await all<{ target_id: number }>(`SELECT target_id FROM mutes WHERE user_id = ? AND target_id IN (${qs(uniq.length)})`, [viewer, ...uniq])) mut.add(Number(r.target_id))
+    for (const r of await all<{ user_id: number; target_id: number }>(`SELECT user_id, target_id FROM blocks WHERE (user_id = ? AND target_id IN (${qs(uniq.length)})) OR (target_id = ? AND user_id IN (${qs(uniq.length)}))`, [viewer, ...uniq, viewer, ...uniq]))
+      if (Number(r.user_id) === viewer) blk.add(Number(r.target_id)); else bby.add(Number(r.user_id))
   }
   for (const r of rows) {
     const id = Number(r.id)
@@ -67,6 +71,7 @@ export async function hydrateUsers(ids: number[], viewer: number | null): Promis
       // Real counts only.
       followers: Number(r.followers), following: Number(r.following), drops: Number(r.drops),
       youFollow: fol.has(id), followsYou: fby.has(id), you: viewer === id, muted: mut.has(id),
+      ...(blk.has(id) ? { blocked: true } : {}), ...(bby.has(id) ? { blocksYou: true } : {}),
       supporters: x.supporters, dmPrice: x.dmPrice, tiers: x.tiers, shop: x.shop, seed: !!r.seed,
     })
   }

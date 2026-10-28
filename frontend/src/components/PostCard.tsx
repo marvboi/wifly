@@ -292,7 +292,7 @@ function WhyLine({ why }: { why: string }) {
   return (
     <div className="drop__why" onClick={e => e.stopPropagation()}>
       {open ? <span><Icon name="info" size={12} /> {why}</span>
-        : <button type="button" className="drop__whybtn" onClick={() => setOpen(true)}>why am I seeing this?</button>}
+        : <button type="button" className="drop__whybtn" onClick={() => setOpen(true)}>why am i seeing this?</button>}
     </div>
   )
 }

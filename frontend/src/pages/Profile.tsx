@@ -148,7 +148,7 @@ function MoreMenu({ items }: { items: Array<{ label: string; icon: Parameters<ty
 function ProfileOf({ handle }: { handle: string }) {
   const q = useProfile(handle)
   const u = useUser(handle)
-  const { subs, openSheet, paidDms, toast } = useStore()
+  const { subs, openSheet, toast } = useStore()
   const { me: session } = useSession()
   const qc = useQueryClient()
   const nav = useNavigate()
@@ -171,10 +171,8 @@ function ProfileOf({ handle }: { handle: string }) {
       adoptUser(r.user); qc.invalidateQueries({ queryKey: ['feed'] }); toast(r.user.muted ? `muted @${u.handle}. you won’t see their drops.` : `unmuted @${u.handle}`)
     } catch (e) { toast('that didn’t go through', (e as Error).message) }
   }
-  const message = () => need(() => {
-    if (u.dmPrice && !u.followsYou && !paidDms.has(u.handle)) openSheet({ type: 'paydm', handle: u.handle })
-    else nav(`/messages/${u.handle}`)
-  }, 'sign in to message')
+  const message = () => need(() => nav(`/messages/${u.handle}`), 'sign in to message')
+  const canDm = live && !u.blocked && !u.blocksYou
   const share = async () => {
     const url = `${location.origin}${profilePath(u.handle)}`
     try {
@@ -199,11 +197,11 @@ function ProfileOf({ handle }: { handle: string }) {
                 <Link className="btn btn--ghost btn--icon pro-act" to="/settings" aria-label="settings" title="settings"><Icon name="more" size={18} /></Link>
               </> : <>
                 {live && <FollowButton handle={u.handle} />}
+                {canDm && <button className="btn btn--ghost btn--icon pro-act" aria-label={`message ${at(u.handle)}`} title="message" data-testid="profile-message" onClick={message}><Icon name="mail" size={17} /></button>}
                 <button className="btn btn--ghost btn--icon pro-act" aria-label={`tip ${at(u.handle)}`} title="tip" onClick={() => openSheet({ type: 'tip', to: u.handle })}><TipJar size={17} title="" /></button>
                 <button className="btn btn--ghost btn--icon pro-act" aria-label="share profile" title="share" onClick={share}><Icon name="share" size={17} /></button>
                 <MoreMenu items={[
                   { label: 'vote', icon: 'vote', on: () => openSheet({ type: 'vote', handle: u.handle }) },
-                  { label: 'message', icon: 'mail', on: message },
                   ...(live ? [{ label: u.muted ? 'unmute' : 'mute', icon: 'mute' as const, on: mute, pressed: !!u.muted }] : []),
                 ]} />
               </>}
@@ -226,7 +224,6 @@ function ProfileOf({ handle }: { handle: string }) {
               {u.supporters !== undefined && <span className="pro__stat">{stat(u.supporters, 'supporters')}</span>}
               <span className="pro__stat pro__stat--quiet">joined {u.joined.toLowerCase()}</span>
               {u.location && <span className="pro__stat pro__stat--quiet">{u.location}</span>}
-              {u.dmPrice && <span className="pro__stat pro__stat--quiet">messages {u.dmPrice} WIF</span>}
             </div>
           </div>
           {me && <KeepNudge />}
@@ -333,8 +330,7 @@ function KeepNudge() {
   if (off || !me || ways > 1) return null
   return (
     <div className="pro-nudge" data-testid="keep-nudge">
-      <span className="small">link x or a wallet to keep this account.</span>
-      <Link className="linkbtn small" to="/settings#accounts">link</Link>
+      <p className="pro-nudge__text small">link x or a wallet to keep this account.<Link className="linkbtn" to="/settings#accounts">link</Link></p>
       <button type="button" className="pro-nudge__x" aria-label="dismiss" onClick={() => { setOff(true); try { localStorage.setItem(NUDGE_KEY, '1') } catch { /* private mode */ } }}><Icon name="close" size={14} /></button>
     </div>
   )

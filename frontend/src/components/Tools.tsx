@@ -8,9 +8,10 @@ import { useStore } from '../state/store'
 import { useCommunityPot } from '../lib/wifly'
 import { useWifBalance } from '../lib/chain'
 import { call } from '../companion/agentApi'
-import { AGENT_READY, DCA_ADDRESS, DCA_READY } from '../config'
+import { DCA_ADDRESS } from '../config'
 import { Sheet } from '../sheets/Sheets'
 import { Icon } from './Icon'
+import { ThemeQuickRow } from './ThemeToggle'
 
 /**
  * Shortcuts to the money tools: the home row under the composer, the phone "more" sheet and the desktop rail.
@@ -24,15 +25,11 @@ export const TOOLS: Record<ToolId, Tool> = {
   names: { id: 'names', label: 'names', line: 'claim or manage your name.wif', to: '/names' },
   plus: { id: 'plus', label: 'plus', line: 'the plus check and more, paid in $WIF', to: '/plus' },
   jar: { id: 'jar', label: 'jar', line: 'the weekly community pot', to: '/vote#pot' },
-  dca: { id: 'dca', label: 'scheduled buys', line: 'buy $WIF on a schedule', to: '/dca' },
+  dca: { id: 'dca', label: 'scheduled buys', line: 'buy $WIF every day, week or month. pause any time', to: '/dca' },
   messages: { id: 'messages', label: 'messages', line: 'chat with people on wifly', to: '/messages' },
-  agent: { id: 'agent', label: 'agent', line: 'coming soon', to: '/agent' },
+  agent: { id: 'agent', label: 'agent', line: 'chat with your free ai helper. it never spends', to: '/agent' },
 }
-/** Direct messages ship in a later release: until then the row says so instead of promising a chat. */
-const DMS_LIVE = false
 const MORE: ToolId[] = ['swap', 'tip', 'names', 'plus', 'jar', 'messages', 'agent', 'dca']
-/** A calm grey "soon" tag for tools that aren't switched on yet. */
-const soonTag = (id: ToolId) => (id === 'messages' && !DMS_LIVE) || (id === 'dca' && !DCA_READY) || (id === 'agent' && !AGENT_READY)
 const SHORT: ToolId[] = ['swap', 'tip', 'names', 'plus', 'jar']
 const RAIL: ToolId[] = ['swap', 'names', 'plus', 'jar', 'dca']
 
@@ -119,17 +116,18 @@ export function ShortcutRow() {
 /** Phone: the "more" sheet from the bottom bar. The same five tools, plus the pages that only fit the wide dock. */
 export function MoreSheet({ onClose }: { onClose: () => void }) {
   const open = useOpenTool()
+  const { dms } = useSession()
+  const dmCount = dms.inbox + dms.requests
   return (
     <Sheet title="more" onClose={onClose} className="sheet--more">
       <ul className="moresheet" data-testid="more-sheet">
         {MORE.map(id => {
-          const soon = soonTag(id)
           return (
             <li key={id}>
               <button type="button" className="moresheet__row" data-testid={`more-row-${id}`} onClick={() => open(id, onClose)}>
                 <span className="moresheet__disc"><ToolIcon id={id} size={30} /></span>
                 <span className="moresheet__text">
-                  <span className="moresheet__title"><b>{TOOLS[id].label}</b>{soon && <span className="moresheet__soon">soon</span>}</span>
+                  <span className="moresheet__title"><b>{TOOLS[id].label}</b>{id === 'messages' && dmCount > 0 && <span className="moresheet__badge num" data-testid="more-badge-messages">{dmCount > 9 ? '9+' : dmCount} new</span>}</span>
                   <span className="moresheet__hint">{TOOLS[id].line}</span>
                 </span>
                 <Icon name="chevron" size={18} className="moresheet__go" />
@@ -137,6 +135,8 @@ export function MoreSheet({ onClose }: { onClose: () => void }) {
             </li>
           )
         })}
+        <li className="moresheet__sep" aria-hidden="true" />
+        <li><ThemeQuickRow /></li>
       </ul>
     </Sheet>
   )
@@ -163,8 +163,7 @@ function useToolState(): Partial<Record<ToolId, string>> {
   const p = plus.data && !plus.data.signedOut ? plus.data.state : undefined
   if (p) s.plus = p === 'active' ? 'plus active' : p === 'grace' ? 'in grace' : p === 'expired' ? 'expired' : 'not active'
   if (pot !== undefined) s.jar = `${fmt(pot)} WIF`
-  if (!DCA_READY) s.dca = 'soon'
-  else if (dca.data?.plans) { const a = dca.data.plans.filter(x => x.status === 'active').length; s.dca = a ? `${a} active` : 'none yet' }
+  if (dca.data?.plans) { const a = dca.data.plans.filter(x => x.status === 'active').length; s.dca = a ? `${a} active` : 'none yet' }
   return s
 }
 

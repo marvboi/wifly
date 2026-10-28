@@ -15,7 +15,7 @@ import { Icon } from '../components/Icon'
 import { TxSteps } from '../components/TxSteps'
 import { useSession } from '../api/session'
 import { useStore } from '../state/store'
-import { FEE_BPS, LIVE, TOPSPOT_FEE_SHARE } from '../config'
+import { AGENT_READY, FEE_BPS, LIVE, TOPSPOT_FEE_SHARE, WIFLY_AGENT_ADDRESS } from '../config'
 import { failTitle, plans, useSendPlan } from '../lib/wifly'
 import { Usd, usdText, useWifPrice } from '../lib/price'
 import { companion, useCompanionFeed } from '../lib/companion'
@@ -24,16 +24,16 @@ import { call, useActivity, useAgent, useAgentRefresh, useCompanionInfo, useMyAg
 
 const short = (a?: string | null) => (a ? `${a.slice(0, 6)}…${a.slice(-4)}` : '—')
 const n = (v: number) => v.toLocaleString('en-US', { maximumFractionDigits: 2 })
-const FN_WORDS: Record<string, string> = { tipFor: 'tip', subscribeFor: 'subscribe', subscribeForPlan: 'renew Plus', takeTopSpotFor: 'promote' }
-const SUGGEST = ['what’s my balance', 'swap 0.01 eth to wif', 'buy $5 of WIF every Monday at 9:00']
+const FN_WORDS: Record<string, string> = { tipFor: 'tip', subscribeFor: 'subscribe', subscribeForPlan: 'renew plus', takeTopSpotFor: 'promote' }
+const SUGGEST = ['what’s my balance', 'swap 0.01 eth to wif', 'buy $5 of wif every monday at 9:00']
 const GREETING = 'i’m wifly’s free assistant. ask me anything about wifly. with plus i can also prepare tips, swaps, recurring buys and memberships, and you confirm each one.'
-const DAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
+const DAYS = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday']
 
 type Msg = { id: number; from: 'me' | 'face'; text: string; card?: Planned; cards?: ChatCard[]; result?: Executed }
 type View = 'chat' | 'mine' | 'cap' | 'activity' | 'topup'
 
 export function Companion() {
-  const { me } = useSession()
+  const { me, guest } = useSession()
   const { sheet } = useStore()
   const { pathname } = useLocation()
   const [open, setOpen] = useState(false)
@@ -72,7 +72,7 @@ export function Companion() {
           </motion.div>
         )}
       </AnimatePresence>
-      <AnimatePresence>{open && <Panel key="panel" signedIn={!!me} onClose={() => setOpen(false)} feedMood={feed.mood} pulse={feed.pulse} />}</AnimatePresence>
+      <AnimatePresence>{open && <Panel key="panel" signedIn={!!me} guest={guest} onClose={() => setOpen(false)} feedMood={feed.mood} pulse={feed.pulse} />}</AnimatePresence>
     </>
   )
 }
@@ -90,7 +90,7 @@ function CelebrateBits() {
   )
 }
 
-function Panel({ signedIn, onClose, feedMood, pulse }: { signedIn: boolean; onClose: () => void; feedMood: Mood; pulse: number }) {
+function Panel({ signedIn, guest, onClose, feedMood, pulse }: { signedIn: boolean; guest?: boolean; onClose: () => void; feedMood: Mood; pulse: number }) {
   const { openSheet } = useStore()
   const agent = useAgent(signedIn)
   const st = agent.data
@@ -115,6 +115,7 @@ function Panel({ signedIn, onClose, feedMood, pulse }: { signedIn: boolean; onCl
   const ask = async (raw: string) => {
     const t = raw.trim(); if (!t || busy) return
     if (!signedIn) { push({ from: 'me', text: t }); push({ from: 'face', text: 'sign in first, then i can help with that.' }); setMood('oops'); return }
+    if (guest) { push({ from: 'me', text: t }); push({ from: 'face', text: 'link a wallet, x or email first, then i can help with that.' }); setMood('oops'); openSheet({ type: 'link' }); return }
     setText(''); push({ from: 'me', text: t }); setBusy(true); setMood('think')
     try {
       const history = msgs.slice(-6).map(m => ({ from: m.from, text: m.text }))
@@ -151,12 +152,12 @@ function Panel({ signedIn, onClose, feedMood, pulse }: { signedIn: boolean; onCl
         <header className="cmp-head">
           <Mascot size={44} mood={busy ? 'think' : mood === 'calm' ? feedMood : mood} pulse={pulse} title="wifly companion" />
           <div className="cmp-head__copy">
-            <div className="cmp-head__title"><span className="strong">wifly companion</span><span className="cmp-free" title="runs on free AI models only">free AI assistant</span></div>
-            <div className="muted small">{!signedIn ? 'sign in to chat' : info.data && !info.data.chatOn ? 'chat is off · commands still work' : left != null ? `${left} free question${left === 1 ? '' : 's'} left today` : info.data?.plus.ok ? `Plus · agent ${st?.enabled ? 'on' : 'off'}` : '…'}</div>
+            <div className="cmp-head__title"><span className="strong">wifly companion</span><span className="cmp-free" title="runs on free ai models only">free ai assistant</span></div>
+            <div className="muted small">{!signedIn ? 'sign in to chat' : info.data && !info.data.chatOn ? 'chat is off · commands still work' : left != null ? `${left} free question${left === 1 ? '' : 's'} left today` : info.data?.plus.ok ? `plus · agent ${AGENT_READY && st?.enabled ? 'on' : 'off'}` : '…'}</div>
           </div>
           <button className="cmp-x" onClick={onClose} aria-label="close"><Icon name="close" size={16} /></button>
         </header>
-        {signedIn && <Meters st={st} onCap={() => setView('cap')} onTopUp={() => { setTopUp(0); setView('topup') }} />}
+        {signedIn && AGENT_READY && <Meters st={st} onCap={() => setView('cap')} onTopUp={() => { setTopUp(0); setView('topup') }} />}
         <nav className="cmp-tabs" role="tablist">
           {(['chat', 'mine', 'cap', 'activity'] as const).map(v => <button key={v} role="tab" aria-selected={view === v || (v === 'chat' && view === 'topup')} className={view === v || (v === 'chat' && view === 'topup') ? 'is-on' : ''} onClick={() => setView(v)}>{v === 'cap' ? 'daily cap' : v === 'mine' ? 'my agent' : v}</button>)}
         </nav>
@@ -178,8 +179,10 @@ function Panel({ signedIn, onClose, feedMood, pulse }: { signedIn: boolean; onCl
             </div>
           )}
           {view === 'topup' && st && <TopUp st={st} suggested={topUp} onDone={() => { setView('chat'); push({ from: 'face', text: 'balance topped up. send that command again and i’ll take it from here.' }); setMood('happy') }} onBack={() => setView('chat')} />}
-          {view === 'mine' && (signedIn ? <MyAgentPane onGo={to => { onClose(); navigate(to) }} /> : <><SignInNote onSignIn={() => { onClose(); openSheet({ type: 'signin' }) }} /><RentAgentCard /></>)}
-          {view === 'cap' && (signedIn ? st ? <CapSheet st={st} /> : <Loading /> : <SignInNote onSignIn={() => { onClose(); openSheet({ type: 'signin' }) }} />)}
+          {view === 'mine' && !AGENT_READY && <SpendingOff />}
+          {view === 'mine' && AGENT_READY && (signedIn ? <MyAgentPane onGo={to => { onClose(); navigate(to) }} /> : <><SignInNote onSignIn={() => { onClose(); openSheet({ type: 'signin' }) }} /><RentAgentCard /></>)}
+          {view === 'cap' && !AGENT_READY && <SpendingOff />}
+          {view === 'cap' && AGENT_READY && (signedIn ? st ? <CapSheet st={st} /> : <Loading /> : <SignInNote onSignIn={() => { onClose(); openSheet({ type: 'signin' }) }} />)}
           {view === 'activity' && (signedIn ? <ActivityLog /> : <SignInNote onSignIn={() => { onClose(); openSheet({ type: 'signin' }) }} />)}
         </div>
         {view === 'chat' && (
@@ -208,15 +211,15 @@ function ChatCardView({ c, busy, onAsk, onGo }: { c: ChatCard; busy: boolean; on
   if (c.type === 'suggestions') return <div className="cmp-sugg cmp-sugg--inline">{c.options.map(o => <button key={o} className="chip chip--sm" disabled={busy} onClick={() => onAsk(o)}>{o}</button>)}</div>
   if (c.type === 'unlock') return (
     <div className="cmp-card cmp-card--soft">
-      <span className="strong">the agent is a Plus perk</span>
+      <span className="strong">the agent is a plus perk</span>
       <span className="muted small">{c.reason}</span>
-      <button className="btn btn--dark btn--sm btn--block" onClick={() => onGo('/plus')}>see Wifly Plus</button>
+      <button className="btn btn--dark btn--sm btn--block" onClick={() => onGo('/plus')}>see wifly plus</button>
     </div>
   )
   if (c.type === 'swap') return (
     <div className="cmp-card">
-      <div className="cmp-card__row"><span className="muted small">swap</span><span className="strong">{c.dir === 'eth2wif' ? `${n(c.amount)} ETH → WIF` : `${n(c.amount)} WIF → ETH`}</span></div>
-      {c.out != null && <div className="cmp-card__row"><span className="muted small">quote</span><span className="num">≈ {n(c.out)} {c.dir === 'eth2wif' ? 'WIF' : 'ETH'}</span></div>}
+      <div className="cmp-card__row"><span className="muted small">swap</span><span className="strong">{c.dir === 'eth2wif' ? `${n(c.amount)} eth → wif` : `${n(c.amount)} wif → eth`}</span></div>
+      {c.out != null && <div className="cmp-card__row"><span className="muted small">quote</span><span className="num">≈ {n(c.out)} {c.dir === 'eth2wif' ? 'wif' : 'eth'}</span></div>}
       <button className="btn btn--dark btn--sm btn--block" onClick={() => onGo('/swap')}>review on the swap screen</button>
       <span className="muted tiny">you confirm the swap in your wallet there.</span>
     </div>
@@ -227,7 +230,7 @@ function ChatCardView({ c, busy, onAsk, onGo }: { c: ChatCard; busy: boolean; on
       ...(d.perBuy.usd ? { usd: String(d.perBuy.usd) } : {}), ...(d.perBuy.eth ? { eth: String(d.perBuy.eth) } : {}), ...(d.depositEth ? { deposit: String(d.depositEth) } : {}) })
     return (
       <div className="cmp-card">
-        <div className="cmp-card__row"><span className="muted small">recurring buy</span><span className="strong">{d.perBuy.usd ? `$${n(d.perBuy.usd)}` : `${d.perBuy.eth} ETH`} of WIF</span></div>
+        <div className="cmp-card__row"><span className="muted small">recurring buy</span><span className="strong">{d.perBuy.usd ? `$${n(d.perBuy.usd)}` : `${d.perBuy.eth} eth`} of wif</span></div>
         <div className="cmp-card__row"><span className="muted small">when</span><span>{d.every === 'week' && d.weekday != null ? `every ${DAYS[d.weekday]}` : `every ${d.every}`}{d.every === 'hour' ? '' : ` at ${String(d.hour).padStart(2, '0')}:${String(d.minute).padStart(2, '0')}`}</span></div>
         <button className="btn btn--dark btn--sm btn--block" onClick={() => onGo(`/dca?${q}`)}>set the deposit and confirm</button>
       </div>
@@ -235,7 +238,7 @@ function ChatCardView({ c, busy, onAsk, onGo }: { c: ChatCard; busy: boolean; on
   }
   if (c.type === 'dca_manage') return (
     <div className="cmp-card">
-      <div className="cmp-card__row"><span className="muted small">{c.action} plan</span><span className="strong">{c.plan.perBuyUsd ? `$${n(c.plan.perBuyUsd)}` : `${c.plan.perBuyEth} ETH`} · {c.plan.status.replace('_', ' ')}</span></div>
+      <div className="cmp-card__row"><span className="muted small">{c.action} plan</span><span className="strong">{c.plan.perBuyUsd ? `$${n(c.plan.perBuyUsd)}` : `${c.plan.perBuyEth} eth`} · {c.plan.status.replace('_', ' ')}</span></div>
       <button className="btn btn--dark btn--sm btn--block" onClick={() => onGo('/dca')}>{c.action} on the DCA screen</button>
     </div>
   )
@@ -252,15 +255,15 @@ function MyAgentPane({ onGo }: { onGo: (to: string) => void }) {
     <div className="cmp-pane">
       {!d || d.locked ? (
         <div className="cmp-card cmp-card--soft">
-          <span className="strong">your own agent comes with Plus</span>
+          <span className="strong">your own agent comes with plus</span>
           <span className="muted small">it prepares tips, swaps, recurring buys and memberships from a message, and you confirm each one. chat questions stay free.</span>
-          <button className="btn btn--dark btn--sm btn--block" onClick={() => onGo('/plus')}>see Wifly Plus</button>
+          <button className="btn btn--dark btn--sm btn--block" onClick={() => onGo('/plus')}>see wifly plus</button>
         </div>
       ) : (
         <>
           <h3 className="cmp-pane__title">my agent</h3>
-          <p className="muted small">Plus {d.plus.state === 'grace' ? '(grace period)' : 'active'}. recurring buys:</p>
-          {d.dca?.plans.length ? d.dca.plans.map(p => <div key={p.id} className="cmp-card__row"><span>{p.perBuyUsd ? `$${n(p.perBuyUsd)}` : `${p.perBuyEth} ETH`} · {p.buysLeft} left</span><span className="muted small">{p.status.replace('_', ' ')}</span></div>) : <span className="muted small">none yet.</span>}
+          <p className="muted small">plus {d.plus.state === 'grace' ? '(grace period)' : 'active'}. recurring buys:</p>
+          {d.dca?.plans.length ? d.dca.plans.map(p => <div key={p.id} className="cmp-card__row"><span>{p.perBuyUsd ? `$${n(p.perBuyUsd)}` : `${p.perBuyEth} eth`} · {p.buysLeft} left</span><span className="muted small">{p.status.replace('_', ' ')}</span></div>) : <span className="muted small">none yet.</span>}
           <button className="btn btn--ghost btn--sm" onClick={() => onGo('/dca')}>open recurring buys</button>
           {!!d.actions?.length && <><p className="muted small">recent</p>{d.actions.slice(0, 5).map(a => <div key={a.id} className="cmp-card__row"><span className="small clamp-1">{a.command}</span><span className="muted tiny">{a.status}</span></div>)}</>}
         </>
@@ -274,7 +277,7 @@ function MyAgentPane({ onGo }: { onGo: (to: string) => void }) {
 export function RentAgentCard() {
   return (
     <div className="rent-agent" aria-disabled="true">
-      <div className="rent-agent__head"><span className="strong">rent an AI agent</span><span className="rent-agent__soon">coming soon</span></div>
+      <div className="rent-agent__head"><span className="strong">rent an ai agent</span><span className="rent-agent__soon">coming soon</span></div>
       <p className="muted small">a dedicated agent that works your wifly account around the clock, on rules you set.</p>
       <button className="btn btn--ghost btn--sm" disabled>rent an agent</button>
     </div>
@@ -284,9 +287,9 @@ export function RentAgentCard() {
 function Meters({ st, onCap, onTopUp }: { st?: AgentState; onCap: () => void; onTopUp: () => void }) {
   return (
     <div className="cmp-meters">
-      <button className="cmp-meter" onClick={onTopUp}><span className="muted small">deposited</span><b className="num">{st ? n(st.deposited) : '…'} <small>WIF</small></b></button>
-      <button className="cmp-meter" onClick={onCap}><span className="muted small">daily cap</span><b className="num">{st ? (st.enabled ? n(st.cap) : 'off') : '…'}{st?.enabled && <small> WIF</small>}</b></button>
-      <button className="cmp-meter" onClick={onCap}><span className="muted small">left today</span><b className="num">{st ? n(st.remaining) : '…'} <small>WIF</small></b></button>
+      <button className="cmp-meter" onClick={onTopUp}><span className="muted small">deposited</span><b className="num">{st ? n(st.deposited) : '…'} <small>wif</small></b></button>
+      <button className="cmp-meter" onClick={onCap}><span className="muted small">daily cap</span><b className="num">{st ? (st.enabled ? n(st.cap) : 'off') : '…'}{st?.enabled && <small> wif</small>}</b></button>
+      <button className="cmp-meter" onClick={onCap}><span className="muted small">left today</span><b className="num">{st ? n(st.remaining) : '…'} <small>wif</small></b></button>
     </div>
   )
 }
@@ -307,14 +310,14 @@ function ConfirmCard({ p, st, result, busy, onConfirm, onTopUp }: { p: Planned; 
           </span>
         </div>
       )}
-      <div className="cmp-card__row"><span className="muted small">amount</span><span className="cmp-card__amt"><b className="num">{n(p.amount ?? 0)} WIF</b><Usd value={p.usd ?? undefined} className="small muted" /></span></div>
+      <div className="cmp-card__row"><span className="muted small">amount</span><span className="cmp-card__amt"><b className="num">{n(p.amount ?? 0)} wif</b><Usd value={p.usd ?? undefined} className="small muted" /></span></div>
       {(p.kind === 'tip' || p.kind === 'subscribe' || p.kind === 'promote') && (p.amount ?? 0) > 0 && (() => {
         const fee = (p.amount ?? 0) * (p.kind === 'promote' ? TOPSPOT_FEE_SHARE : FEE_BPS / 10_000), parts = splitFee(fee)
         return <div className="cmp-card__row" title={`every fee: ${FEE_SPLIT_LABEL}`}><span className="muted small">fee · {p.kind === 'promote' ? `${Math.round(TOPSPOT_FEE_SHARE * 100)}% of bid` : FEE_PERCENT_LABEL}</span>
-          <span className="cmp-card__amt"><span className="num">{n(fee)} WIF</span><span className="muted tiny">{parts.treasury > 0 ? `${n(parts.treasury)} treasury · ` : ''}{n(parts.pot)} pot · {n(parts.burn)} burned</span></span></div>
+          <span className="cmp-card__amt"><span className="num">{n(fee)} wif</span><span className="muted tiny">{parts.treasury > 0 ? `${n(parts.treasury)} treasury · ` : ''}{n(parts.pot)} pot · {n(parts.burn)} burned</span></span></div>
       })()}
-      <div className="cmp-card__row"><span className="muted small">from deposited</span><span className="num">{n(cur.deposited)} WIF</span></div>
-      <div className="cmp-card__row"><span className="muted small">cap left today</span><span className="num">{n(cur.remaining)} → {n(remainingAfter)} WIF</span></div>
+      <div className="cmp-card__row"><span className="muted small">from deposited</span><span className="num">{n(cur.deposited)} wif</span></div>
+      <div className="cmp-card__row"><span className="muted small">cap left today</span><span className="num">{n(cur.remaining)} → {n(remainingAfter)} wif</span></div>
       {p.call && <div className="cmp-card__fn mono tiny">{p.call.fn}(you, {p.call.args.slice(1).map(a => (a.startsWith('0x') && a.length === 42 ? short(a) : a.length > 18 ? `${a.slice(0, 6)}…` : a)).join(', ')})</div>}
       {done ? (
         <div className={`cmp-card__status is-${result!.status}`}>
@@ -322,7 +325,7 @@ function ConfirmCard({ p, st, result, busy, onConfirm, onTopUp }: { p: Planned; 
           {result!.status === 'sent' ? <>sent · <a href={`https://robinhoodchain.blockscout.com/tx/${result!.hash}`} target="_blank" rel="noreferrer">view transaction</a></> : result!.status === 'preview' ? 'not live yet: nothing was sent' : result!.reason}
         </div>
       ) : p.needsTopUp ? (
-        <button className="btn btn--dark btn--block btn--sm" onClick={() => onTopUp(p.needsTopUp!.shortfall)}>top up {n(p.needsTopUp.shortfall)} WIF</button>
+        <button className="btn btn--dark btn--block btn--sm" onClick={() => onTopUp(p.needsTopUp!.shortfall)}>top up {n(p.needsTopUp.shortfall)} wif</button>
       ) : p.ok ? (
         <button className="btn btn--dark btn--block btn--sm" onClick={onConfirm} disabled={busy}>{busy ? 'sending…' : `confirm ${FN_WORDS[p.call?.fn ?? ''] ?? ''}`}</button>
       ) : null}
@@ -353,11 +356,11 @@ function TopUp({ st, suggested, onDone, onBack }: { st: AgentState; suggested: n
       <p className="muted small">the agent spends only from here. you approve exactly this amount, then deposit it. you can withdraw it any time from your wallet; the agent can’t.</p>
       <div className="cmp-amount">
         <input inputMode="decimal" value={amount || ''} onChange={e => setAmount(Number(e.target.value.replace(/[^0-9.]/g, '')) || 0)} aria-label="top up amount" />
-        <span>WIF</span>
+        <span>wif</span>
       </div>
       <div className="cmp-presets">{[...(suggested ? [suggested] : []), 100, 500, 1000].filter((v, i, a) => a.indexOf(v) === i).map(v => <button key={v} className={`chip chip--sm ${amount === v ? 'is-on' : ''}`} onClick={() => setAmount(v)}>{v === suggested ? `${n(v)} (needed)` : n(v)}</button>)}</div>
-      <div className="cmp-card__row"><span className="muted small">balance after</span><span className="num strong">{n(st.deposited + amount)} WIF</span></div>
-      <TxSteps pull={amount} action={`deposit ${n(amount)} WIF`} />
+      <div className="cmp-card__row"><span className="muted small">balance after</span><span className="num strong">{n(st.deposited + amount)} wif</span></div>
+      <TxSteps pull={amount} action={`deposit ${n(amount)} wif`} />
       {err && <p className="cmp-err small">{err}</p>}
       <button className="btn btn--dark btn--block" disabled={!amount || busy} onClick={go}>{busy ? 'depositing…' : `approve ${n(amount)} + deposit`}</button>
       {!LIVE && <p className="preview-note"><Icon name="shield" size={14} /> payments aren’t live yet. confirming sends nothing.</p>}
@@ -371,19 +374,23 @@ function CapSheet({ st }: { st: AgentState }) {
   const [err, setErr] = useState<string | null>(null)
   const send = useSendPlan()
   const refresh = useAgentRefresh()
+  // the server's signer address first (it is the one that sends); the build's VITE_WIFLY_AGENT_ADDRESS as a fallback.
+  // if both are set and disagree, block: authorising the wrong address would let nobody (or someone else) spend.
+  const agentAddr = st.agentAddress ?? WIFLY_AGENT_ADDRESS ?? null
+  const mismatch = !!(st.agentAddress && WIFLY_AGENT_ADDRESS && st.agentAddress.toLowerCase() !== WIFLY_AGENT_ADDRESS.toLowerCase())
   const save = async (value: number) => {
     setBusy(true); setErr(null)
     try {
       let txHash: string | undefined
       if (st.live) {
-        if (value > 0 && !st.agentAddress) { setErr('the agent address isn’t configured yet'); return }
-        const r = await send(value > 0 ? plans.setAgent(st.agentAddress as `0x${string}`, value) : plans.revokeAgent())
+        if (value > 0 && (!agentAddr || mismatch)) { setErr(mismatch ? 'the agent address doesn’t match the server’s. nothing was sent' : 'the agent address isn’t set yet. nothing was sent'); return }
+        const r = await send(value > 0 ? plans.setAgent(agentAddr as `0x${string}`, value) : plans.revokeAgent())
         if (!r.sent) { setErr(`${failTitle(r)}: ${r.reason}`); return }
         txHash = r.hash
       }
       const s = await call<AgentState & { error?: string }>('/agent/cap', 'PUT', { cap: value, txHash })
       if (s.error) { setErr(s.error); return }
-      refresh(s); companion.say(value > 0 ? `daily cap set to ${n(value)} WIF` : 'agent off. it can’t spend anything now', value > 0 ? 'happy' : 'calm')
+      refresh(s); companion.say(value > 0 ? `daily cap set to ${n(value)} wif` : 'agent off. it can’t spend anything now', value > 0 ? 'happy' : 'calm')
     } catch (e) { setErr((e as Error).message) } finally { setBusy(false) }
   }
   const pct = st.maxCap ? cap / st.maxCap : 0
@@ -391,16 +398,16 @@ function CapSheet({ st }: { st: AgentState }) {
   return (
     <div className="cmp-pane">
       <h3 className="cmp-pane__title">daily cap</h3>
-      <p className="muted small">the most the agent can spend for you each UTC day, from your deposited balance. it can never withdraw.</p>
-      <div className="capbar" aria-label={`${st.spentToday} of ${st.cap} WIF spent today`}><motion.span className="capbar__fill" animate={{ width: `${used * 100}%` }} /></div>
-      <div className="capbar__legend small"><span><b className="num">{n(st.spentToday)}</b> spent today</span><span><b className="num">{n(st.remaining)}</b> left{st.enabled ? ` of ${n(st.cap)}` : ''} WIF</span></div>
-      <div className="cmp-amount"><input inputMode="numeric" value={cap || ''} onChange={e => setCap(Math.min(st.maxCap, Number(e.target.value.replace(/\D/g, '')) || 0))} aria-label="daily cap in WIF" /><span>WIF / day</span></div>
+      <p className="muted small">the most the agent can spend for you each utc day, from your deposited balance. it can never withdraw.</p>
+      <div className="capbar" aria-label={`${st.spentToday} of ${st.cap} wif spent today`}><motion.span className="capbar__fill" animate={{ width: `${used * 100}%` }} /></div>
+      <div className="capbar__legend small"><span><b className="num">{n(st.spentToday)}</b> spent today</span><span><b className="num">{n(st.remaining)}</b> left{st.enabled ? ` of ${n(st.cap)}` : ''} wif</span></div>
+      <div className="cmp-amount"><input inputMode="numeric" value={cap || ''} onChange={e => setCap(Math.min(st.maxCap, Number(e.target.value.replace(/\D/g, '')) || 0))} aria-label="daily cap in wif" /><span>wif / day</span></div>
       <input className="range" type="range" min={0} max={st.maxCap} step={st.maxCap > 500 ? 50 : 10} value={cap} onChange={e => setCap(Number(e.target.value))} style={{ '--pct': `${pct * 100}%` } as React.CSSProperties} aria-label="daily cap" />
-      <p className="muted tiny">up to {n(st.maxCap)} WIF a day{st.maxCap <= 500 ? ' (5,000 with plus)' : ''}. agent: <span className="mono">{st.agentAddress ? short(st.agentAddress) : 'set by the team at launch'}</span></p>
-      <TxSteps pull={0} action={cap > 0 ? `setAgent with a ${n(cap)} WIF daily cap` : 'revokeAgent'} />
+      <p className="muted tiny">up to {n(st.maxCap)} wif a day{st.maxCap <= 500 ? ' (5,000 with plus)' : ''}. agent: <span className="mono">{agentAddr ? short(agentAddr) : 'not set yet'}</span></p>
+      <TxSteps pull={0} action={cap > 0 ? `setAgent with a ${n(cap)} wif daily cap` : 'revokeAgent'} />
       {err && <p className="cmp-err small">{err}</p>}
       <div className="cmp-row">
-        <button className="btn btn--dark" disabled={busy || cap <= 0 || (st.enabled && cap === st.cap)} onClick={() => save(cap)}>{busy ? 'saving…' : !st.enabled ? 'turn on' : cap > st.cap ? 'raise cap' : 'lower cap'}</button>
+        <button className="btn btn--dark" disabled={busy || cap <= 0 || (st.live && (!agentAddr || mismatch)) || (st.enabled && cap === st.cap)} onClick={() => save(cap)}>{busy ? 'saving…' : !st.enabled ? 'turn on' : cap > st.cap ? 'raise cap' : 'lower cap'}</button>
         {st.enabled && <button className="btn btn--ghost" disabled={busy} onClick={() => save(0)}><Icon name="power" size={14} /> revoke</button>}
       </div>
       {!st.live && <p className="preview-note"><Icon name="shield" size={14} /> payments aren’t live yet. nothing is sent.</p>}
@@ -429,6 +436,11 @@ function ActivityLog() {
       ))}
     </ul>
   )
+}
+
+/** Spending is off on this build (AGENT_READY false): one calm card instead of the cap slider, setAgent step and deposit. */
+function SpendingOff() {
+  return <Empty title="spending is off for now" body="chat works, and you’ll set a daily cap here when it opens." />
 }
 
 function SignInNote({ onSignIn }: { onSignIn: () => void }) {

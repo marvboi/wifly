@@ -5,14 +5,12 @@
  * Live (VITE_DCA_ADDRESS set + the backend sees the contract): every change is a transaction from your wallet, then the
  * hash goes to the backend, which re-reads the chain. Preview: the plan is saved in the app only and nothing is sent.
  */
-import { InfoTip } from '../components/InfoTip'
 import { useMemo, useState } from 'react'
 import { useSearchParams, Link } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { encodeFunctionData, parseEther, type Hex } from 'viem'
 import { PageHead } from '../components/Shell'
-import { Mascot } from '../components/Mascot'
-import { DCA_ADDRESS, EXPLORER } from '../config'
+import { DCA_ADDRESS, EXPLORER, TX_ENABLED } from '../config'
 import { WIFLY_DCA_ABI } from '../contracts/wiflyDca'
 import { call } from '../companion/agentApi'
 import { utcLabel } from '../lib/tzLabel'
@@ -20,8 +18,6 @@ import { useWifPrice } from '../lib/price'
 import { explainError, failTitle, useSendPlan, type Plan } from '../lib/wifly'
 import { PREVIEW_NOTE, useStore } from '../state/store'
 import { useSession } from '../api/session'
-import { Icon } from '../components/Icon'
-import { PlusMark } from '../components/BrandSlots'
 
 type Every = 'hour' | 'day' | 'week' | 'month'
 type PlanView = {
@@ -56,16 +52,16 @@ export function DCA() {
   const { toast } = useStore()
   const send = useSendPlan()
   const { ethUsd, stale } = useWifPrice()
-  const { me } = useSession()
+  const { me, guest } = useSession()
   const { openSheet } = useStore()
   // only signed-in people have plans, and only once the contract exists: no request otherwise (it would just 401)
   const st = useQuery({ queryKey: ['dca', me?.handle], queryFn: () => call<State>('/dca'), refetchInterval: 30_000, enabled: !!DCA_ADDRESS && !!me })
-  const live = !!st.data?.live && !!DCA_ADDRESS
+  // live = the backend says live AND this build can send: no "deposit … and start" (or any send) on a build with sends off
+  const live = !!st.data?.live && !!DCA_ADDRESS && TX_ENABLED
+  // a live contract but a build with sends off: no save either (the backend wants the createPlan tx), so say so on the button
+  const sendsOff = !!st.data?.live && !!DCA_ADDRESS && !TX_ENABLED
   // stored with the plan so the keeper can keep wall-clock times; never shown (a raw zone name reads badly)
   const tz = Intl.DateTimeFormat().resolvedOptions().timeZone
-  // scheduled buys only look live while the keeper really runs; until then the schedule is a calm "coming soon"
-  const keeper = useQuery({ queryKey: ['dca-keeper'], queryFn: () => call<{ enabled?: boolean }>('/dca/keeper'), staleTime: 60_000, enabled: !!DCA_ADDRESS })
-  const scheduled = !!keeper.data?.enabled
 
   const [deposit, setDeposit] = useState(q.get('deposit') ?? '0.05')
   const [unit, setUnit] = useState<'usd' | 'eth'>(q.get('eth') ? 'eth' : 'usd')
@@ -131,23 +127,6 @@ export function DCA() {
   }
 
   const data = st.data
-  if (!DCA_ADDRESS) return (
-    <>
-      <PageHead title="recurring buys" back />
-      <section className="soon-card card">
-        <span className="soon-card__nap" aria-hidden="true"><Mascot size={60} mood="sleepy" title="" /></span>
-        <h2 className="soon-card__title">buy WIF on a schedule.<InfoTip label="about recurring buys">like $5 of WIF every monday. pause or withdraw any time.</InfoTip></h2>
-        <p className="muted">opens soon.</p>
-        <ul className="soon-card__list small">
-          <li><Icon name="calendar" size={16} /> hourly, daily, weekly or monthly</li>
-          <li><PlusMark size={16} /> <span>scheduled buys are part of <Link to="/plus">wifly plus</Link></span></li>
-        </ul>
-        <div className="soon-card__actions">
-          <Link className="btn btn--dark" to="/swap">get WIF now</Link>
-        </div>
-      </section>
-    </>
-  )
   if (!me) return (
     <>
       <PageHead title="recurring buys" back />
@@ -158,21 +137,30 @@ export function DCA() {
       </section>
     </>
   )
+  if (guest) return (
+    <>
+      <PageHead title="recurring buys" back />
+      <section className="soon-card card" data-testid="dca-guest">
+        <h2 className="soon-card__title">buy WIF on a schedule.</h2>
+        <p className="muted">link a wallet, x or email first. plans need an account you can come back to.</p>
+        <div className="soon-card__actions"><button className="btn btn--dark" onClick={() => openSheet({ type: 'link' })}>link an account</button></div>
+      </section>
+    </>
+  )
   return (
     <>
       <PageHead title="recurring buys" back />
       <div className="dca">
-        {!live && <div className="card card--paper"><b>almost ready</b><span className="muted">recurring buys are still connecting. try again in a moment.</span></div>}
+        {!live && st.data && <div className="card card--paper" data-testid="dca-preview"><b>preview</b><span className="muted">plans are saved in wifly and nothing is sent onchain on this build.</span></div>}
 
         <section className="card">
           <b>new plan</b>
           <label className="field"><span className="field__label">deposit (ETH)</span><span className="field__input"><input inputMode="decimal" value={deposit} onChange={e => setDeposit(e.target.value)} /></span></label>
           <div className="seg"><button className={unit === 'usd' ? 'is-on' : ''} onClick={() => pickUnit('usd')}>per buy in $</button><button className={unit === 'eth' ? 'is-on' : ''} onClick={() => pickUnit('eth')}>per buy in ETH</button></div>
           <label className="field"><span className="field__label">each buy ({unit === 'usd' ? '$' : 'ETH'}){unit === 'usd' && perEth > 0 ? ` ≈ ${f(perEth, 6)} ETH${stale ? ' (price may be out of date)' : ''}` : ''}</span><span className="field__input"><input inputMode="decimal" value={per} onChange={e => setPer(e.target.value)} /></span></label>
-          {!scheduled && <div className="dca__soon" data-testid="dca-soon"><b>scheduled buys coming soon</b><span className="muted small">the schedule switches on by itself once it’s running. buying WIF once works now.</span><Link className="btn btn--dark btn--sm" to="/swap">buy WIF once</Link></div>}
-          <div className={`seg ${scheduled ? '' : 'is-disabled'}`} aria-disabled={!scheduled}>{(['hour', 'day', 'week', 'month'] as Every[]).map(e => <button key={e} disabled={!scheduled} className={every === e ? 'is-on' : ''} onClick={() => setEvery(e)}>{e === 'day' ? 'daily' : `${e}ly`}</button>)}</div>
-          {scheduled && every === 'week' && <div className="dca__days">{DAYS.map((d, i) => <button key={d} className={`chip ${weekday === i ? 'chip--ink' : ''}`} onClick={() => setWeekday(i)}>{d.slice(0, 3)}</button>)}</div>}
-          {scheduled && every !== 'hour' && <label className="field"><span className="field__label">time (your local time, {utcLabel()})</span><span className="field__input"><input type="time" value={time} onChange={e => setTime(e.target.value)} /></span></label>}
+          <div className="seg">{(['hour', 'day', 'week', 'month'] as Every[]).map(e => <button key={e} className={every === e ? 'is-on' : ''} onClick={() => setEvery(e)}>{e === 'day' ? 'daily' : `${e}ly`}</button>)}</div>
+          {every === 'week' && <div className="dca__days">{DAYS.map((d, i) => <button key={d} className={`chip ${weekday === i ? 'chip--ink' : ''}`} onClick={() => setWeekday(i)}>{d.slice(0, 3)}</button>)}</div>}
+          {every !== 'hour' && <label className="field"><span className="field__label">time (your local time, {utcLabel()})</span><span className="field__input"><input type="time" value={time} onChange={e => setTime(e.target.value)} /></span></label>}
           <details className="dca__adv">
             <summary>advanced settings</summary>
             <div className="dca__row">
@@ -182,7 +170,7 @@ export function DCA() {
             <label className="field"><span className="field__label">price floor, WIF per 1 ETH (optional)</span><span className="field__input"><input inputMode="decimal" value={floor} onChange={e => setFloor(e.target.value)} placeholder="none" /></span></label>
           </details>
           <span className="muted">{summary}. {buys > 0 ? `${buys} buys from this deposit.` : ''} scheduled buys run for wifly plus members. you can pause, top up or withdraw any time.</span>
-          <button className="btn btn--lg btn--neon" disabled={!scheduled || !!problem || !!busy} onClick={create}>{!scheduled ? 'scheduled buys coming soon' : busy === 'create' ? 'waiting…' : problem ?? (live ? `deposit ${deposit} ETH and start` : 'save plan')}</button>
+          <button className="btn btn--lg btn--neon" disabled={!!problem || !!busy || sendsOff} onClick={create}>{busy === 'create' ? 'waiting…' : problem ?? (sendsOff ? 'sending is off on this build' : live ? `deposit ${deposit} ETH and start` : 'save plan')}</button>
         </section>
 
         <section className="card">

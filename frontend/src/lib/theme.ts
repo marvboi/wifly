@@ -1,12 +1,12 @@
 /**
- * Light / dark theme for the landing and docs (the app stays light for now). index.html's inline script
- * (theme-init.mjs) sets html[data-theme] before first paint; this module keeps it in sync with the toggle, the
- * system setting (live) and other tabs. Switching uses a circular View Transition from the toggle where supported,
- * a short colour fade otherwise, and is instant under reduced motion.
+ * Light / dark / auto theme for the whole app. index.html's inline script (theme-init.mjs) sets html[data-theme]
+ * before first paint; this module keeps it in sync with the settings switch, the more-sheet toggle, the system
+ * setting (live, on auto) and other tabs. Switching is a soft cross-fade (a View Transition where supported, a short
+ * colour transition otherwise) and instant under reduced motion.
  */
 import { useEffect, useSyncExternalStore } from 'react'
 import { flushSync } from 'react-dom'
-import { THEME_KEY } from '../../theme-init.mjs'
+import { THEME_KEY, THEME_PICKED_KEY, themePrefFrom } from '../../theme-init.mjs'
 
 export type ThemePref = 'light' | 'dark' | 'system'
 export type Theme = 'light' | 'dark'
@@ -16,83 +16,78 @@ const html = () => document.documentElement
 const mq = (q: string) => typeof matchMedia === 'function' && matchMedia(q).matches
 const systemTheme = (): Theme => (mq('(prefers-color-scheme: dark)') ? 'dark' : 'light')
 
+/** Light by default. Dark, or auto, only when the person picked it (see theme-init.mjs). */
 function readPref(): ThemePref {
-  try { const v = localStorage.getItem(THEME_KEY); if (v === 'light' || v === 'dark') return v } catch { /* private mode */ }
-  return 'system'
+  try { return themePrefFrom(localStorage.getItem(THEME_KEY), localStorage.getItem(THEME_PICKED_KEY)) } catch { /* private mode */ }
+  return 'light'
 }
 
-let pref: ThemePref = typeof window === 'undefined' ? 'system' : readPref()
+let pref: ThemePref = typeof window === 'undefined' ? 'light' : readPref()
 const listeners = new Set<() => void>()
 const emit = () => listeners.forEach(l => l())
 const resolve = (p: ThemePref): Theme => (p === 'system' ? systemTheme() : p)
 
 function paintMeta() {
-  const m = document.querySelector('meta[name="theme-color"]')
-  const themed = html().hasAttribute('data-themed')
-  m?.setAttribute('content', themed ? BG[(html().dataset.theme as Theme) || 'light'] : BG.light)
+  const t = (html().dataset.theme as Theme) || 'light'
+  document.querySelector('meta[name="theme-color"]')?.setAttribute('content', BG[t])
 }
 
 function apply(t: Theme) {
-  html().dataset.theme = t
+  const d = html()
+  d.dataset.theme = t
+  d.setAttribute('data-themed', '')
+  d.style.colorScheme = t
+  d.style.backgroundColor = BG[t]
   paintMeta()
 }
 
 type StartVT = (cb: () => void) => { ready: Promise<void>; finished: Promise<void> }
 
-/** Switch to `t`, animating from `from` (client px, e.g. the toggle) when we can. */
-function switchTo(t: Theme, from?: { x: number; y: number }) {
+/** Switch to `t` with a calm cross-fade. */
+function switchTo(t: Theme) {
   const d = html()
   if (d.dataset.theme === t) { flushSync(emit); return }
-  const reduced = mq('(prefers-reduced-motion: reduce)')
-  if (reduced || !d.hasAttribute('data-themed')) { apply(t); flushSync(emit); return }
+  if (mq('(prefers-reduced-motion: reduce)') || document.visibilityState === 'hidden') { apply(t); flushSync(emit); return }
   const start = (document as Document & { startViewTransition?: StartVT }).startViewTransition
-  if (start && from) {
-    const r = Math.hypot(Math.max(from.x, innerWidth - from.x), Math.max(from.y, innerHeight - from.y))
+  if (start) {
     d.classList.add('theme-vt')
-    const vt = start.call(document, () => { apply(t); flushSync(emit) })
-    vt.ready.then(() => {
-      d.animate(
-        { clipPath: [`circle(0px at ${from.x}px ${from.y}px)`, `circle(${r}px at ${from.x}px ${from.y}px)`] },
-        { duration: 620, easing: 'cubic-bezier(.22,1,.36,1)', pseudoElement: '::view-transition-new(root)' },
-      )
-    }).catch(() => {})
-    vt.finished.finally(() => d.classList.remove('theme-vt'))
-    return
+    try {
+      const vt = start.call(document, () => { apply(t); flushSync(emit) })
+      vt.finished.finally(() => d.classList.remove('theme-vt')).catch(() => {})
+      return
+    } catch { d.classList.remove('theme-vt') }
   }
-  // No View Transitions (Firefox): a ~300ms colour fade.
+  // No View Transitions (firefox): a short colour fade.
   d.classList.add('theme-fade')
   apply(t)
   flushSync(emit)
-  window.setTimeout(() => d.classList.remove('theme-fade'), 340)
+  window.setTimeout(() => d.classList.remove('theme-fade'), 380)
 }
 
-export function setThemePref(next: ThemePref, from?: { x: number; y: number }) {
+export function setThemePref(next: ThemePref) {
   pref = next
-  try { if (next === 'system') localStorage.removeItem(THEME_KEY); else localStorage.setItem(THEME_KEY, next) } catch { /* ignore */ }
-  switchTo(resolve(next), from)
+  // every pick is saved with the marker, so an explicit auto is told apart from an old default
+  try { localStorage.setItem(THEME_KEY, next); localStorage.setItem(THEME_PICKED_KEY, '1') } catch { /* ignore */ }
+  switchTo(resolve(next))
 }
 
 if (typeof window !== 'undefined') {
   // Follow the system live while on "system"; follow other tabs.
   matchMedia?.('(prefers-color-scheme: dark)').addEventListener?.('change', () => { if (pref === 'system') switchTo(systemTheme()) })
-  window.addEventListener('storage', e => { if (e.key === THEME_KEY || e.key === null) { pref = readPref(); switchTo(resolve(pref)) } })
+  window.addEventListener('storage', e => { if (e.key === THEME_KEY || e.key === THEME_PICKED_KEY || e.key === null) { pref = readPref(); switchTo(resolve(pref)) } })
 }
 
 const subscribe = (l: () => void) => { listeners.add(l); return () => { listeners.delete(l) } }
 const snap = () => `${pref}:${typeof document === 'undefined' ? 'light' : html().dataset.theme || 'light'}`
 
 export function useTheme() {
-  const [p, t] = useSyncExternalStore(subscribe, snap, () => 'system:light').split(':') as [ThemePref, Theme]
+  const [p, t] = useSyncExternalStore(subscribe, snap, () => 'light:light').split(':') as [ThemePref, Theme]
   return { pref: p, theme: t, setPref: setThemePref }
 }
 
-/** Marks the page as following the theme while mounted (landing, docs). Other routes stay light. */
+/** Every page follows the theme now; kept so the landing and docs can still call it. Repaints the meta colour. */
 export function useThemedPage() {
-  useEffect(() => {
-    const d = html()
-    if (!d.dataset.theme) d.dataset.theme = resolve(pref)
-    d.setAttribute('data-themed', '')
-    paintMeta()
-    return () => { d.removeAttribute('data-themed'); paintMeta() }
-  }, [])
+  useEffect(() => { apply((html().dataset.theme as Theme) || resolve(pref)) }, [])
 }
+
+if (typeof window !== 'undefined' && typeof document !== 'undefined') apply((html().dataset.theme as Theme) || resolve(pref))

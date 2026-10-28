@@ -4,7 +4,7 @@
  * It renders nothing itself; it only syncs Privy's state into privyBridge.
  */
 import { useEffect, useRef } from 'react'
-import { PrivyProvider, useIdentityToken, useLinkAccount, useLogin, useLogout, usePrivy, useWallets, getIdentityToken, type WalletListEntry } from '@privy-io/react-auth'
+import { PrivyProvider, useIdentityToken, useLinkAccount, useLogin, useLoginWithOAuth, useLogout, usePrivy, useWallets, getIdentityToken, type WalletListEntry } from '@privy-io/react-auth'
 import { robinhoodChain } from '../config'
 import { PRIVY_APP_ID, privyBridge } from './privyBridge'
 
@@ -33,8 +33,14 @@ function Sync() {
     onError: err => { if (err !== 'exited_auth_flow') console.error('[sign-in] privy error:', err); pending.current?.reject(new Error(err === 'exited_auth_flow' ? 'sign-in closed' : `sign-in failed (${err})`)); pending.current = null },
   })
 
+  const { initOAuth } = useLoginWithOAuth({
+    onComplete: () => { pending.current?.resolve(); pending.current = null },
+    onError: err => { pending.current?.reject(new Error(err === 'exited_auth_flow' ? 'sign-in closed' : `sign-in failed (${err})`)); pending.current = null },
+  })
+
   useEffect(() => {
     privyBridge.register({
+      oauth: provider => new Promise<void>((resolve, reject) => { pending.current = { resolve, reject }; initOAuth({ provider }).catch(e => { pending.current = null; reject(e as Error) }) }),
       login: methods => new Promise<void>((resolve, reject) => { pending.current = { resolve, reject }; login(methods ? { loginMethods: methods } : undefined) }),
       logout,
       getIdentityToken: () => getIdentityToken(),
@@ -63,7 +69,7 @@ function Sync() {
         return await p.request({ method: 'eth_sendTransaction', params: [{ from: w.address, to, data, ...(value ? { value: `0x${value.toString(16)}` } : {}) }] }) as `0x${string}`
       },
     })
-  }, [login, logout, linkTwitter, linkWallet, getAccessToken, exportWallet])
+  }, [login, logout, initOAuth, linkTwitter, linkWallet, getAccessToken, exportWallet])
 
   useEffect(() => {
     const smart = null // smart wallets are off in this app

@@ -8,6 +8,7 @@ import '@fontsource-variable/geist'
 import '@fontsource-variable/geist-mono'
 import './styles/app.css'
 import './styles/theme.css'
+import './styles/dark.css'
 import { wagmiConfig } from './wagmi'
 import { StoreProvider, type SheetState } from './state/store'
 import { App } from './App'
@@ -25,6 +26,7 @@ function LazyPrivy() {
 const queryClient = new QueryClient({ defaultOptions: { queries: { staleTime: 10_000, retry: 1, refetchOnWindowFocus: false } } })
 
 /** Deep links for reviews and screenshots: ?sheet=tip&to=<handle>, ?sheet=swap, ?sheet=vote&handle=<handle> … (sheets that need a person open only when one is given) */
+/** fixed lines only: a link can't put its own words in the sign-in sheet */
 function sheetFromUrl(): SheetState {
   const p = new URLSearchParams(location.search)
   const g = (k: string) => p.get(k) ?? undefined

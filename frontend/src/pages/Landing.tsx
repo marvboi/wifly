@@ -339,7 +339,7 @@ const BENTO: { icon: Parameters<typeof Icon>[0]['name']; title: string; body: st
   { icon: 'link', title: 'pay links', body: 'one link anyone can pay in $WIF.' },
   { icon: 'flame', title: 'burn badges', body: 'burn WIF for badges on your profile. all of it goes to the burn address.', cls: 'lp-b--badges' },
   { icon: 'repost', title: 'get $WIF', body: 'swap into $WIF without leaving the app.' },
-  { icon: 'agent', title: AGENT_READY ? 'the agent' : 'the agent · coming soon', body: AGENT_READY ? 'an agent that tips and buys on your say, within the cap you set.' : 'an agent that tips and buys on your say. not live yet.', cls: AGENT_READY ? 'lp-b--wide' : 'lp-b--wide lp-b--soon' },
+  { icon: 'agent', title: 'the agent', body: AGENT_READY ? 'an agent that tips and buys on your say, within the cap you set.' : 'a free ai helper for your feed, tips and names. it never spends.', cls: 'lp-b--wide' },
 ]
 
 export function Landing() {
@@ -441,7 +441,7 @@ export function Landing() {
                   <div className="lp-pluscard">
                     <span className="lp-pluscard__mark"><PlusMark size={22} /></span>
                     <span className="lp-pluscard__price"><span className="num">{PLUS_PRICE_FALLBACK.toLocaleString()}</span> WIF / month</span>
-                    <span className="lp-pluscard__soon">{AGENT_READY ? 'agent included' : 'agent · coming soon'}</span>
+                    <span className="lp-pluscard__soon">{AGENT_READY ? 'agent included' : 'agent chat included'}</span>
                   </div>
                 </div>
               }>

@@ -29,6 +29,13 @@ function start() {
 }
 function stop() { es?.close(); es = null; if (poll !== null) clearInterval(poll); poll = null }
 
+// A page kept in the back/forward cache would otherwise hold its stream open, and over http/1.1 a few of those
+// fill the browser's per-host connection pool so the next page never loads. Close on pagehide, reopen on pageshow.
+if (typeof window !== 'undefined') {
+  window.addEventListener('pagehide', () => { if (users > 0) stop() })
+  window.addEventListener('pageshow', e => { if (e.persisted && users > 0 && !es && poll === null) start() })
+}
+
 function subscribe(f: () => void) {
   subs.add(f)
   if (users++ === 0) start()

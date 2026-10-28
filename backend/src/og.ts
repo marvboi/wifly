@@ -8,6 +8,7 @@ import { readFileSync, existsSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { createHash } from 'node:crypto'
 import { Resvg } from '@resvg/resvg-js'
+import sharp from 'sharp'
 import type { Env } from './auth'
 import { ALLOWED_ORIGINS, ROOT, UPLOAD_DIR, namesRendererContract } from './config'
 import { one } from './db'
@@ -71,18 +72,35 @@ ${brand ? FACE(88, 500, 52, 0.3) + LOGO(156, 506, 40) : ''}
 <text x="1112" y="537" text-anchor="end" font-family="Geist" font-size="26" fill="${MUTED}">${esc(footer)}</text>
 </svg>`
 
-function avatarHref(avatar: string | null | undefined): string | null {
+/**
+ * The avatar as an inline png the card renderer can always draw. resvg only decodes png/jpeg reliably (a .webp pfp drew an
+ * empty circle), so every upload is read from disk or, on a replica that hasn't cached it yet, from the uploads table, then
+ * converted with sharp to a square png at 2x the circle (cover crop). Anything that won't decode: null (the face is drawn).
+ */
+const avatarCache = new Lru<string, string>({ max: 200, maxBytes: 24 * 1024 * 1024, size: v => v.length * 2 })
+export async function avatarHref(avatar: string | null | undefined, size = 236): Promise<string | null> {
   const m = /^\/uploads\/([A-Za-z0-9_-]+\.(png|jpg|jpeg|gif|webp))$/.exec(avatar ?? '')
   if (!m) return null
-  const f = resolve(UPLOAD_DIR, m[1])
-  if (!existsSync(f)) return null
-  const type = m[2] === 'jpg' ? 'jpeg' : m[2]
-  if (type === 'gif') return null
-  return `data:image/${type};base64,${readFileSync(f).toString('base64')}`
+  const key = `${m[1]}@${size}`
+  const hit = avatarCache.get(key)
+  if (hit !== undefined) return hit || null
+  let out: string | null = null
+  try {
+    const f = resolve(UPLOAD_DIR, m[1])
+    let buf: Uint8Array | null = existsSync(f) ? readFileSync(f) : null
+    if (!buf) { const r = await one<{ data: ArrayBuffer }>('SELECT data FROM uploads WHERE name = ?', [m[1]]); if (r?.data) buf = new Uint8Array(r.data) }
+    if (buf && buf.byteLength > 0 && buf.byteLength <= 8 * 1024 * 1024) {
+      const px = Math.min(1024, Math.max(64, Math.round(size * 2)))
+      const png = await sharp(buf, { limitInputPixels: 50_000_000, animated: false }).rotate().resize(px, px, { fit: 'cover', position: 'attention' }).png().toBuffer()
+      out = `data:image/png;base64,${png.toString('base64')}`
+    }
+  } catch { out = null }
+  avatarCache.set(key, out ?? '', out ? undefined : 5 * 60_000) // a miss is retried after a while
+  return out
 }
-/** a round avatar, or the lime wifly face when there is no picture */
-function avatarBlock(x: number, y: number, s: number, avatar: string | null | undefined, id: string) {
-  const href = avatarHref(avatar)
+/** a round avatar, or the lime wifly face when there is no picture or it won't decode: never an empty circle */
+async function avatarBlock(x: number, y: number, s: number, avatar: string | null | undefined, id: string) {
+  const href = await avatarHref(avatar, s)
   if (!href) return FACE(x, y, s, 0.5)
   return `<clipPath id="${id}"><circle cx="${x + s / 2}" cy="${y + s / 2}" r="${s / 2}"/></clipPath><image href="${href}" x="${x}" y="${y}" width="${s}" height="${s}" preserveAspectRatio="xMidYMid slice" clip-path="url(#${id})"/><circle cx="${x + s / 2}" cy="${y + s / 2}" r="${s / 2 - 1}" fill="none" stroke="${LINE}" stroke-width="2"/>`
 }
@@ -152,11 +170,12 @@ const PAGE_TITLES: Record<string, [string, string]> = {
   explore: ['explore · wifly', 'find people, drops and .wif names on wifly.'],
   names: ['.wif names · wifly', 'claim a .wif name. it’s yours onchain, and the card is drawn onchain too.'],
   plus: ['wifly plus', 'the plus check, an assistant with no daily limit and more. optional: everything else stays free.'],
-  swap: ['get $WIF · wifly', 'swap for $WIF on robinhood chain, right inside wifly.'],
+  swap: ['get $WIF · wifly', 'swap for $WIF onchain, right inside wifly.'],
   vote: ['vote · wifly', 'vote on the weekly pot with your $WIF.'],
   docs: ['docs · wifly', 'how wifly works: tips, subscriptions, paid drops, .wif names and the weekly pot.'],
 }
-const imgVersion = (t: Target) => createHash('sha256').update(JSON.stringify(t)).digest('hex').slice(0, 10)
+const OG_RENDER = 2 // bump when the drawing changes, so previews that cached a broken card fetch a new one
+const imgVersion = (t: Target) => createHash('sha256').update(OG_RENDER + JSON.stringify(t)).digest('hex').slice(0, 10)
 
 export function originFor(host: string | undefined): string {
   const h = (host ?? '').toLowerCase().replace(/[^a-z0-9.:-]/g, '')
@@ -235,7 +254,7 @@ async function cardSvg(t: Target): Promise<string> {
     const big = /^[a-z0-9 _.\-@'’]*$/i.test(drawable(u.name)) ? 'WIF Par, Geist' : 'Geist'
     const nameLines = wrap(u.name, 68, 640, 1, big.startsWith('WIF') ? 0.66 : 0.56)
     let y = 210
-    let s = avatarBlock(104, 112, 236, u.avatar, 'av')
+    let s = await avatarBlock(104, 112, 236, u.avatar, 'av')
     s += `<text x="400" y="${y}" font-family="${big}" font-size="68" fill="${INK}">${esc(nameLines[0] ?? '')}</text>`
     y += 64
     if (u.wifName) { const p = pill(400, y - 36, `${u.wifName}.wif`); s += p.svg; s += `<text x="${400 + p.w + 18}" y="${y}" font-family="Geist" font-size="30" fill="${MUTED}">@${esc(u.handle)}</text>` }
@@ -246,7 +265,7 @@ async function cardSvg(t: Target): Promise<string> {
   }
   if (t.kind === 'post') {
     const u = t.u
-    let s = avatarBlock(104, 100, 84, u.avatar, 'av')
+    let s = await avatarBlock(104, 100, 84, u.avatar, 'av')
     s += `<text x="210" y="138" font-family="Geist" font-size="34" font-weight="600" fill="${INK}">${esc(clip(drawable(u.name), 36))}</text>`
     s += `<text x="210" y="178" font-family="Geist" font-size="28" fill="${MUTED}">${esc(u.wifName ? `${u.wifName}.wif` : `@${u.handle}`)}</text>`
     if (t.gated) {

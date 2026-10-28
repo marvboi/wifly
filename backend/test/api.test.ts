@@ -150,8 +150,9 @@ test('profile, drops, likes, replies, passes, quotes, bookmarks, delete, notific
 
   const n = await call('GET', '/api/notifications', { cookie: me })
   const kinds = n.body.items.map((x: any) => x.kind).sort()
-  assert.deepEqual(kinds, ['follow', 'like', 'pass', 'quote', 'reply', 'tip'])
-  assert.equal((await call('GET', '/api/me', { cookie: me })).body.unread, 6)
+  // the preview tip (no tx hash) is recorded but never notifies: only a tip proven onchain sends "tipped you"
+  assert.deepEqual(kinds, ['follow', 'like', 'pass', 'quote', 'reply'])
+  assert.equal((await call('GET', '/api/me', { cookie: me })).body.unread, 5)
   await call('POST', '/api/notifications/read', { cookie: me })
   assert.equal((await call('GET', '/api/me', { cookie: me })).body.unread, 0)
   const juno = await call('GET', '/api/users/junoflat')

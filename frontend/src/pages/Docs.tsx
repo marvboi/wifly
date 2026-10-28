@@ -6,7 +6,7 @@ import { Icon } from '../components/Icon'
 import { ThemeToggle } from '../components/ThemeToggle'
 import { useThemedPage } from '../lib/theme'
 import {
-  AGENT_CAP_FREE, AGENT_CAP_PLUS, AGENT_READY, DCA_READY, FREE_AI_MSGS_PER_DAY_FALLBACK, SWAP_POOL_FEE_BPS,
+  AGENT_CAP_FREE, AGENT_CAP_PLUS, AGENT_READY, FREE_AI_MSGS_PER_DAY_FALLBACK, SWAP_POOL_FEE_BPS,
   BADGE_LEVELS, BADGES_ADDRESS, BURN_ADDRESS, CLAIM_SPLIT, FEE_BPS, FEE_SPLIT, LINKS, NAME_CLAIM_FEE, NAME_FEE_BPS,
   NAME_MAX, NAME_MIN, NAME_SHORT_CLAIM_FEE, NAME_SHORT_LEN, NAMES_ADDRESS, PLUS_PRICE_FALLBACK, PLUS_PRICE_YEAR_FALLBACK, TOPSPOT_FEE_SHARE,
   TOPSPOT_HOLDER_SHARE, TOPSPOT_MIN_RAISE, TREASURY, VOTE_PRICE, WIF_TOKEN, WIFLY_ADDRESS,
@@ -111,11 +111,14 @@ const sections: Section[] = [
         <li>unlimited questions to the free assistant. without plus you get {FREE_AI_MSGS_PER_DAY_FALLBACK} a day.</li>
         {AGENT_READY
           ? <>
-              <li>rent an AI agent that tips and buys for you. nothing happens until you confirm.</li>
+              <li>rent an ai agent that tips and buys for you. nothing happens until you confirm.</li>
               <li>a higher daily cap for your agent: up to {n(AGENT_CAP_PLUS)} WIF instead of {n(AGENT_CAP_FREE)}. you still set it.</li>
             </>
-          : <li>rent an AI agent that tips and buys for you, with a higher daily cap. <span className="dx-soon">coming soon</span></li>}
-        <li>scheduled WIF buys, like a set amount every friday.{!DCA_READY && <> <span className="dx-soon">coming soon</span></>}</li>
+          : <>
+              <li>unlimited chat with the wifly agent, a free ai helper that never spends.</li>
+              <li>rent an ai agent that tips and buys for you, with a higher daily cap. <span className="dx-soon">coming soon</span></li>
+            </>}
+        <li>scheduled WIF buys, like a set amount every friday.</li>
       </ul>
     </>,
   },
@@ -160,7 +163,7 @@ const sections: Section[] = [
           ['crowd votes', `${VOTE_PRICE} WIF per vote, all of it a fee`],
           ['wifly plus', `${n(PLUS_PRICE_FALLBACK)} WIF / month, ${n(PLUS_PRICE_YEAR_FALLBACK)} WIF / year, ${FEE} of it the fee`],
           ['burn badges', 'no fee, 100% burned'],
-          ['scheduled WIF buys', DCA_READY ? 'no wifly fee' : 'no wifly fee (coming soon)'],
+          ['scheduled WIF buys', 'no wifly fee'],
           ['swap', `${POOL_FEE} pool fee, included in the quote`],
         ].map(([k, v]) => <div role="row" key={k}><span role="cell">{k}</span><span role="cell">{v}</span></div>)}
       </div>

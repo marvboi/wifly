@@ -14,7 +14,7 @@ export const agentDefaults = {
 }
 
 export type SheetState =
-  | { type: 'tip'; to?: string; postId?: string }
+  | { type: 'tip'; to?: string; postId?: string; dm?: boolean }
   | { type: 'unlock'; postId: string }
   | { type: 'subscribe'; handle: string; tierId?: string }
   | { type: 'bid' }

@@ -19,7 +19,7 @@ import { Blank, SkelRows } from '../components/Delight'
 const iconFor: Record<Notif['kind'], IconName> = { like: 'heart', pass: 'repost', reply: 'reply', quote: 'quote', follow: 'user', mention: 'reply', tip: 'tip', name_offer: 'at', name_offer_accepted: 'check', handle_bump: 'info' }
 const verb: Record<Notif['kind'], string> = {
   like: 'liked your drop', pass: 'passed your drop on', reply: 'replied to you', quote: 'quoted your drop',
-  follow: 'followed you', mention: 'mentioned you', tip: 'tipped your drop · it’s in your wallet',
+  follow: 'followed you', mention: 'mentioned you', tip: 'tipped you · it’s in your wallet',
   name_offer: 'made an offer on your name', name_offer_accepted: 'accepted your offer. the name is listed for you',
   handle_bump: 'claimed a .wif that matches your @name',
 }
@@ -36,9 +36,18 @@ function who(n: Notif) {
   return <>{first} and {n.count - 1} others</>
 }
 
+/** every tip row reads "tipped you X wif": from a post, a chat, a profile or the tip sheet, or found onchain by the server */
+const wifAmt = (v: unknown) => typeof v === 'number' && v > 0 ? `${v.toLocaleString('en-US', { maximumFractionDigits: v < 1 ? 4 : 2 })} wif` : 'wif'
+function tipLine(n: Notif, onDrop: boolean) {
+  // an old unverified tip has its amount hidden: it reads "tipped you" with no number and no wallet claim
+  const proven = typeof n.meta.amount === 'number' && n.meta.amount > 0
+  const base = proven ? `tipped you ${wifAmt(n.meta.amount)}` : 'tipped you', tail = proven ? ' · it’s in your wallet' : ''
+  return n.meta.dm ? `${base} in messages${tail}` : onDrop ? `${base} on your drop${tail}` : `${base}${tail}`
+}
+
 function Row({ n }: { n: Notif }) {
   const drop = n.drop ? getDrop(n.drop.id) : null
-  const target = n.kind === 'follow' ? profilePath(n.actors[0]?.handle ?? 'you') : n.kind === 'name_offer' ? '/names?tab=mine' : n.kind === 'name_offer_accepted' ? `/names?q=${String(n.meta.name ?? '')}` : n.kind === 'handle_bump' ? '/@you' : drop ? `/post/${drop.id}` : '#'
+  const target = n.kind === 'tip' && !n.drop && !n.meta.dm ? (n.actors[0] ? profilePath(n.actors[0].handle) : '/settings#wallets') : n.kind === 'tip' && n.meta.dm ? `/messages/${n.actors[0]?.handle ?? ''}` : n.kind === 'follow' ? profilePath(n.actors[0]?.handle ?? 'you') : n.kind === 'name_offer' ? '/names?tab=mine' : n.kind === 'name_offer_accepted' ? `/names?q=${String(n.meta.name ?? '')}` : n.kind === 'handle_bump' ? '/@you' : drop ? `/post/${drop.id}` : '#'
   const showText = drop && (n.kind === 'reply' || n.kind === 'mention' || n.kind === 'quote')
   return (
     <li className={`notif ${n.read ? '' : 'is-unread'}`}>
@@ -46,7 +55,7 @@ function Row({ n }: { n: Notif }) {
         <span className={`notif__icon notif__icon--${n.kind}`}><Icon name={iconFor[n.kind]} size={18} fill={n.kind === 'like'} /></span>
         <div className="notif__main">
           <div className="notif__faces">{n.actors.slice(0, 6).map(a => <Avatar key={a.handle} handle={a.handle} size={32} />)}</div>
-          <p className="notif__line">{who(n)} {verb[n.kind]}<span className="muted"> · {relTime(n.createdAt)}</span></p>
+          <p className="notif__line">{who(n) ?? (n.kind === 'tip' ? <b>{typeof n.meta.from === 'string' ? `a wallet ${n.meta.from}` : 'someone'}</b> : null)} {n.kind === 'tip' ? tipLine(n, !!drop) : verb[n.kind]}<span className="muted"> · {relTime(n.createdAt)}</span></p>
           {drop && !showText && drop.text && <p className="notif__quote muted clamp-2">{drop.text}</p>}
           {showText && <p className="notif__reply">{drop.text}</p>}
         </div>

@@ -324,7 +324,7 @@ test('landing featured post: real public post by id (default 88stVCX0GF), 404 wh
   const { cookie } = await signInRaw(a)
   assert.equal((await call('POST', '/api/onboarding', { body: { handle: 'featuredblue', name: 'BLUES' }, cookie })).status, 200)
   const uid = await meId(cookie)
-  assert.equal((await call('GET', '/api/landing/featured')).status, 404)
+  { const r0 = await call('GET', '/api/landing/featured'); assert.equal(r0.status, 200); assert.equal(r0.body.featured, null) }
   await run("INSERT INTO drops (id, author_id, text, like_count, created_at) VALUES ('88stVCX0GF', ?, 'first to be on WIFLY!', 2, ?)", [uid, Date.now()])
   const r = await call('GET', '/api/landing/featured')
   assert.equal(r.status, 200, JSON.stringify(r.body))
@@ -333,7 +333,7 @@ test('landing featured post: real public post by id (default 88stVCX0GF), 404 wh
   assert.equal(r.body.featured.author.address, undefined)
   await run("INSERT INTO drops (id, author_id, text, locked, created_at) VALUES ('lockedpost1', ?, 'paid', '{\"price\":50}', ?)", [uid, Date.now()])
   process.env.FEATURED_POST_ID = 'lockedpost1'
-  assert.equal((await call('GET', '/api/landing/featured')).status, 404)
+  { const r0 = await call('GET', '/api/landing/featured'); assert.equal(r0.status, 200); assert.equal(r0.body.featured, null) }
   delete process.env.FEATURED_POST_ID
   assert.equal((await call('POST', '/api/admin/landing', { body: { featured: 'lockedpost1' }, cookie })).status, 404)
 })

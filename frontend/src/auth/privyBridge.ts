@@ -28,6 +28,8 @@ type Actions = {
   /** resolves when login (and wallet creation) completes, rejects if the modal closes. X logins may leave the page. */
   login: (methods?: ('twitter' | 'email' | 'wallet')[]) => Promise<void>
   logout: () => Promise<void>
+  /** One-tap X (or another OAuth) login without Privy's modal. Usually leaves the page for x.com and comes back. */
+  oauth?: (provider: 'twitter') => Promise<void>
   getIdentityToken: () => Promise<string | null>
   getAccessToken: () => Promise<string | null>
   linkTwitter: () => Promise<void>  // resolves when linked, rejects on error or when the window closes
@@ -68,6 +70,12 @@ export function usePrivyWanted() { return useSyncExternalStore(privyWanted.subsc
 
 let state: PrivyState = { loaded: false, ready: false, authenticated: false, identityToken: null, smartWallet: null, embeddedWallet: null, xUsername: null, linkedWallet: null, activeWallet: null, wallets: '' }
 let actions: Actions | null = null
+/** dev server only (the build drops this): local probes can stand in a privy session that owns some embedded wallets */
+type ProbePrivy = { authenticated: boolean; wallets: string; verify?: 'ok' | 'cancel'; walletsAfter?: string }
+const probePrivy = import.meta.env.DEV && typeof window !== 'undefined' ? (window as unknown as { __wiflyProbePrivy?: ProbePrivy }).__wiflyProbePrivy ?? null : null
+if (probePrivy) state = { ...state, loaded: true, ready: true, authenticated: probePrivy.authenticated, wallets: probePrivy.wallets.toLowerCase() }
+/** privy can sign here (always true when it's configured; on the dev server also when a probe stands one in) */
+export const privyUsable = privyEnabled || !!probePrivy
 const subs = new Set<() => void>()
 
 export const privyBridge = {
@@ -143,6 +151,20 @@ export const privyBridge = {
     if (!actions?.exportWallet || !privyBridge.has(address)) return Promise.reject(new Error('sign in with x or email to use this wallet'))
     return actions.exportWallet(address)
   },
+  /** Quietly swap the privy session to the login that owns a wallet: privy-only logout (the wifly session stays), then
+   *  X in one tap (a redirect) or privy's email code. Resolves when privy is signed in again here; rejects 'sign-in closed'. */
+  async swapTo(kind: 'x' | 'email') {
+    wantPrivy()
+    if (!actions) await until(() => !!actions && state.ready)
+    if (state.authenticated) await actions!.logout().catch(() => {})
+    if (kind === 'x' && actions!.oauth) {
+      await actions!.oauth('twitter')
+      await until(() => state.authenticated, 120_000) // a redirect never gets here; a same-page finish does
+    } else {
+      await actions!.login(kind === 'x' ? ['twitter'] : ['email'])
+    }
+    return privyBridge.tokens()
+  },
   /** Logging out also clears a Privy session that was never loaded this visit. */
   async logout() { if (!actions && hasPrivyTrace()) { wantPrivy(); await until(() => !!actions && state.ready, 8000).catch(() => {}) } if (actions && state.authenticated) await actions.logout().catch(() => {}) },
 }
@@ -152,6 +174,20 @@ function until(ok: () => boolean, ms = 15_000) {
     if (ok()) return resolve()
     const t = setTimeout(() => { off(); reject(new Error('sign-in is still loading, try again')) }, ms)
     const off = privyBridge.subscribe(() => { if (ok()) { clearTimeout(t); off(); resolve() } })
+  })
+}
+
+// dev probe only: a stand-in privy that logs out and logs back in (or is cancelled) without leaving the page
+if (probePrivy) {
+  const back = () => new Promise<void>((resolve, reject) => setTimeout(() => {
+    if (probePrivy.verify === 'cancel') return reject(new Error('sign-in closed'))
+    privyBridge.set({ authenticated: true, identityToken: 'probe', wallets: (probePrivy.walletsAfter ?? '').toLowerCase() }); resolve()
+  }, 300))
+  privyBridge.register({
+    login: back, oauth: back,
+    logout: async () => { privyBridge.set({ authenticated: false, identityToken: null, wallets: '' }) },
+    getIdentityToken: async () => state.authenticated ? 'probe' : null, getAccessToken: async () => null,
+    linkTwitter: async () => {}, linkWallet: async () => {},
   })
 }
 

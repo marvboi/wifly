@@ -11,6 +11,7 @@ export type ApiUser = {
   youFollow: boolean; followsYou: boolean; you: boolean; muted: boolean
   supporters?: number; dmPrice?: number; tiers?: unknown; shop?: unknown; seed: boolean
   reason?: string; onboarded?: boolean; wifName?: string | null; plusGrace?: boolean; badge?: string | null
+  blocked?: boolean; blocksYou?: boolean
 }
 export type ApiDrop = {
   id: string; author: ApiUser; text: string; image: string | null; media: unknown; locked: unknown; supportersOnly: string | null
@@ -149,7 +150,7 @@ export function adoptUser(a: ApiUser): User {
     followers: a.followers, following: a.following, drops: a.drops, tone: a.tone,
     plus: a.plus, creator: a.creator, youFollow: a.youFollow, followsYou: a.followsYou, muted: a.muted, you: a.you, seed: a.seed,
     address: (a.address ?? undefined) as User['address'], wifName: a.wifName ?? null, plusGrace: a.plusGrace, badge: a.badge ?? prev?.badge,
-    supporters: a.supporters ?? prev?.supporters, dmPrice: a.dmPrice ?? prev?.dmPrice,
+    supporters: a.supporters ?? prev?.supporters, dmPrice: a.dmPrice ?? prev?.dmPrice, blocked: !!a.blocked, blocksYou: !!a.blocksYou,
     tiers: (a.tiers as User['tiers']) ?? prev?.tiers, shop: (a.shop as User['shop']) ?? prev?.shop,
   }
   // a new account has no public @name until onboarding picks one: keep it out of the registry by name

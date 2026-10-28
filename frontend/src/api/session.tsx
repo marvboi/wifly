@@ -13,26 +13,28 @@ import { generatePrivateKey, privateKeyToAccount } from 'viem/accounts'
 import type { Hex } from 'viem'
 import { useAccount, useDisconnect, useSignMessage } from 'wagmi'
 import { robinhoodChain } from '../config'
-import { privyBridge, privyEnabled, wantPrivy, type PrivyTokens } from '../auth/privyBridge'
+import { privyBridge, privyEnabled, privyUsable, wantPrivy, type PrivyTokens } from '../auth/privyBridge'
 import { humanCheck, resetHumanCheck } from '../components/HumanCheck'
 import { adoptUser, api, endSessionEpoch, getVersion, getDrop, subscribe, type ApiUser } from './client'
 import { users, type Post, type User } from '../state/registry'
 
 /** links: what this account can sign in with besides a guest key (from /api/me). */
-export type MeWallet = { address: string; kind: 'main' | 'linked' | 'guest' | 'privy'; main: boolean; receiving: boolean; privy: boolean }
+export type MeWallet = { address: string; kind: 'main' | 'linked' | 'guest' | 'privy'; main: boolean; receiving: boolean; privy: boolean; owner?: { via: 'x' | 'email'; x: string | null } }
 /** wallets: every wallet on the account (main, linked, privy), once each. walletList: the same with main / receiving / privy marks. */
-export type MeLinks = { x: string | null; wallets: string[]; walletList?: MeWallet[]; privy: boolean }
+export type MeLinks = { x: string | null; email?: string | null; wallets: string[]; walletList?: MeWallet[]; privy: boolean }
 export type Me = ApiUser & { onboarded?: boolean; needsHandle?: boolean; renaming?: boolean; suggestedHandle?: string | null; links?: MeLinks; guest?: boolean }
 /** How this session signed in (from /api/me). 'guest' = SIWE with this browser's guest key. Null = an older session. */
 export type Login = { method: 'wallet' | 'guest'; address: string | null } | { method: 'x'; username: string } | { method: 'email' } | { method: 'privy' }
 type ServerLogin = { method: 'wallet'; address: string | null } | { method: 'x'; username: string } | { method: 'email' } | { method: 'privy' }
 type Session = {
   me: Me | null; ready: boolean; unread: number; login: Login | null
+  /** conversations with unread messages: inbox and requests (from /api/me) */
+  dms: { inbox: number; requests: number }
   /** owner-only pages (server gate stays authoritative) */
   admin: boolean
   /** while the session loads: this browser was signed in last time, so draw the signed-in shape (no layout shift) */
   expectMe: boolean
-  signInGuest: () => Promise<Me>; signInWallet: (address?: `0x${string}`) => Promise<Me>; signInPrivy: () => Promise<Me>; signOut: (then?: 'signin') => Promise<void>
+  signInGuest: () => Promise<Me>; signInWallet: (address?: `0x${string}`) => Promise<Me>; signInPrivy: () => Promise<Me>; signOut: (then?: 'signin', to?: { path: string; reason?: string }) => Promise<void>
   /** Link X to the signed-in account (guests included). Resolves false when the window was closed; may leave the page for X. */
   linkX: () => Promise<boolean>
   /** Link an email (Privy) to the signed-in account. Resolves false when the window was closed. */
@@ -43,9 +45,13 @@ type Session = {
   linkWallet: (address: `0x${string}`) => Promise<Me & { already?: boolean }>
   /** Sign in to Privy (x or email) on this account so its embedded wallet can sign here. Resolves false when closed. */
   unlockPrivy: () => Promise<boolean>
+  /** One tap on an embedded wallet this privy session doesn't own: swap privy (not wifly) to the x or email login that
+   *  owns it and attach it to this same account. 'ok', 'closed' (cancelled: still signed in here, privy just logged out). */
+  verifyWallet: (kind: 'x' | 'email') => Promise<'ok' | 'closed'>
   refresh: () => void; setMe: (m: Me) => void; clearUnread: () => void
 }
 const Ctx = createContext<Session | null>(null)
+const NO_DMS = { inbox: 0, requests: 0 }
 const GUEST = 'wifly_guest_key'
 const SIGNED = 'wifly_signed_in'
 /** Set before an X login that is really a link (a guest or wallet account adding X). Read once Privy is back. */
@@ -55,10 +61,17 @@ const intent = {
   take: () => { try { const v = sessionStorage.getItem(LINK_INTENT); sessionStorage.removeItem(LINK_INTENT); return !!v && Date.now() - Number(v) < 15 * 60_000 } catch { return false } },
   has: () => { try { return !!sessionStorage.getItem(LINK_INTENT) } catch { return false } },
 }
+/** Set before the quiet privy swap behind "verify it's you"; read once on the way back from x.com. */
+const VERIFY = 'wifly_wallet_verify'
+export const verifyNote = {
+  set: (k: 'x' | 'email') => { try { sessionStorage.setItem(VERIFY, JSON.stringify({ k, at: Date.now() })) } catch { /* storage off */ } },
+  take: (): 'x' | 'email' | null => { try { const v = JSON.parse(sessionStorage.getItem(VERIFY) || 'null'); sessionStorage.removeItem(VERIFY); return v && Date.now() - v.at < 15 * 60_000 ? v.k : null } catch { return null } },
+  has: () => { try { return !!sessionStorage.getItem(VERIFY) } catch { return false } },
+}
 /** A link error that happened after a trip to x.com and back, kept until settings (or the guest banner) shows it. */
 const LINK_ERROR = 'wifly_link_error'
 /** Device settings that belong to nobody's account; everything else under wifly / wagmi goes on sign-out. */
-const KEEP_ON_SIGN_OUT = new Set([GUEST, 'wifly-theme', 'wifly_imgdims', 'wifly_world_h'])
+const KEEP_ON_SIGN_OUT = new Set([GUEST, 'wifly-theme', 'wifly-theme-picked', 'wifly_imgdims', 'wifly_world_h'])
 export function clearAccountStorage() {
   for (const st of [localStorage, sessionStorage]) {
     try {
@@ -102,7 +115,7 @@ const linkPrivy = async (t: PrivyTokens) => (await api<{ me: Me }>('/auth/link/p
 
 export function SessionProvider({ children }: { children: ReactNode }) {
   const qc = useQueryClient()
-  const q = useQuery({ queryKey: ['me'], queryFn: () => api<{ me: Me | null; unread?: number; login?: ServerLogin | null; admin?: boolean }>('/me'), refetchInterval: 30_000, retry: false })
+  const q = useQuery({ queryKey: ['me'], queryFn: () => api<{ me: Me | null; unread?: number; dms?: { inbox: number; requests: number }; login?: ServerLogin | null; admin?: boolean }>('/me'), refetchInterval: 30_000, retry: false })
   const [override, setOverride] = useState<Me | null | undefined>(undefined)
   const me = override !== undefined ? override : q.data?.me ?? null
   useEffect(() => { if (q.data?.me) setOverride(undefined) }, [q.data])
@@ -146,11 +159,18 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   const syncPrivy = useCallback(() => {
     if (!privyEnabled) return
     const st = privyBridge.get()
+    // back from x.com without finishing (cancelled there): the account here never changed; drop the swap notes calmly
+    if (st.ready && !st.authenticated && !privyLogin.current && verifyNote.has() && q.data?.me) {
+      const t0 = Date.now()
+      setTimeout(() => { const s2 = privyBridge.get(); if (!s2.authenticated && verifyNote.has() && Date.now() - t0 >= 2500) { verifyNote.take(); intent.take(); window.dispatchEvent(new CustomEvent('wifly:verify-closed')) } }, 2500)
+      return
+    }
     if (!st.ready || !st.authenticated || q.isLoading || privyLogin.current) return
     // back from X after "link x" on a guest or wallet account: add X to that account instead of switching to another one
     if (q.data?.me && intent.has()) {
       intent.take(); privyLogin.current = true
-      privyBridge.tokens().then(linkPrivy).then(m => { via.current = 'privy'; after(m); window.dispatchEvent(new CustomEvent('wifly:linked', { detail: { kind: 'x' } })) })
+      const verified = verifyNote.take()
+      privyBridge.tokens().then(linkPrivy).then(m => { via.current = 'privy'; after(m); window.dispatchEvent(new CustomEvent(verified ? 'wifly:verified' : 'wifly:linked', { detail: { kind: verified ?? 'x' } })) })
         .catch(e => { console.error('[link] x after return:', e); const message = linkErrorText(e, 'x'); linkError.put(message); window.dispatchEvent(new CustomEvent('wifly:link-error', { detail: { kind: 'x', message } })); void privyBridge.logout() })
         .finally(() => { privyLogin.current = false })
       return
@@ -222,6 +242,23 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     privyLogin.current = true
     try { return await viaPrivyLogin(['twitter', 'email'], 'x') } finally { privyLogin.current = false }
   }, [viaPrivyLogin])
+  const verifyWallet = useCallback(async (kind: 'x' | 'email'): Promise<'ok' | 'closed'> => {
+    if (!privyUsable) throw new Error('x and email sign-in aren’t set up here yet')
+    privyLogin.current = true
+    intent.set(); verifyNote.set(kind)
+    try {
+      const t = await privyBridge.swapTo(kind)
+      intent.take(); verifyNote.take()
+      after(await linkPrivy(t)); via.current = 'privy'; lastTok.current = null
+      return 'ok'
+    } catch (e) {
+      intent.take(); verifyNote.take()
+      if (/closed|exited/i.test(String((e as Error)?.message))) return 'closed'
+      console.error(`[verify] ${kind}:`, e)
+      void privyBridge.logout() // never leave a privy session for some other login behind
+      throw new Error(linkErrorText(e, kind))
+    } finally { privyLogin.current = false }
+  }, [after])
   const linkWallet = useCallback(async (addr: `0x${string}`) => {
     const message = await siweMessage(addr, 'link this wallet to your wifly account. this is a signature, not a transaction: nothing is sent.')
     const signature = await signMessageAsync({ message, account: addr })
@@ -241,7 +278,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
    * Kept on purpose: theme, image sizes and the guest key (a guest account lives only in that key, so dropping it would
    * lose it for good; it signs in again only when someone picks "continue as guest").
    */
-  const signOut = useCallback(async (then?: 'signin') => {
+  const signOut = useCallback(async (then?: 'signin', to?: { path: string; reason?: string }) => {
     endSessionEpoch()
     lastTok.current = null; via.current = null
     await qc.cancelQueries().catch(() => {})
@@ -254,7 +291,10 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       disconnectAsync().catch(() => {}),
     ])
     clearAccountStorage()
-    location.replace(then === 'signin' ? '/?sheet=signin' : '/')
+    // a switch to another login can land back where it started (settings > wallets), with the sign-in sheet open
+    const back = to && /^\/[a-z]/.test(to.path) ? to.path : '/'
+    const [path, hash = ''] = back.split('#')
+    location.replace(then === 'signin' ? `${path}?sheet=signin${to?.reason ? `&reason=${encodeURIComponent(to.reason)}` : ''}${hash ? `#${hash}` : ''}` : '/')
   }, [qc, disconnectAsync])
 
   const sl = q.data?.login ?? null
@@ -262,9 +302,10 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     : sl.method === 'wallet' && sl.address && sl.address.toLowerCase() === guestAddress() ? { method: 'guest', address: sl.address } : sl
   const value = useMemo<Session>(() => ({
     me, login, admin: !!me && !!q.data?.admin, ready: !q.isLoading, expectMe: q.isLoading && wasSignedIn, unread: me ? q.data?.unread ?? 0 : 0,
-    guest: !!me?.guest, signInGuest, signInWallet, signInPrivy, signOut, linkX, linkEmail, linkWallet, unlockPrivy, refresh: () => { q.refetch() }, setMe: m => setOverride(m),
+    dms: me && q.data?.dms ? q.data.dms : NO_DMS,
+    guest: !!me?.guest, signInGuest, signInWallet, signInPrivy, signOut, linkX, linkEmail, linkWallet, unlockPrivy, verifyWallet, refresh: () => { q.refetch() }, setMe: m => setOverride(m),
     clearUnread: () => qc.setQueryData(['me'], (d: { me: Me | null; unread?: number } | undefined) => d ? { ...d, unread: 0 } : d),
-  }), [me, login, q, signInGuest, signInWallet, signInPrivy, signOut, linkX, linkEmail, linkWallet, unlockPrivy, qc])
+  }), [me, login, q, signInGuest, signInWallet, signInPrivy, signOut, linkX, linkEmail, linkWallet, unlockPrivy, verifyWallet, qc])
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>
 }
 

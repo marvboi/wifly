@@ -11,11 +11,11 @@ import { compress } from 'hono/compress'
 import { HTTPException } from 'hono/http-exception'
 import type { Hex } from 'viem'
 import { csrf, endSession, needUser, session, startSession, verifySiwe, issueNonce, type Env, type LoginVia } from './auth'
-import { ALLOWED_ORIGINS, AVATAR_MAX_BYTES, AVATAR_TOO_BIG, LIMITS, TIP_FEE_BPS, UPLOAD_DIR } from './config'
+import { ALLOWED_ORIGINS, AVATAR_MAX_BYTES, AVATAR_TOO_BIG, LIMITS, UPLOAD_DIR } from './config'
 import { all, one, run, writeTx } from './db'
 import { lazyPlusSync } from './plusSync'
 import { registerOg } from './og'
-import { registerXLookup } from './xlookup'
+import { registerDms, dmUnread } from './dms'
 import { adoptWalletNames, verifyTip } from './verify'
 import { reconcileUser } from './reconcile'
 import { registerProofs } from './proofs'
@@ -90,11 +90,14 @@ async function dropRow(id: string) {
 }
 /** Every wallet on an account, once each (case-insensitive): the main address, linked and guest wallets, and the Privy (embedded) wallet.
  *  main = users.address; receiving = where tips land (the chosen tip wallet, else main); privy = signs through Privy. */
-export type MeWallet = { address: string; kind: 'main' | 'linked' | 'guest' | 'privy'; main: boolean; receiving: boolean; privy: boolean }
+export type MeWallet = { address: string; kind: 'main' | 'linked' | 'guest' | 'privy'; main: boolean; receiving: boolean; privy: boolean; owner?: { via: 'x' | 'email'; x: string | null } }
 async function walletsForMe(uid: number): Promise<MeWallet[]> {
   const u = await one<{ address: string | null; extras: string | null }>('SELECT address, extras FROM users WHERE id = ?', [uid])
   const rows = await all<{ address: string; kind: string }>(`SELECT address, kind FROM user_wallets WHERE user_id = ? ORDER BY created_at`, [uid])
-  const pw = new Set((await all<{ wallet: string | null }>('SELECT wallet FROM privy_accounts WHERE user_id = ? AND wallet IS NOT NULL', [uid])).map(r => String(r.wallet).toLowerCase()))
+  const prow = await all<{ wallet: string | null; x_username: string | null; email: string | null }>('SELECT wallet, x_username, email FROM privy_accounts WHERE user_id = ? AND wallet IS NOT NULL', [uid])
+  const pw = new Set(prow.map(r => String(r.wallet).toLowerCase()))
+  // which privy login (x or email) created each embedded wallet: only that login's session can sign with it
+  const owners = new Map(prow.map(r => [String(r.wallet).toLowerCase(), r.x_username ? { via: 'x' as const, x: String(r.x_username) } : r.email ? { via: 'email' as const, x: null } : undefined]))
   for (const r of rows) if (r.kind === 'privy') pw.add(r.address.toLowerCase())
   let ex: { tipWallet?: string; guest?: number } = {}; try { ex = JSON.parse(u?.extras || '{}') } catch { /* keep */ }
   const main = u?.address ? u.address.toLowerCase() : null
@@ -107,7 +110,13 @@ async function walletsForMe(uid: number): Promise<MeWallet[]> {
   for (const a of pw) add(a, 'privy')
   const tip = ex.tipWallet && kinds.has(ex.tipWallet.toLowerCase()) ? ex.tipWallet.toLowerCase() : main ?? order[0] ?? null
   return order.filter(a => !(guestMain && a === main) && kinds.get(a) !== 'guest')
-    .map(a => ({ address: a, kind: (a === main ? 'main' : pw.has(a) ? 'privy' : kinds.get(a)) as MeWallet['kind'], main: a === main, receiving: a === tip, privy: pw.has(a) }))
+    .map(a => ({ address: a, kind: (a === main ? 'main' : pw.has(a) ? 'privy' : kinds.get(a)) as MeWallet['kind'], main: a === main, receiving: a === tip, privy: pw.has(a), ...(owners.get(a) ? { owner: owners.get(a) } : {}) }))
+}
+/** your own email, shown back masked (j•••@mail.com): enough to recognise it, never the full address */
+function maskEmail(e: string | null): string | null {
+  if (!e || !e.includes('@')) return null
+  const [u, d] = e.toLowerCase().split('@')
+  return `${u!.slice(0, 1)}•••@${d}`
 }
 async function me(uid: number) {
   const u = (await hydrateUsers([uid], uid)).get(uid)!
@@ -116,9 +125,10 @@ async function me(uid: number) {
   const p = await one<{ x_username: string | null }>('SELECT x_username FROM privy_accounts WHERE user_id = ? AND x_username IS NOT NULL ORDER BY updated_at DESC LIMIT 1', [uid])
   const walletList = await walletsForMe(uid)
   const privy = await one('SELECT 1 FROM privy_accounts WHERE user_id = ? LIMIT 1', [uid])
+  const em = await one<{ email: string | null }>('SELECT email FROM privy_accounts WHERE user_id = ? AND email IS NOT NULL ORDER BY updated_at DESC LIMIT 1', [uid])
   return {
     ...u, handle: isPendingHandle(u.handle) ? '' : u.handle, name: isPendingHandle(u.name) ? '' : u.name, onboarded: !!Number(r?.onboarded) && !pending, needsHandle: pending, renaming: !!Number(r?.onboarded) && pending,
-    links: { x: p?.x_username ?? null, wallets: walletList.map(w => w.address), walletList, privy: !!privy },
+    links: { x: p?.x_username ?? null, email: maskEmail(em?.email ?? null), wallets: walletList.map(w => w.address), walletList, privy: !!privy },
     guest: await isGuestAccount(uid),
   }
 }
@@ -434,6 +444,20 @@ app.get('/api/admin/accounts', async c => {
   await audit(admin, 'list_accounts', null, { filter, n: rows.length })
   return c.json({ accounts: rows })
 })
+/** Admin only: which account owns a wallet address (main, linked, guest or privy), read-only. Anyone else: the plain 404. */
+app.get('/api/admin/wallet/:address', async c => {
+  const admin = await needAdmin(c)
+  await rateLimit(`adm:${admin}`, 60, 60_000)
+  const a = c.req.param('address').trim().toLowerCase()
+  if (!/^0x[0-9a-f]{40}$/.test(a)) fail(400, 'that isn’t a wallet address')
+  const id = await uidForWallet(a)
+  await audit(admin, 'wallet_lookup', id, { address: a })
+  if (!id) return c.json({ address: a, account: null })
+  const u = (await one<UserRow>('SELECT * FROM users WHERE id = ?', [id]))!
+  const kind = (await one<{ k: string }>(`SELECT 'main' AS k FROM users WHERE id = ? AND lower(address) = ?
+    UNION ALL SELECT kind FROM user_wallets WHERE user_id = ? AND lower(address) = ? UNION ALL SELECT 'privy' FROM privy_accounts WHERE user_id = ? AND lower(wallet) = ? LIMIT 1`, [id, a, id, a, id, a]))?.k ?? 'linked'
+  return c.json({ address: a, account: { id, handle: isPendingHandle(u.handle) ? null : u.handle, name: u.name, kind, guest: /"guest":1/.test(String(u.extras ?? '')), joined: Number(u.created_at) } })
+})
 app.post('/api/admin/accounts/:id/remove', async c => {
   const admin = await needAdmin(c)
   await rateLimit(`adm-rm:${admin}`, 20, 3600_000)
@@ -468,7 +492,7 @@ app.get('/api/landing/featured', async c => {
     if (!d || d.deleted || d.locked || d.supportersOnly || d.replyTo || d.seed || !d.author || d.author.seed) return null
     return { id: d.id, text: d.text, likes: d.likes, tipped: d.tipped, createdAt: d.createdAt, author: { handle: d.author.handle, name: d.author.name, avatar: d.author.avatar } }
   })
-  if (!out) fail(404, 'no featured post')
+  // nothing to feature is a normal state (the landing just hides the card), not an error: 200 with null, no console noise
   c.header('Cache-Control', 'public, max-age=30')
   return c.json({ featured: out })
 })
@@ -498,7 +522,7 @@ app.get('/api/me', async c => {
   // plus paid onchain from any wallet on the account shows up here without waiting (bounded, never blocks long)
   await Promise.race([lazyPlusSync(uid), new Promise(r => setTimeout(r, 1500))])
   const unread = await one<{ n: number }>('SELECT COUNT(*) AS n FROM notifications WHERE user_id = ? AND read = 0', [uid])
-  return c.json({ me: await me(uid), unread: Number(unread?.n ?? 0), login: await loginOf(uid, c.get('via')), ...((await isAdmin(uid)) ? { admin: true } : {}) })
+  return c.json({ me: await me(uid), unread: Number(unread?.n ?? 0), dms: await dmUnread(uid), login: await loginOf(uid, c.get('via')), ...((await isAdmin(uid)) ? { admin: true } : {}) })
 })
 app.patch('/api/me', async c => {
   const uid = needUser(c)
@@ -541,10 +565,11 @@ async function isOwnUpload(url: unknown): Promise<boolean> {
 app.post('/api/uploads', async c => {
   const uid = needUser(c)
   await rateLimit(`up:${uid}`, 30, 10 * 60_000)
-  // ?kind=avatar: profile photos, up to 20 MB. Everything else (post media): 5 MB.
-  const avatar = c.req.query('kind') === 'avatar'
-  const max = avatar ? AVATAR_MAX_BYTES : LIMITS.imageBytes
-  const tooBig = avatar ? AVATAR_TOO_BIG : 'images up to 5 MB'
+  // ?kind=avatar (profile photos) and ?kind=dm (images in messages): up to 20 MB. Everything else (post media): 5 MB.
+  const kind = c.req.query('kind')
+  const big = kind === 'avatar' || kind === 'dm'
+  const max = big ? AVATAR_MAX_BYTES : LIMITS.imageBytes
+  const tooBig = kind === 'avatar' ? AVATAR_TOO_BIG : big ? 'images up to 20 MB' : 'images up to 5 MB'
   const len = Number(c.req.header('content-length') || 0)
   if (len > max + 64_000) fail(413, tooBig)
   const form = await c.req.formData()
@@ -721,10 +746,12 @@ app.post('/api/drops/:id/tips', async c => {
   const a = Number(amount)
   if (!Number.isFinite(a) || a <= 0 || a > 1e9) fail(400, 'bad amount')
   if (txHash !== undefined && !/^0x[0-9a-f]{64}$/i.test(String(txHash))) fail(400, 'bad tx hash')
+  // already here (sent twice, or the onchain tip sweep found it first): one row, one notification
+  if (txHash && await one('SELECT 1 FROM tips WHERE tx_hash = ? AND from_id = ?', [txHash.toLowerCase(), uid])) return c.json({ ok: true, preview: false, verified: false, already: true })
   await run('INSERT INTO tips (from_id, to_id, drop_id, amount, tx_hash, verified, created_at) VALUES (?, ?, ?, ?, ?, 0, ?)',
     [uid, d.author_id, d.id, a, txHash ? txHash.toLowerCase() : null, now()])
   // Tips go straight to the creator's wallet (Wifly._tip: safeTransfer(creator, amount - fee)); the TIP_FEE_BPS fee is split per FEE_SPLIT (90% pot, 10% burned).
-  await notify(Number(d.author_id), uid, 'tip', d.id, { amount: a - a * TIP_FEE_BPS / 10_000, gross: a, preview: !txHash })
+  // No notification here: verifyTip sends the one "tipped you" once the receipt proves the tip (never for a tip with no hash).
   // read the receipt now; if it isn't mined yet the verifier sweep (verify.ts) picks it up
   let verified = false
   if (txHash) {
@@ -733,6 +760,33 @@ app.post('/api/drops/:id/tips', async c => {
     if (verified) clearRankCache()
   }
   return c.json({ ok: true, preview: !txHash, verified })
+})
+
+/** A tip with no post (from a profile or the tip sheet): the WIF already went to their wallet onchain; this records it so they
+ *  get a "tipped you" notification once it is verified onchain. Same limits as drop tips. A tip the onchain sweep (verify.ts backfillTips) already
+ *  recorded is not added twice. */
+app.post('/api/users/:handle/tips', async c => {
+  const uid = needUser(c)
+  await rateLimit(`tip:${uid}`, 60, 60_000)
+  await newAccountCooldown(uid, 'tips')
+  const to = await userByHandle(c.req.param('handle').replace(/^@/, '').replace(/\.wif$/i, ''))
+  if ((to as { deleted_at?: number | null }).deleted_at || isPendingHandle(to.handle)) fail(404, 'no one here by that name')
+  if (Number(to.id) === uid) fail(400, 'you can’t tip yourself')
+  const { amount, txHash } = await c.req.json<{ amount: number; txHash?: string }>().catch(() => ({ amount: 0, txHash: undefined }))
+  const a = Number(amount)
+  if (!Number.isFinite(a) || a <= 0 || a > 1e9) fail(400, 'bad amount')
+  if (txHash !== undefined && !/^0x[0-9a-f]{64}$/i.test(String(txHash))) fail(400, 'bad tx hash')
+  const hash = txHash ? txHash.toLowerCase() : null
+  if (hash && await one('SELECT 1 FROM tips WHERE tx_hash = ? AND from_id = ?', [hash, uid])) return c.json({ ok: true, preview: false, verified: false, already: true })
+  await run('INSERT INTO tips (from_id, to_id, drop_id, amount, tx_hash, verified, created_at) VALUES (?, ?, NULL, ?, ?, 0, ?)', [uid, Number(to.id), a, hash, now()])
+  // the notification waits for verifyTip (here, or the verifier sweep once the tx is mined)
+  let verified = false
+  if (hash) {
+    const row = await one<{ id: number }>('SELECT id FROM tips WHERE from_id = ? AND tx_hash = ? ORDER BY id DESC LIMIT 1', [uid, hash])
+    if (row) verified = await verifyTip(Number(row.id)).catch(() => false)
+    if (verified) clearRankCache()
+  }
+  return c.json({ ok: true, preview: !hash, verified })
 })
 
 // ---------- feeds ----------
@@ -1024,7 +1078,7 @@ app.post('/api/notifications/read', async c => {
 
 registerFeatures(app, { me, notify })
 registerOg(app)
-registerXLookup(app)
+registerDms(app)
 registerProofs(app, { me })
 registerAgent(app)
 registerDca(app)

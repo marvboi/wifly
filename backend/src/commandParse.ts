@@ -45,7 +45,7 @@ export type Interpreted = {
   intent: Intent | null
   /** A command string the strict parsers accept as-is (what a "Did you mean" tap sends). */
   canonical: string | null
-  /** Human label, e.g. "buy $5 of WIF every Monday at 9:00". */
+  /** Human label, e.g. "buy $5 of WIF every monday at 9:00". */
   label: string | null
   norm: Normalized
 }
@@ -144,7 +144,6 @@ export function normalize(raw: string): Normalized {
   return { text: out.join(' '), fixes }
 }
 
-const capWord = (s: string) => s[0].toUpperCase() + s.slice(1)
 const hm = (h: number, m: number) => `${h}:${String(m).padStart(2, '0')}`
 const fmt = (n: number) => String(Number(n.toFixed(8)))
 
@@ -165,7 +164,7 @@ export function interpret(raw: string): Interpreted {
   const dca = parseDca(t)
   if (dca) {
     const amt = dca.perBuy.usd !== undefined ? `$${fmt(dca.perBuy.usd)}` : `${fmt(dca.perBuy.eth!)} ETH`
-    const when = dca.every === 'hour' ? 'every hour' : dca.every === 'week' ? `every ${dca.weekday !== null ? capWord(DAYS[dca.weekday]) : 'week'} at ${hm(dca.hour, dca.minute)}` : `every ${dca.every} at ${hm(dca.hour, dca.minute)}`
+    const when = dca.every === 'hour' ? 'every hour' : dca.every === 'week' ? `every ${dca.weekday !== null ? DAYS[dca.weekday] : 'week'} at ${hm(dca.hour, dca.minute)}` : `every ${dca.every} at ${hm(dca.hour, dca.minute)}`
     return res('dca', `buy ${amt} of WIF ${when}`)
   }
   const swapT = t.replace(/\b(to|for|into) (eth|wif)\b/, '$1 $2').replace(/^(ape|buy) (\d+(?:\.\d+)?) eth (?:into|in|on) wif$/, 'swap $2 eth to wif')
@@ -196,15 +195,15 @@ export function suggestionsFor(it: Interpreted): string[] {
   const num = t.match(/\$(\d+(?:\.\d+)?)/)?.[1] ?? t.match(/\b(\d+(?:\.\d+)?)\b/)?.[1]
   const day = DAYS.find(d => t.includes(d))
   const byIntent: Record<Intent, string[]> = {
-    dca: [`buy $${num ?? 5} of WIF every ${day ? capWord(day) : 'Monday'} at 9:00`, `buy $${num ?? 5} of WIF every day at 9:00`, 'pause my DCA'],
-    swap: [`swap ${num && Number(num) < 10 ? num : '0.01'} ETH to WIF`, `swap ${num && Number(num) >= 10 ? num : '5000'} WIF to ETH`, 'buy $5 of WIF every Monday at 9:00'],
+    dca: [`buy $${num ?? 5} of WIF every ${day ? day : 'monday'} at 9:00`, `buy $${num ?? 5} of WIF every day at 9:00`, 'pause my DCA'],
+    swap: [`swap ${num && Number(num) < 10 ? num : '0.01'} ETH to WIF`, `swap ${num && Number(num) >= 10 ? num : '5000'} WIF to ETH`, 'buy $5 of WIF every monday at 9:00'],
     tip: [`tip ${handle} ${num ?? 50}`, `subscribe ${handle}`, 'what’s my balance'],
     subscribe: [`subscribe ${handle}`, `tip ${handle} ${num ?? 50}`, 'renew my plus'],
     plus: ['renew my plus', 'renew my plus yearly', 'what’s my balance'],
     promote: [`promote my latest drop for ${num ?? 100}`, 'what’s my balance', 'how big is the pot'],
     manage: ['pause my DCA', 'resume my DCA', 'cancel my DCA'],
     balance: ['what’s my balance', 'how big is the pot', 'swap 0.01 ETH to WIF'],
-    pot: ['how big is the pot', 'what’s my balance', 'buy $5 of WIF every Monday at 9:00'],
+    pot: ['how big is the pot', 'what’s my balance', 'buy $5 of WIF every monday at 9:00'],
   }
-  return (it.intent ? byIntent[it.intent] : ['swap 0.01 ETH to WIF', 'buy $5 of WIF every Monday at 9:00', 'what’s my balance']).slice(0, 3)
+  return (it.intent ? byIntent[it.intent] : ['swap 0.01 ETH to WIF', 'buy $5 of WIF every monday at 9:00', 'what’s my balance']).slice(0, 3)
 }

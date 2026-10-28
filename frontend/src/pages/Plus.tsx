@@ -5,7 +5,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { companion } from '../lib/companion'
 import { api } from '../api/client'
 import { useSession } from '../api/session'
-import { AGENT_CAP_FREE, AGENT_CAP_PLUS, AGENT_READY, DCA_READY, FEE_SPLIT, FREE_AI_MSGS_PER_DAY_FALLBACK, PLUS_PRICE_FALLBACK, PLUS_PRICE_YEAR_FALLBACK } from '../config'
+import { AGENT_CAP_FREE, AGENT_CAP_PLUS, AGENT_READY, FEE_SPLIT, FREE_AI_MSGS_PER_DAY_FALLBACK, PLUS_PRICE_FALLBACK, PLUS_PRICE_YEAR_FALLBACK } from '../config'
 import { FEE_PERCENT_LABEL } from '../lib/fees'
 import { plusTopUp } from '../components/Swap'
 import { useWifBalance } from '../lib/chain'
@@ -20,14 +20,14 @@ import { Icon, type IconName } from '../components/Icon'
 import { PlusBadge, PlusMark } from '../components/BrandSlots'
 import { shortAddr } from '../components/WalletProofs'
 
-/** only perks the code really gives. soon: not live yet (agent and scheduled buys follow AGENT_READY / DCA_READY). */
+/** only perks the code really gives. agent spending perks show once AGENT_READY. */
 type Perk = { icon: IconName | 'badge'; title: string; note: string; soon?: boolean }
 const perks: Perk[] = [
   { icon: 'badge', title: 'the plus check', note: 'next to your name' },
   { icon: 'sparkle', title: 'assistant, no daily limit', note: `free: ${FREE_AI_MSGS_PER_DAY_FALLBACK} a day` },
-  { icon: 'agent', title: 'an agent that acts for you', note: 'only after you confirm', soon: !AGENT_READY },
-  { icon: 'calendar', title: 'buy WIF on a schedule', note: 'pause anytime', soon: !DCA_READY },
-  { icon: 'power', title: `${AGENT_CAP_PLUS.toLocaleString('en-US')} WIF a day for your agent`, note: `free: ${AGENT_CAP_FREE.toLocaleString('en-US')}`, soon: !AGENT_READY },
+  ...(AGENT_READY ? [{ icon: 'agent' as const, title: 'an agent that acts for you', note: 'only after you confirm' }] : []),
+  { icon: 'calendar', title: 'buy WIF on a schedule', note: 'pause anytime' },
+  ...(AGENT_READY ? [{ icon: 'power' as const, title: `${AGENT_CAP_PLUS.toLocaleString('en-US')} WIF a day for your agent`, note: `free: ${AGENT_CAP_FREE.toLocaleString('en-US')}` }] : []),
 ]
 
 const faq: Array<[string, string]> = [
@@ -140,7 +140,7 @@ export function Plus() {
 
 
   const needsApprove = useNeedsApprove(price)
-  const headline = v.state === 'expired' ? 'your check is paused.' : v.state === 'grace' ? 'renew to keep your check.' : v.state === 'active' ? 'you’re on plus.' : (AGENT_READY ? 'the check, an assistant without limits, and an agent that does things.' : 'the check and an assistant without limits. the agent is coming soon.')
+  const headline = v.state === 'expired' ? 'your check is paused.' : v.state === 'grace' ? 'renew to keep your check.' : v.state === 'active' ? 'you’re on plus.' : (AGENT_READY ? 'the check, an assistant without limits, and an agent that does things.' : 'the check, an assistant without limits, and scheduled buys.')
   const stateTag = v.state === 'grace' ? `grace period · ${Math.max(0, Math.ceil(((v.graceEndsAt ?? 0) - Date.now()) / DAY))} days left` : v.state === 'expired' ? 'expired' : v.state === 'active' ? 'active' : null
 
   return (

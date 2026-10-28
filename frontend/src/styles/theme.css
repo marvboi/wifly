@@ -1,5 +1,5 @@
 /* theme tokens, theme toggle and scrollbars. loaded right after app.css (main.tsx) */
-/* ---------- theme: dark tokens for the pages that follow the theme (landing, docs); the app stays light ---------- */
+/* ---------- theme: light / dark tokens. theme-init.mjs sets html[data-themed][data-theme] on every page before first paint ---------- */
 html[data-themed] { --panel: #110E08; --panel-ink: #F7F5F0; --panel-muted: rgba(247, 245, 240, .64); --panel-line: rgba(247, 245, 240, .12);
   --glass: rgba(255, 255, 255, .84); --shadow: rgba(17, 14, 8, .08); --shadow-2: rgba(17, 14, 8, .16); --card: #FFFFFF; }
 html[data-themed][data-theme="dark"] {
@@ -14,8 +14,10 @@ html[data-themed], html[data-themed] body { background: var(--bg); color: var(--
 html.theme-fade, html.theme-fade *, html.theme-fade *::before, html.theme-fade *::after {
   transition: background-color .3s var(--ease), color .3s var(--ease), border-color .3s var(--ease), fill .3s var(--ease), stroke .3s var(--ease), box-shadow .3s var(--ease) !important;
 }
-html.theme-vt::view-transition-old(root), html.theme-vt::view-transition-new(root) { animation: none; mix-blend-mode: normal; }
-html.theme-vt::view-transition-new(root) { z-index: 2; }
+/* the switch: a soft cross-fade of the whole page (view transitions), or a short colour fade (theme-fade) */
+html.theme-vt::view-transition-old(root), html.theme-vt::view-transition-new(root) { animation-duration: .42s; animation-timing-function: cubic-bezier(.4, 0, .2, 1); }
+html.theme-vt::view-transition-group(*) { animation-duration: .42s; }
+@media (prefers-reduced-motion: reduce) { html.theme-vt::view-transition-old(root), html.theme-vt::view-transition-new(root) { animation: none; } }
 
 /* theme toggle */
 .tt { position: relative; display: inline-grid; grid-template-columns: repeat(3, 30px); height: 34px; padding: 2px; border-radius: 999px;
@@ -29,6 +31,11 @@ html.theme-vt::view-transition-new(root) { z-index: 2; }
 .tt__b.is-on { color: var(--ink); }
 .tt__b:focus-visible { outline: 2px solid var(--neon); outline-offset: 1px; }
 @media (prefers-reduced-motion: reduce) { .tt__pill, .tt__b { transition: none; } }
+/* labeled (settings): light · auto · dark, words beside the icons */
+.tt--labeled { grid-template-columns: repeat(3, minmax(0, 1fr)); width: min(100%, 300px); height: 40px; }
+.tt--labeled .tt__pill { width: calc((100% - 4px) / 3); height: 36px; transform: translateX(calc(var(--i, 1) * 100%)); }
+.tt--labeled .tt__b { width: auto; height: 36px; grid-auto-flow: column; gap: 6px; font-size: 13px; font-weight: 600; padding: 0 8px; min-width: 0; }
+.tt__l { white-space: nowrap; }
 
 /* ---------- scrollbars: thin, calm, rounded, theme tokens. one rule for every scroll area ---------- */
 :root { --sb-thumb: #D6D1C6; --sb-thumb-hover: var(--subtle); --sb-track: transparent; }

@@ -53,7 +53,7 @@ export type PlusBadgeProps = {
   style?: CSSProperties;
 };
 
-export function PlusBadge({ size = 16, variant = 'inline', title = 'Wifly Plus', className, style }: PlusBadgeProps) {
+export function PlusBadge({ size = 16, variant = 'inline', title = 'wifly plus', className, style }: PlusBadgeProps) {
   const a11y = title ? { role: 'img' as const, 'aria-label': title } : { 'aria-hidden': true as const };
   const g = variant === 'hero' ? 200 : pickGrid(size);
   const s = variant === 'hero' ? HERO : SPECS[g];

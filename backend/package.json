@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "tsx watch src/server.ts",
     "start": "tsx src/server.ts",
-    "test": "tsx --test test/api.test.ts test/features.test.ts test/agent.test.ts test/names.test.ts test/keeper.test.ts test/abuse.test.ts test/rank.test.ts test/identity.test.ts test/dca-companion.test.ts test/commandParse.test.ts test/origins.test.ts test/maint.test.ts test/cache.test.ts test/lru.test.ts test/ip-ratekeys.test.ts test/imgsize.test.ts test/names-per-user.test.ts test/fees.test.ts test/pot.test.ts test/speed11.test.ts test/speed111.test.ts test/speed113.test.ts test/speed113b.test.ts test/speed114.test.ts test/speed115.test.ts test/speed1151.test.ts test/speed116.test.ts test/speed1161.test.ts test/speed1161plus.test.ts test/og.test.ts test/xlookup.test.ts test/lock.test.ts",
+    "test": "tsx --test test/api.test.ts test/features.test.ts test/agent.test.ts test/names.test.ts test/keeper.test.ts test/abuse.test.ts test/rank.test.ts test/identity.test.ts test/dca-companion.test.ts test/dca-keeper-ready.test.ts test/commandParse.test.ts test/origins.test.ts test/maint.test.ts test/cache.test.ts test/lru.test.ts test/ip-ratekeys.test.ts test/imgsize.test.ts test/names-per-user.test.ts test/fees.test.ts test/pot.test.ts test/speed11.test.ts test/speed111.test.ts test/speed113.test.ts test/speed113b.test.ts test/speed114.test.ts test/speed115.test.ts test/speed1151.test.ts test/speed116.test.ts test/speed1161.test.ts test/speed1161plus.test.ts test/og.test.ts test/lock.test.ts test/dms.test.ts test/llm-zai.test.ts test/llm-agent.test.ts test/og-avatar.test.ts test/tips-notify.test.ts test/tip-notif-legacy.test.ts test/theme-default.test.ts test/companion-off.test.ts test/agent-ready.test.ts",
     "typecheck": "tsc --noEmit"
   },
   "devDependencies": {
@@ -25,6 +25,7 @@
     "hono": "^4.13.13",
     "ioredis": "^5.11.1",
     "jose": "^6.2.13",
+    "sharp": "0.34.5",
     "viem": "^2.57.11"
   }
 }

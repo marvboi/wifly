@@ -5,7 +5,7 @@
  * Everything else talks to the AgentSigner interface, so a KMS / key-vault signer can replace the env signer later
  * without touching the agent logic: implement AgentSigner and return it from loadAgentSigner() for AGENT_SIGNER=kms.
  */
-import { createWalletClient, http, type Address, type Hex } from 'viem'
+import { createWalletClient, http, nonceManager, type Address, type Hex } from 'viem'
 import { privateKeyToAccount } from 'viem/accounts'
 import { robinhoodChain } from '../chain'
 import { rpcUrl } from '../config'
@@ -40,10 +40,20 @@ export function envSigner(envName: string, tag: string): AgentSigner | null {
   if (!raw) return null
   const pk = (raw.startsWith('0x') ? raw : `0x${raw}`) as Hex
   if (!/^0x[0-9a-fA-F]{64}$/.test(pk)) { console.error(`[${tag}] ${envName} is not a 32-byte hex key; sending disabled`); return null }
-  const account = privateKeyToAccount(pk)
+  // one shared nonce manager, and one send at a time per address: the week keeper and the DCA keeper may hold the same
+  // key (0xfE72…), so two loops must never pick the same nonce
+  const account = privateKeyToAccount(pk, { nonceManager })
   const wallet = createWalletClient({ account, chain: robinhoodChain, transport: http(rpcUrl()) })
-  return { address: account.address, kind: 'env', send: (to, data) => wallet.sendTransaction({ account, chain: robinhoodChain, to, data }) }
+  const key = account.address.toLowerCase()
+  const send = (to: Address, data: Hex) => {
+    const prev = sendQueue.get(key) ?? Promise.resolve()
+    const next = prev.catch(() => {}).then(() => wallet.sendTransaction({ account, chain: robinhoodChain, to, data }))
+    sendQueue.set(key, next.catch(() => {}))
+    return next
+  }
+  return { address: account.address, kind: 'env', send }
 }
+const sendQueue = new Map<string, Promise<unknown>>()
 
 let keeperCached: AgentSigner | null | undefined
 export function setKeeperSigner(s: AgentSigner | null | undefined) { keeperCached = s }

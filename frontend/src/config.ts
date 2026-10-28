@@ -113,13 +113,13 @@ export const BADGE_LEVELS = [
   { id: 'edge-walker', min: 100_000, name: 'edge walker' }, { id: 'the-disc', min: 1_000_000, name: 'the disc' },
 ]
 
-/** WiflyDCA. Empty = the DCA screen saves preview plans and sends nothing. */
-export const DCA_ADDRESS: Address | undefined = envAddr(import.meta.env.VITE_DCA_ADDRESS)
+/** WiflyDCA proxy on chain 4663 (public address). VITE_DCA_ADDRESS overrides it. Sends still need VITE_TX_ENABLED and the backend's DCA_CONTRACT_ADDRESS; without those, plans are previews and nothing is sent. */
+export const DCA_ADDRESS: Address = envAddr(import.meta.env.VITE_DCA_ADDRESS) ?? '0x3D1E4966f73e2dFf4f7A520Ce7E4d638cA55C109'
 
 /** The rentable AI agent is live only with the contract, txs on and its address set. Agent page, landing and docs all read this. */
 export const AGENT_READY = LIVE && TX_ENABLED && !!WIFLY_AGENT_ADDRESS
-/** Scheduled WIF buys are live once the DCA contract address is set (same rule as the DCA page). */
-export const DCA_READY = !!DCA_ADDRESS
+/** Scheduled WIF buys are open. */
+export const DCA_READY = true
 /** Agent daily caps in WIF: free accounts / plus. */
 export const AGENT_CAP_FREE = 500
 export const AGENT_CAP_PLUS = 5000

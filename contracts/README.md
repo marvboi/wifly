@@ -91,7 +91,7 @@ Recurring buys of $WIF with ETH through the Uniswap v4 WIF/ETH pool (Universal R
 
 ## Swap
 No swap contract. WIF trades on **Uniswap v4** on Robinhood Chain: WIF/native ETH pool id
-`0x71ef4106340f0a3b9c19ec994eef4fc44a1d2513f38faac39d7636b156548c79`.
+`0x71ef4106340f0a3b9c19ec994eef4fc44a1d2513f38faac39d7636b156548c79` (~$99k liquidity, ~$83k 24h volume on 25 Oct 2026).
 Uniswap on 4663 (from developers.uniswap.org; code checked on chain): Universal Router `0x8876789976decbfcbbbe364623c63652db8c0904`
 (v2.1.2: `0x204FAca1764B154221e35c0d20aBb3c525710498`), PoolManager `0x8366a39cc670b4001a1121b8f6a443a643e40951`,
 Permit2 `0x000000000022D473030F116dDEE9F6B43aC78BA3`. Smaller pools: v3 WIF/WETH and WIF/USDG.

@@ -12,12 +12,12 @@ process.env.DATABASE_URL = `file:${join(dir, 'test.db')}`
 process.env.SESSION_SECRET = 'test-secret-test-secret-test-secret'
 process.env.NEW_ACCOUNT_COOLDOWN_MIN = '0'
 process.env.SIGNUP_PER_IP_HOUR = '1000'
-for (const k of ['NAMES_CONTRACT_ADDRESS', 'BADGES_CONTRACT_ADDRESS', 'WIFLY_CONTRACT_ADDRESS', 'DCA_CONTRACT_ADDRESS', 'REDIS_URL', 'AGENT_PRIVATE_KEY', 'AGENT_TX_ENABLED', 'OPENROUTER_API_KEY', 'FREE_AI_MSGS_PER_DAY']) delete process.env[k]
+for (const k of ['NAMES_CONTRACT_ADDRESS', 'BADGES_CONTRACT_ADDRESS', 'WIFLY_CONTRACT_ADDRESS', 'DCA_CONTRACT_ADDRESS', 'REDIS_URL', 'AGENT_PRIVATE_KEY', 'AGENT_TX_ENABLED', 'OPENROUTER_API_KEY', 'ZAI_API_KEY', 'FREE_AI_MSGS_PER_DAY']) delete process.env[k]
 
 const { app } = await import('../src/app')
 const { migrate, db } = await import('../src/db')
 const { resetRateLimits } = await import('../src/util')
-const { parseDca, runDcaKeeperOnce } = await import('../src/dca')
+const { parseDca, runDcaKeeperOnce, dcaBackoff, BACKOFF_BASE_MS, BACKOFF_MAX_MS } = await import('../src/dca')
 const { sanitize } = await import('../src/companion')
 const { setLlmProvider, OpenRouter, LlmBusy, aiModels } = await import('../src/llm')
 const { clearPlusGateCache } = await import('../src/plusGate')
@@ -120,10 +120,10 @@ test('dca keeper (real WiflyDCA flow): status==0, owner Plus gate with grace, mi
   assert.deepEqual(batches[0], { ids: [1n], mins: [25n * E18 * 9900n / 10000n] })
   const row = (await db.execute({ sql: 'SELECT pause_reason FROM dca_plans WHERE id = ?', args: [live] })).rows[0]
   assert.equal(row.pause_reason, null)
-  // a higher floor wins
-  floor = 30n * E18
+  // a higher floor wins (still under the 25 WIF quote)
+  floor = 249n * E18 / 10n
   await runDcaKeeperOnce(chain)
-  assert.deepEqual(batches[1].mins, [30n * E18])
+  assert.deepEqual(batches[1].mins, [249n * E18 / 10n])
   const fills = (await db.execute({ sql: 'SELECT tx_hash, wif_out FROM dca_fills WHERE chain_plan_id = ?', args: ['1'] })).rows
   assert.equal(fills.length, 1, 'same Bought log is stored once'); assert.equal(fills[0].tx_hash, '0x' + 'cd'.repeat(32)); assert.equal(Number(fills[0].wif_out), 25)
   // unreadable Plus: skipped, plan untouched
@@ -202,7 +202,7 @@ test('companion: free users get a few Q&A messages, no commands; Plus gets tools
   assert.equal(pz.status, 200)
   // typos: medium confidence -> "Did you mean" card only, nothing prepared; tapping the canonical text gives the real card
   const typo = await call('POST', '/api/companion/chat', { cookie: u.cookie, body: { text: 'by 5 wif evry mondy' } })
-  assert.equal(typo.body.reply, 'Did you mean: buy $5 of WIF every Monday at 9:00?')
+  assert.equal(typo.body.reply, 'did you mean: buy $5 of WIF every monday at 9:00?')
   assert.deepEqual(typo.body.cards.map((c: any) => c.type), ['suggest'], 'no action/dca card before the user confirms the reading')
   const tapped = await call('POST', '/api/companion/chat', { cookie: u.cookie, body: { text: typo.body.cards[0].text } })
   assert.equal(tapped.body.cards[0].type, 'dca'); assert.equal(tapped.body.cards[0].draft.weekday, 1); assert.equal(tapped.body.cards[0].draft.perBuy.usd, 5)
@@ -230,18 +230,105 @@ test('openrouter falls back through the models on rate limits, then reports busy
   const hits: string[] = []
   const fakeFetch = (async (_u: string, init: any) => {
     const m = JSON.parse(init.body).model; hits.push(m)
-    if (m !== 'openrouter/free') return new Response('{}', { status: 429 })
+    if (m !== 'google/gemma-4-31b-it:free') return new Response('{}', { status: 429 })
     return new Response(JSON.stringify({ choices: [{ message: { content: 'hi' } }] }), { status: 200 })
   }) as typeof fetch
-  const p = new OpenRouter('k', ['nvidia/nemotron-3-super-120b-a12b:free', 'z-ai/glm-4.7-flash', 'google/gemma-4-31b-it:free', 'openrouter/free'], fakeFetch)
+  const p = new OpenRouter('k', ['nvidia/nemotron-3-super-120b-a12b:free', 'z-ai/glm-4.7-flash', 'openrouter/free', 'google/gemma-4-31b-it:free'], fakeFetch)
   const r = await p.chat([{ role: 'user', content: 'hi' }], [])
-  assert.equal(r.model, 'openrouter/free'); assert.equal(hits.length, 3)
+  assert.equal(r.model, 'google/gemma-4-31b-it:free'); assert.equal(hits.length, 2)
+  assert.ok(!hits.includes('openrouter/free'), 'the openrouter/free router is not a :free model id, so it is skipped too')
   assert.ok(!hits.includes('z-ai/glm-4.7-flash'), 'a paid model is never called, even when listed')
   process.env.AI_MODELS = 'z-ai/glm-4.7-flash,anthropic/claude-x,google/gemma-4-31b-it:free'
   assert.deepEqual(aiModels(), ['google/gemma-4-31b-it:free'], 'AI_MODELS keeps free models only')
   process.env.AI_MODELS = 'z-ai/glm-4.7-flash'
-  assert.deepEqual(aiModels(), ['nvidia/nemotron-3-super-120b-a12b:free', 'google/gemma-4-31b-it:free', 'openrouter/free'])
+  assert.deepEqual(aiModels(), ['google/gemma-4-31b-it:free', 'nvidia/nemotron-3.5-super-vl:free'], 'all paid falls back to the free defaults')
   delete process.env.AI_MODELS
   const all429 = new OpenRouter('k', ['a/x:free', 'b/y:free'], (async () => new Response('{}', { status: 429 })) as typeof fetch)
   await assert.rejects(all429.chat([{ role: 'user', content: 'x' }], []), LlmBusy)
+})
+
+// shared fake chain for the keeper gas-drain fixes
+async function keeperRig(opts: { quoteWif: bigint; floorWif: bigint; simulated?: bigint }) {
+  resetRateLimits()
+  await db.execute('DELETE FROM dca_backoff')
+  const a = await signIn()
+  const E18 = 10n ** 18n
+  await setPlus(a.me.id, Date.now() + 30 * DAY)
+  const plan = { owner: a.address as `0x${string}`, startAt: 0, lastBuyAt: 0, maxSlippageBps: 100, balance: E18 / 10n, amountPerBuy: E18 / 100n, keeperTip: 0n,
+    interval: 60, maxBuys: 0, buysDone: 0, paused: false, cancelled: false, minWifPerEth: 0n, totalEthSpent: 0n, totalWifBought: 0n }
+  const st = { quote: opts.quoteWif, floor: opts.floorWif, simulated: opts.simulated ?? 1n, sends: 0, sims: 0, quotes: 0 }
+  const chain = {
+    nextPlanId: async () => 2n,
+    status: async () => 0,
+    plan: async () => plan,
+    floorWifOut: async () => st.floor,
+    quote: async () => { st.quotes++; return st.quote },
+    // mirrors viemDcaChain: simulate first, return null (send nothing) when it would execute 0 plans
+    executeBatch: async () => { st.sims++; if (st.simulated === 0n) return null; st.sends++; return ('0x' + 'ef'.repeat(32)) as `0x${string}` },
+    receipt: async () => ({ status: 'success' as const, bought: [{ planId: 1n, owner: plan.owner, ethIn: E18 / 100n, wifOut: st.quote, logIndex: 1 }], skipped: [] }),
+    keeperBalance: async () => 15n * E18 / 10_000n, // 0.0015 ETH, like the live keeper
+    gasPrice: async () => 1_000_000n,
+  }
+  return { chain, st, E18 }
+}
+
+test('keeper: a floor above the market is skipped before any tx; nothing is sent', async () => {
+  const { chain, st, E18 } = await keeperRig({ quoteWif: 25n * 10n ** 18n, floorWif: 30n * 10n ** 18n })
+  const r = await runDcaKeeperOnce(chain, undefined, 1_000_000)
+  assert.deepEqual(r.map(x => [x.action, x.detail]), [['skipped', 'below the price floor']])
+  assert.equal(st.sims, 0, 'no simulate'); assert.equal(st.sends, 0, 'no tx')
+  void E18
+})
+
+test('keeper: executeBatch that simulates to 0 executed sends nothing', async () => {
+  const { chain, st } = await keeperRig({ quoteWif: 25n * 10n ** 18n, floorWif: 0n, simulated: 0n })
+  const r = await runDcaKeeperOnce(chain, undefined, 1_000_000)
+  assert.equal(st.sims, 1); assert.equal(st.sends, 0)
+  assert.deepEqual(r.map(x => [x.action, x.detail]), [['skipped', 'nothing to buy, not sent']])
+  assert.equal(r[0].txHash, undefined)
+})
+
+test('viem chain: executeBatch reads the simulate result and returns null on 0n (no send)', async () => {
+  const { viemDcaChain } = await import('../src/dca')
+  const chainMod = await import('../src/chain')
+  let sent = 0
+  const signer = { address: ('0x' + '11'.repeat(20)) as `0x${string}`, send: async () => { sent++; return ('0x' + '22'.repeat(32)) as `0x${string}` } } as any
+  // the client is built inside viemDcaChain: stub simulateContract on the shared client
+  const client = chainMod.chainClient() as any
+  const orig = client.simulateContract
+  try {
+    client.simulateContract = async () => ({ result: 0n })
+    assert.equal(await viemDcaChain(('0x' + '33'.repeat(20)) as `0x${string}`, signer).executeBatch([1n], [1n]), null)
+    assert.equal(sent, 0)
+    client.simulateContract = async () => ({ result: 1n })
+    assert.equal(await viemDcaChain(('0x' + '33'.repeat(20)) as `0x${string}`, signer).executeBatch([1n], [1n]), '0x' + '22'.repeat(32))
+    assert.equal(sent, 1)
+  } finally { client.simulateContract = orig }
+})
+
+test('keeper backoff: 10 min after a skip, doubling to 6h, stored in the db, cleared on a buy', async () => {
+  const { chain, st } = await keeperRig({ quoteWif: 25n * 10n ** 18n, floorWif: 30n * 10n ** 18n })
+  let t = 5_000_000
+  await runDcaKeeperOnce(chain, undefined, t)
+  let b = await dcaBackoff('1')
+  assert.equal(Number(b!.step_ms), BACKOFF_BASE_MS); assert.equal(Number(b!.until_at), t + BACKOFF_BASE_MS)
+  // due again a minute later: inside the backoff, not even quoted, nothing sent
+  const q0 = st.quotes
+  assert.deepEqual(await runDcaKeeperOnce(chain, undefined, t + 60_000), [])
+  assert.equal(st.quotes, q0); assert.equal(st.sends, 0)
+  // each skip after the wait doubles it, capped at 6h
+  const steps: number[] = []
+  for (let i = 0; i < 8; i++) { t = Number((await dcaBackoff('1'))!.until_at) + 1; await runDcaKeeperOnce(chain, undefined, t); steps.push(Number((await dcaBackoff('1'))!.step_ms)) }
+  assert.deepEqual(steps.slice(0, 5), [20, 40, 80, 160, 320].map(m => m * 60_000))
+  assert.equal(steps[steps.length - 1], BACKOFF_MAX_MS); assert.ok(steps.every(s => s <= BACKOFF_MAX_MS))
+  assert.equal(st.sends, 0, 'a minute-by-minute drain never happens')
+  // the market comes back above the floor: buys after the wait and clears the backoff
+  st.quote = 40n * 10n ** 18n
+  t = Number((await dcaBackoff('1'))!.until_at) + 1
+  assert.deepEqual((await runDcaKeeperOnce(chain, undefined, t)).map(x => x.action), ['bought'])
+  assert.equal(st.sends, 1); assert.equal(await dcaBackoff('1'), undefined)
+  // a failed send backs off too
+  const failing = { ...chain, executeBatch: async () => { throw new Error('rpc down') } }
+  assert.deepEqual((await runDcaKeeperOnce(failing, undefined, t + 1)).map(x => x.action), ['failed'])
+  assert.equal(Number((await dcaBackoff('1'))!.step_ms), BACKOFF_BASE_MS)
 })

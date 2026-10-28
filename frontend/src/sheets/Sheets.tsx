@@ -9,7 +9,7 @@ import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { PayoutLine } from '../components/WalletProofs'
 import { InfoTip } from '../components/InfoTip'
-import { adoptUser, api, getDrop, LINK_REQUIRED_EVENT, uploadAvatar } from '../api/client'
+import { adoptUser, api, getDrop, type ApiUser, LINK_REQUIRED_EVENT, uploadAvatar } from '../api/client'
 import { AvatarPicker } from '../components/AvatarPicker'
 import { useSession } from '../api/session'
 import { privyEnabled, wantPrivy } from '../auth/privyBridge'
@@ -22,7 +22,7 @@ import { posts, users } from '../state/registry'
 import { PREVIEW_NOTE, useStore, type SheetState } from '../state/store'
 import { FEE_SPLIT_LABEL, topSpotMinBid, topSpotSplit } from '../lib/fees'
 import { failTitle, plans, useQuoteFee, useHasUnlocked, useIsSubscribed, useSendPlan, useTopSpotRules, id32, type Plan } from '../lib/wifly'
-import { Amount, Avatar, Name, Token, WifUsd } from '../components/Bits'
+import { Amount, Avatar, DisplayName, Name, Token, WifUsd } from '../components/Bits'
 import { BurnSheet, BadgeSheet, TiersSheet } from './NewSheets'
 import { HumanCheck } from '../components/HumanCheck'
 import { FeeParts, FeeSplit } from '../components/FeeSplit'
@@ -31,6 +31,7 @@ import { BumpNotice, MakeItYours } from '../components/Identity'
 import { LowBalance, SwapPanel } from '../components/Swap'
 import { TxSteps } from '../components/TxSteps'
 import { isWifName, useResolve } from '../lib/names'
+import { useDebounced } from '../api/hooks'
 
 // Top Spot shares as labels (TOP_SPOT_PREV_BPS 9000 onchain)
 const pct = (x: number) => `${Math.round(x * 100)}%`
@@ -162,23 +163,32 @@ function TipHero({ amount, phase, base }: { amount: number; phase: TipPhase; bas
   )
 }
 
-function TipSheet({ to, postId }: { to?: string; postId?: string }) {
+function TipSheet({ to, postId, dm }: { to?: string; postId?: string; dm?: boolean }) {
   const { run, busy } = useAction()
+  const qc = useQueryClient()
   const [amount, setAmount] = useState(100)
   const direct = !!to && (isWifName(to) || /^0x[0-9a-fA-F]{40}$/.test(to))
-  const target = to && !direct ? users[to] : undefined
-  const [mode, setMode] = useState<'member' | 'name'>(direct ? 'name' : target ? 'member' : 'name')
+  // a member picked in the sheet (or the one it opened for); the member tab works with no target: it searches
+  const [picked, setPicked] = useState<string | undefined>(to && !direct && users[to] ? to : undefined)
+  const target = picked ? users[picked] : undefined
+  useEffect(() => { // opened for someone the page hasn't loaded yet: fetch them, then pick
+    if (!to || direct || users[to]) return
+    let live = true
+    api<{ user: ApiUser }>(`/users/${to}`).then(r => { adoptUser(r.user); if (live) setPicked(r.user.handle) }).catch(() => {})
+    return () => { live = false }
+  }, [to, direct])
+  const [mode, setMode] = useState<'member' | 'name'>(direct ? 'name' : 'member')
   const [dest, setDest] = useState(direct ? to! : '')
   const res = useResolve(mode === 'name' ? dest : '')
   const resolved = mode === 'name' ? res.data ?? null : null
   const post = postId ? posts.find(p => p.id === postId) : undefined
-  const self = useIsSelf(mode === 'member' ? to : undefined)
+  const self = useIsSelf(mode === 'member' ? picked : undefined)
   const recipient = mode === 'name' ? resolved?.label ?? 'recipient' : target?.name ?? 'creator'
   const [phase, setPhase] = useState<TipPhase>('idle')
   const reduced = useReducedMotion()
   const net = useQuoteFee(amount).receives
-  const pay = useQuery({ queryKey: ['payout', to], queryFn: () => api<{ address: string | null }>(`/users/${to}/payout`), enabled: mode === 'member' && !!target })
-  const payTo = (pay.data?.address ?? addrOf(to)) as Address | undefined
+  const pay = useQuery({ queryKey: ['payout', picked], queryFn: () => api<{ address: string | null }>(`/users/${picked}/payout`), enabled: mode === 'member' && !!target })
+  const payTo = (pay.data?.address ?? addrOf(picked)) as Address | undefined
   const netLabel = net.toLocaleString('en-US', { maximumFractionDigits: 2 })
 
   const confirm = async () => {
@@ -197,8 +207,15 @@ function TipSheet({ to, postId }: { to?: string; postId?: string }) {
       await wait(reduced ? 300 : 1100)
     }
     const onConfirmed = (hash: string) => {
-      // record it so the creator gets a notification; the WIF itself already went to their wallet onchain
-      if (postId && mode === 'member') api(`/drops/${postId}/tips`, { method: 'POST', body: JSON.stringify({ amount, txHash: hash }) }).catch(() => {})
+      // record it so they get a notification; the WIF itself already went to their wallet onchain. if this call fails the
+      // server's onchain tip sweep still records it and notifies them, so a miss is logged, not shown as an error
+      const missed = (e: unknown) => console.warn('[tip] not recorded yet, the onchain sweep will pick it up', e instanceof Error ? e.message : e)
+      if (mode !== 'member' || !picked) return
+      // from a chat: the tip also lands in the thread as a tip bubble
+      if (dm) api(`/dms/${picked}/tip`, { method: 'POST', json: { amount, txHash: hash } }).then(() => qc.invalidateQueries({ queryKey: ['dms'] })).catch(missed)
+      else if (postId) api(`/drops/${postId}/tips`, { method: 'POST', json: { amount, txHash: hash } }).catch(missed)
+      // from a profile or the tip sheet: no post, no chat
+      else api(`/users/${encodeURIComponent(picked)}/tips`, { method: 'POST', json: { amount, txHash: hash } }).catch(missed)
     }
     const title = `${recipient} got ${netLabel} WIF`
     const doneNote = 'it’s in their wallet now'
@@ -210,25 +227,23 @@ function TipSheet({ to, postId }: { to?: string; postId?: string }) {
     <Sheet title="send a tip" onClose={useStore().closeSheet}
       footer={<>
         <TxSteps pull={amount} action="send tip" />
-        <button className="btn btn--dark btn--block btn--lg" disabled={!amount || self || (mode === 'name' && !resolved?.address) || phase !== 'idle' || busy} onClick={confirm}>
+        <button className="btn btn--dark btn--block btn--lg" disabled={!amount || self || (mode === 'member' && !target) || (mode === 'name' && !resolved?.address) || phase !== 'idle' || busy} onClick={confirm}>
           {phase === 'idle' ? `tip ${amount ? amount.toLocaleString() : ''} WIF` : phase === 'sending' ? 'sending…' : 'sent'}
         </button>
         <PreviewNote />
       </>}>
       <TipHero amount={amount} phase={phase} base={post?.tipped} />
       <div className="seg" role="tablist">
-        <button role="tab" aria-selected={mode === 'member'} className={mode === 'member' ? 'is-on' : ''} onClick={() => setMode('member')} disabled={!target}>member</button>
-        <button role="tab" aria-selected={mode === 'name'} className={mode === 'name' ? 'is-on' : ''} onClick={() => setMode('name')}>name.wif / address</button>
+        <button role="tab" aria-selected={mode === 'member'} className={mode === 'member' ? 'is-on' : ''} onClick={() => setMode('member')} data-testid="tip-tab-member">member</button>
+        <button role="tab" aria-selected={mode === 'name'} className={mode === 'name' ? 'is-on' : ''} onClick={() => setMode('name')} data-testid="tip-tab-name">name.wif / address</button>
       </div>
-      {mode === 'member' && target ? (
+      {mode === 'member' ? (target ? (
         <>
-        <div className="recipient">
-          <Avatar handle={target.handle} size={44} />
-          <div><Name handle={target.handle} />{post && <div className="muted small clamp-1">for: “{post.text}”</div>}</div>
-        </div>
+        <RecipientRow handle={target.handle} onChange={dm ? undefined : () => setPicked(undefined)} />
+        {post && <div className="muted small clamp-1">for: “{post.text}”</div>}
         <PayoutLine address={payTo ?? null} />
         </>
-      ) : (
+      ) : <MemberSearch onPick={setPicked} />) : (
         <>
         <div className="xfield">
           <label className="field">
@@ -237,6 +252,7 @@ function TipSheet({ to, postId }: { to?: string; postId?: string }) {
           </label>
           <ResolveLine raw={dest} loading={res.isFetching} r={resolved} />
         </div>
+        {resolved?.address && <RecipientRow handle={resolved.owner?.handle} address={resolved.address} label={resolved.label} />}
         <PayoutLine address={resolved?.address ?? null} />
         </>
       )}
@@ -250,6 +266,57 @@ function TipSheet({ to, postId }: { to?: string; postId?: string }) {
 }
 
 /** Shows where a name.wif / @handle / 0x… resolves before anything is sent. Unclaimed names resolve to no wallet. */
+/** Who the tip goes to, before you pay: their picture, name and @handle, or a wallet mark and short address. */
+function RecipientRow({ handle, address, label, onChange }: { handle?: string; address?: string; label?: string; onChange?: () => void }) {
+  const known = handle ? users[handle] : undefined
+  const q = useQuery({ queryKey: ['user', handle], queryFn: () => api<{ user: ApiUser }>(`/users/${handle}`).then(r => adoptUser(r.user)), enabled: !!handle && !known, staleTime: 60_000 })
+  const u = known ?? (q.data ?? undefined)
+  return (
+    <div className="tiprcpt" data-testid="tip-recipient">
+      {u ? <Avatar handle={u.handle} size={36} /> : <span className="tiprcpt__wallet" aria-hidden="true"><Icon name="wallet" size={18} /></span>}
+      <span className="tiprcpt__who">
+        {u ? <><b className="clamp-1"><DisplayName user={u} /></b><span className="muted clamp-1">@{u.handle}</span></>
+          : <><b className="clamp-1">{label && !/^0x/.test(label) ? label : 'wallet'}</b><span className="muted mono">{address ? `${address.slice(0, 6)}…${address.slice(-4)}` : ''}</span></>}
+      </span>
+      {onChange && <button type="button" className="btn btn--text btn--sm" onClick={onChange}>change</button>}
+    </div>
+  )
+}
+
+/** The member tab with nobody picked yet: type a name or @username, pick a real member (never yourself). */
+function MemberSearch({ onPick }: { onPick: (handle: string) => void }) {
+  const { me } = useSession()
+  const [v, setV] = useState('')
+  const term = useDebounced(v.trim().replace(/^@/, ''), 250)
+  const q = useQuery({
+    queryKey: ['tip-people', term], enabled: term.length >= 1, staleTime: 30_000,
+    queryFn: () => api<{ users: ApiUser[] }>(`/search?type=people&q=${encodeURIComponent(term)}`).then(r => r.users.filter(Boolean).map(adoptUser)),
+  })
+  const rows = (q.data ?? []).filter(u => u.handle !== me?.handle).slice(0, 6)
+  return (
+    <div className="tipfind" data-testid="tip-member-search">
+      <label className="field">
+        <span className="field__label">send to</span>
+        <span className="field__input"><Icon name="search" size={16} /><input autoFocus value={v} onChange={e => setV(e.target.value)} placeholder="search @username or name" aria-label="search members" autoCapitalize="none" spellCheck={false} /></span>
+      </label>
+      {term.length >= 1 && (
+        <ul className="tipfind__list" role="listbox">
+          {rows.map(u => (
+            <li key={u.handle}>
+              <button type="button" role="option" aria-selected="false" className="tipfind__row" data-testid="tip-member-row" onClick={() => onPick(u.handle)}>
+                <Avatar handle={u.handle} size={36} />
+                <span className="tiprcpt__who"><b className="clamp-1">{u.name}</b><span className="muted clamp-1">@{u.handle}</span></span>
+                {u.wifName && <span className="tipfind__pill">{u.wifName}.wif</span>}
+              </button>
+            </li>
+          ))}
+          {!q.isFetching && rows.length === 0 && <li className="small muted tipfind__none">no members match “{term}”</li>}
+        </ul>
+      )}
+    </div>
+  )
+}
+
 export function ResolveLine({ raw, loading, r }: { raw: string; loading: boolean; r: { label: string; address: string | null; kind: string; source: string } | null }) {
   if (raw.length < 3) return null
   if (loading) return <p className="tiny muted">resolving {raw}…</p>

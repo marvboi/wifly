@@ -35,6 +35,9 @@ export type User = {
   wifName?: string | null
   plusGrace?: boolean
   badge?: string | null
+  /** you blocked them / they blocked you (messages only) */
+  blocked?: boolean
+  blocksYou?: boolean
 }
 
 export type Media =

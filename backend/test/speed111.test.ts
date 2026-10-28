@@ -203,7 +203,9 @@ test('tips: a mixed-case hash is stored lowercase and is the same hash', async (
   assert.equal(await s.total(), 50)
   const stored = await one<{ n: number }>('SELECT COUNT(*) AS n FROM tips WHERE tx_hash <> lower(tx_hash)')
   assert.equal(Number(stored!.n), 0)
-  // the database itself refuses a second verified row for one hash
+  // a resend by the same tipper is the same tip (one row); the database itself still refuses a second verified row for one hash
+  assert.equal(Number((await one<{ n: number }>('SELECT COUNT(*) AS n FROM tips WHERE tx_hash = ?', [tx('mix')]))!.n), 1)
+  await run('INSERT INTO tips (from_id, to_id, drop_id, amount, tx_hash, verified, created_at) VALUES (1, 2, NULL, 50, ?, 0, ?)', [tx('mix'), Date.now()])
   const row = (await one<{ id: number }>('SELECT id FROM tips WHERE tx_hash = ? AND verified = 0 LIMIT 1', [tx('mix')]))!
   await assert.rejects(run('UPDATE tips SET verified = 1 WHERE id = ?', [row.id]))
   delete process.env.WIFLY_CONTRACT_ADDRESS

@@ -214,7 +214,7 @@ const TABLE_NS: Record<string, Ns[]> = {
   badges: ['users', 'feed', 'drop'], badge_burns: ['users', 'feed', 'drop'], plus_subs: ['users', 'feed', 'drop'], plus_payments: ['users', 'feed', 'drop'],
   unlocks: ['feed', 'drop'], tags: ['feed'], handle_bumps: ['users', 'names'], llm_usage: [],
 }
-const IGNORE = /^(sessions|nonces|notifications|keeper_runs|dca_|agent_|maint_runs|uploads)/
+const IGNORE = /^(sessions|nonces|notifications|keeper_runs|dca_|agent_|maint_runs|uploads|dm_|reports)/
 const WRITE_RE = /^\s*(?:INSERT(?:\s+OR\s+\w+)?\s+INTO|UPDATE(?:\s+OR\s+\w+)?|DELETE\s+FROM|REPLACE\s+INTO)\s+"?(\w+)/i
 export function nsForSql(sql: string): Ns[] {
   const m = WRITE_RE.exec(sql)

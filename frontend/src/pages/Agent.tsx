@@ -7,7 +7,6 @@ import { AGENT_CAP_FREE, AGENT_CAP_PLUS, AGENT_READY, LIVE, WIFLY_AGENT_ADDRESS 
 import { PREVIEW_NOTE, useStore } from '../state/store'
 import { failTitle, plans, useAgentOnChain, usePlusStatus, useInAppBalance, useSendPlan, type Plan } from '../lib/wifly'
 import { shortAddr } from '../lib/format'
-import { PLUS_NAME } from '../brand'
 import { PageHead } from '../components/Shell'
 import { TxSteps } from '../components/TxSteps'
 import { useSession } from '../api/session'
@@ -32,7 +31,8 @@ const READY = AGENT_READY
 
 export function Agent() {
   const { agent, setAgent, toast, plus: localPlus, openSheet } = useStore()
-  const { me } = useSession()
+  const { me, guest } = useSession()
+  const chat = () => window.dispatchEvent(new Event('wifly:companion'))
   const plus = usePlusStatus(localPlus).active
   const { address } = useAnyAccount()
   const chainAgent = useAgentOnChain(address)
@@ -71,21 +71,38 @@ export function Agent() {
     </>
   )
 
+  if (guest) return (
+    <>
+      <PageHead title="agent" back sub="your free ai helper" />
+      <div className="empty empty--card" data-testid="agent-guest">
+        <Mascot size={64} />
+        <p className="strong">link an account to chat with your agent.</p>
+        <p className="muted small">add a wallet, x or email first. it keeps your chats and caps with you.</p>
+        <button className="btn btn--dark btn--sm" onClick={() => openSheet({ type: 'link', then: chat })}>link an account</button>
+      </div>
+    </>
+  )
+
   return (
     <>
-      <PageHead title="agent" back sub="spends for you, inside a daily cap" />
-      {!READY && <p className="soon-line small muted" role="note">coming soon. nothing here sends anything yet.</p>}
+      <PageHead title="agent" back sub={READY ? 'spends for you, inside a daily cap' : 'your free ai helper'} />
+      <section className="card agent-chat" data-testid="agent-chat-card">
+        <span className="agent-chat__face" aria-hidden="true"><Mascot size={44} /></span>
+        <div className="agent-chat__copy"><div className="strong">chat with your agent</div><div className="muted small">ask about your feed, tips, names or scheduled buys. free models only{READY ? '' : ', and it never spends'}.</div></div>
+        <button className="btn btn--dark btn--sm" data-testid="agent-chat-open" onClick={chat}>open chat</button>
+      </section>
+      {!READY && <p className="soon-line small muted" role="note">spending is off. your agent chats and suggests, and never sends anything.</p>}
       <section className={`agent-hero ${on ? '' : 'is-off'}`}>
         <div className="agent-hero__top">
           <div>
             {chainAgent?.agent && <span className="tiny muted mono">{shortAddr(chainAgent.agent)}</span>}
-            <h2 className="display">{on ? 'your agent is working.' : READY ? 'your agent is off.' : 'your agent is asleep for now.'}</h2>
+            <h2 className="display">{on ? 'your agent is working.' : READY ? 'your agent is off.' : 'spending is off.'}</h2>
           </div>
           {READY || on
             ? <button className={`power ${on ? 'is-on' : ''}`} onClick={on ? turnOff : save} aria-pressed={on}>
                 <Icon name="power" size={20} /> {on ? 'turn off' : 'turn on'}
               </button>
-            : <span className="agent-hero__nap" title="not awake yet"><Mascot size={64} mood="sleepy" title="the agent is asleep until launch" /></span>}
+            : <span className="agent-hero__nap" title="spending is off"><Mascot size={64} mood="calm" title="spending is off" /></span>}
         </div>
         <div className="capbar" aria-label={`${spent} of ${cap} WIF spent today`}>
           <motion.span className="capbar__fill" initial={{ width: 0 }} animate={{ width: `${cap ? (spent / cap) * 100 : 0}%` }} transition={{ type: 'spring', stiffness: 120, damping: 20 }} />
@@ -103,7 +120,7 @@ export function Agent() {
 
       <section className="card settings">
         <div className="settings__row settings__row--cap">
-          <div><div className="strong">daily cap</div><div className="muted small">resets every day at 00:00 UTC</div></div>
+          <div><div className="strong">daily cap</div><div className="muted small">resets every day at 00:00 utc</div></div>
           <span className="strong"><AnimatedNumber value={cap} duration={0.35} /> WIF</span>
         </div>
         <div className="range-wrap">
@@ -147,7 +164,7 @@ export function Agent() {
       </section>
 
       <section className="card">
-        <div className="card__head"><span className="eyebrow">this morning’s summary</span>{!plus && <span className="muted small">smarter with {PLUS_NAME}</span>}</div>
+        <div className="card__head"><span className="eyebrow">this morning’s summary</span>{!plus && <span className="muted small">smarter with wifly plus</span>}</div>
         {agent.summary.length ? <ul className="summary">{agent.summary.map(s => <li key={s}>{s}</li>)}</ul>
           : <p className="muted small">no summary yet.</p>}
       </section>

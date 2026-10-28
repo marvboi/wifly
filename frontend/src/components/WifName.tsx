@@ -36,7 +36,7 @@ export function ThemePicker({ label, value, onChange, disabled }: { label: strin
         <button key={t} type="button" role="radio" aria-checked={value === t} disabled={disabled}
           className={`themepick__opt ${value === t ? 'is-on' : ''}`} onClick={() => onChange(t)}>
           <img src={nameArtUrl(art, t)} alt="" loading="lazy" />
-          <span className="themepick__label">{t === 1 ? 'White' : 'Green'}{def === t && <span className="tiny muted"> · default</span>}</span>
+          <span className="themepick__label">{t === 1 ? 'white' : 'green'}{def === t && <span className="tiny muted"> · default</span>}</span>
         </button>
       ))}
     </div>

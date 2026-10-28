@@ -43,8 +43,9 @@ export async function isGuestAccount(uid: number): Promise<boolean> {
   return !linked
 }
 
-/** Writes a guest may still make: sign in, link, sign out, set up the profile, avatar, quiet personal choices. */
-const GUEST_OK = /^\/api\/(auth\/.+|me|me\/delete|onboarding|uploads|notifications\/read|drops\/[^/]+\/(bookmark|not-interested)|users\/[^/]+\/mute|companion\/chat|dca\/parse)$/
+/** Writes a guest may still make: sign in, link, sign out, set up the profile, avatar, quiet personal choices.
+ *  Agent chat and every ai call are not on this list: a guest gets link_required and the app opens the link sheet. */
+const GUEST_OK = /^\/api\/(auth\/.+|me|me\/delete|onboarding|uploads|notifications\/read|drops\/[^/]+\/(bookmark|not-interested)|users\/[^/]+\/mute)$/
 export const LINK_REQUIRED = { error: 'link a wallet, x or email to continue', code: 'link_required' } as const
 /** Every other write from a guest is a 403 with code 'link_required'. Reads stay open. */
 export const guestWriteGate: MiddlewareHandler = async (c, next) => {

@@ -1,6 +1,6 @@
 /** Thin client for the companion's agent endpoints (backend/src/agent). The agent key never leaves the server. */
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { checkEpoch, epochSignal, sessionEpoch } from '../api/client'
+import { checkEpoch, epochSignal, LINK_REQUIRED_EVENT, sessionEpoch } from '../api/client'
 
 export type AgentState = {
   enabled: boolean; cap: number; spentToday: number; remaining: number; deposited: number; maxCap: number
@@ -26,6 +26,8 @@ export async function call<T>(path: string, method = 'GET', json?: unknown): Pro
   })
   const body = await res.json().catch(() => ({ error: res.statusText }))
   checkEpoch(started)
+  // a guest account: the server says link_required and the link sheet opens (same as api())
+  if (res.status === 403 && body?.code === 'link_required') window.dispatchEvent(new CustomEvent(LINK_REQUIRED_EVENT))
   if (!res.ok && !('status' in body)) throw new Error(body.error ?? res.statusText)
   return body as T
 }

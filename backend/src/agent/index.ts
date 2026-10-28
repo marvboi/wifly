@@ -188,9 +188,9 @@ export async function planCommand(uid: number, text: string): Promise<PlannedAct
     plan = p.plan ?? pv.plan
     amount = pv.plans.find(x => x.id === plan)?.price ?? pv.price
     const team = plusCreator()
-    recipient = { input: 'plus', kind: 'address', label: 'Wifly Plus', address: team ? team.toLowerCase() : null, source: 'raw' }
+    recipient = { input: 'plus', kind: 'address', label: 'wifly plus', address: team ? team.toLowerCase() : null, source: 'raw' }
     call = { fn: 'subscribeForPlan', args: [u, team ?? '(PLUS_CREATOR_ADDRESS)', String(PLUS_TIER), plan === 'year' ? '1' : '0'] }
-    summary = `renew Wifly Plus · ${plan === 'year' ? 'yearly' : 'monthly'}`
+    summary = `renew wifly plus · ${plan === 'year' ? 'yearly' : 'monthly'}`
   } else if (p.kind === 'promote') {
     amount = p.amount
     const d = await one<{ id: string }>(`SELECT id FROM drops WHERE author_id = ? AND reply_to IS NULL ORDER BY created_at DESC LIMIT 1`, [uid]).catch(() => null)
@@ -220,7 +220,7 @@ function calldata(uid: number, user: Address, a: PlannedAction): Hex {
 /** The agent is a Wifly Plus perk: checked server-side, onchain when live (subStatus.hasAccess incl. grace). */
 async function needPlus(uid: number) {
   const p = await plusAccess(uid)
-  if (!p.ok) fail(403, p.state === 'unknown' ? (p.reason ?? 'couldn’t check Plus, try again') : 'the AI agent is part of Wifly Plus')
+  if (!p.ok) fail(403, p.state === 'unknown' ? (p.reason ?? 'couldn’t check Plus, try again') : 'the ai agent is part of wifly plus')
 }
 
 export function registerAgent(app: Hono<Env>) {

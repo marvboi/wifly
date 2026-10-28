@@ -186,3 +186,21 @@ test('me() lists every wallet once, case-insensitively', async () => {
   assert.equal(m.links.walletList.length, 1)
   assert.equal(m.links.walletList[0].main, true); assert.equal(m.links.walletList[0].privy, true)
 })
+
+test('an embedded wallet says which privy login owns it (x handle or email); the email shows masked', async () => {
+  const w = key(), ex = key(), w2 = key(), ee = key()
+  const c = await signIn(w); await onboard(c, 'ownerx')
+  assert.equal((await linkPrivy(c, { did: 'did:privy:own-x', xUserId: '9701', xUsername: 'own_x', embeddedWallet: lc(ex.address) })).status, 200)
+  let m = await me(c)
+  let by = (a: string) => m.links.walletList.find((x: any) => x.address === lc(a))
+  assert.deepEqual(by(ex.address).owner, { via: 'x', x: 'own_x' })
+  assert.equal(by(w.address).owner, undefined, 'a plain wallet has no privy owner')
+
+  const c2 = await signIn(w2); await onboard(c2, 'ownermail')
+  assert.equal((await linkPrivy(c2, { did: 'did:privy:own-mail', email: 'jane@example.com', embeddedWallet: lc(ee.address) })).status, 200)
+  m = await me(c2)
+  by = (a: string) => m.links.walletList.find((x: any) => x.address === lc(a))
+  assert.deepEqual(by(ee.address).owner, { via: 'email', x: null })
+  assert.equal(m.links.email, 'j•••@example.com')
+  assert.ok(!JSON.stringify(m).includes('jane@'), 'the full email never leaves the server')
+})

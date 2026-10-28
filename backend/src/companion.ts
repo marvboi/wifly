@@ -1,7 +1,7 @@
 /**
  * Companion chat: POST /api/companion/chat.
  *
- * - Model: OpenRouter with tool calling (./llm). Off when OPENROUTER_API_KEY is unset: the face still answers the basics
+ * - Model: Z.ai GLM first, OpenRouter fallback, free models only, with tool calling (./llm). Off when neither key is set: the face still answers the basics
  *   (balance, weekly pot, creators, what Wifly is) from app data, and Plus commands still work through the parser.
  * - Plus gate: commands and prepared actions are Wifly Plus only, checked server-side by plusAccess() (onchain
  *   subStatus when live, including grace). Free users get FREE_AI_MSGS_PER_DAY (default 3) Q&A messages, read-only tools,
@@ -17,6 +17,8 @@ import type { Hono } from 'hono'
 import { errLine } from './errline'
 import { erc20Abi, formatUnits, parseAbi, parseEther, parseUnits, type Address } from 'viem'
 import { needUser, type Env } from './auth'
+import { isGuestAccount, LINK_REQUIRED } from './accounts'
+import { clientIp } from './abuse'
 import { chainClient } from './chain'
 import { CLAIM_SPLIT, FEE_SPLIT, NAME_CLAIM_FEE, NAME_FEE_BPS, NAME_SHORT_CLAIM_FEE, TIP_FEE_BPS, wiflyContract } from './config'
 import { all, one, run } from './db'
@@ -27,7 +29,7 @@ import { fail, rateLimit } from './util'
 import { agentState, parseCommand, planCommand, type PlannedAction } from './agent'
 import { dcaState, INTERVALS, parseDca, type DcaDraft, type DcaPlanView, type Every } from './dca'
 import { plusAccess, type PlusAccess } from './plusGate'
-import { LlmBusy, llmDailyLimit, llmPerMinute, llmProvider, type ChatMsg, type ToolCall, type ToolDef } from './llm'
+import { LlmBusy, llmAnswerBudgetMs, llmDailyLimit, llmPerMinute, llmProvider, type ChatMsg, type ToolCall, type ToolDef } from './llm'
 
 export type Card =
   | { type: 'action'; plan: PlannedAction }
@@ -248,20 +250,20 @@ export async function runTool(ctx: Ctx, name: string, rawArgs: string): Promise<
 }
 
 function pushUnlock(ctx: Ctx) {
-  if (!ctx.cards.some(c => c.type === 'unlock')) ctx.cards.push({ type: 'unlock', reason: 'tips, swaps, DCA and subscriptions by chat are part of Wifly Plus' })
+  if (!ctx.cards.some(c => c.type === 'unlock')) ctx.cards.push({ type: 'unlock', reason: 'tips, swaps, DCA and subscriptions by chat are part of wifly plus' })
 }
 
 // ------------------------------------------------------------------ prompt
 
 const FEE_BPS_TEXT = `${TIP_FEE_BPS / 100}%`, NAME_FEE_TEXT = `${NAME_FEE_BPS / 100}%`
-const FACTS = `Wifly is a social app on Robinhood Chain where people post "drops" and earn $WIF (World Is Flat) from fans.
+const FACTS = `Wifly is a social app, onchain on chain 4663, where people post "drops" and earn $WIF (World Is Flat) from fans.
 Money features: tips, paid drops, creator subscriptions, the Top Spot, pay-to-vote with a weekly community pot, .wif names, burn-for-badges, swap ETH<->WIF, DCA (recurring WIF buys).
 Fees: ${FEE_BPS_TEXT} on tips, subscriptions, Plus, unlocks and pay links, ${NAME_FEE_TEXT} on .wif name sales. Every fee goes ${FEE_SPLIT.pot}% to the weekly community pot and ${FEE_SPLIT.burn}% is burned; the treasury gets none. .wif claim fee ${NAME_CLAIM_FEE} WIF (${NAME_SHORT_CLAIM_FEE.toLocaleString('en-US')} WIF for 3–4 letters), split ${CLAIM_SPLIT.treasury}% treasury, ${CLAIM_SPLIT.pot}% weekly community pot, nothing burned. Badge burns are 100% burned. DCA has no Wifly fee.
 Wifly Plus: 1,500 WIF a month or 15,000 WIF a year, 5-day grace. The AI agent (chat commands) is a Plus perk.
 The agent only spends the user's deposited Wifly balance, inside their daily cap, and can never withdraw. Swaps and DCA are signed in the user's own wallet.`
 
 function systemPrompt(plus: boolean) {
-  return `You are Wifly's free AI assistant (the little face in the corner of the Wifly app), running on free AI models. If asked who or what you are, say plainly: "I'm Wifly's free assistant." Short, plain, warm, lowercase is fine. No hype, no emojis spam, no financial advice.
+  return `You are Wifly's free AI assistant (the little face in the corner of the Wifly app), running on free AI models. If asked who or what you are, say plainly: "I'm Wifly's free assistant." Short, plain, warm, always lowercase (tickers like WIF and ETH, @handles and 0x addresses stay as they are). No hype, no emojis spam, no financial advice.
 ${FACTS}
 Rules:
 - Use tools for live numbers; never guess balances, prices or the pot.
@@ -311,7 +313,7 @@ async function quickAnswer(ctx: Ctx, t: string): Promise<string | null> {
     return 'here are a few you might like:'
   }
   if (/\b(what is|what’s|whats|how does|explain)\b.*\b(plus|wifly plus)\b/.test(s)) return 'Plus is 1,500 WIF a month or 15,000 a year. it adds the AI agent (tips, swaps, DCA by chat), bigger agent caps and more. 5-day grace if a renewal is late.'
-  if (/\b(what is|what’s|whats|how does|explain)\b.*\b(dca)\b/.test(s)) return 'DCA buys a little WIF on a schedule, like $5 every Monday. you deposit ETH, pick the amount and time, and set a price guard. you can pause or withdraw any time.'
+  if (/\b(what is|what’s|whats|how does|explain)\b.*\b(dca)\b/.test(s)) return 'DCA buys a little WIF on a schedule, like $5 every monday. you deposit ETH, pick the amount and time, and set a price guard. you can pause or withdraw any time.'
   if (/\b(what is|what’s|whats)\b.*\bwifly\b|^help$/.test(s)) return 'Wifly is a social app where people earn WIF from fans: tips, paid drops, subscriptions and the weekly pot. ask me about your balance, the pot or creators to follow.'
   return null
 }
@@ -327,7 +329,7 @@ async function usage(uid: number) { return Number((await one<{ n: number }>('SEL
 type Hist = { from: 'me' | 'face'; text: string }
 export type ChatReply = { reply: string; cards: Card[]; source: 'model' | 'app'; model?: string; plus: PlusAccess; chatOn: boolean; freeLeft: number | null; busy?: boolean }
 
-export async function companionChat(uid: number, text: string, history: Hist[] = []): Promise<ChatReply> {
+export async function companionChat(uid: number, text: string, history: Hist[] = [], ip: string | null = null): Promise<ChatReply> {
   const plus = await plusAccess(uid)
   const ctx: Ctx = { uid, plus, cards: [] }
   const provider = llmProvider()
@@ -335,7 +337,7 @@ export async function companionChat(uid: number, text: string, history: Hist[] =
   const used = await usage(uid)
   const freeCap = freeMsgsPerDay()
   const freeLeft = plus.ok ? null : Math.max(0, freeCap - used)
-  const out = (reply: string, extra: Partial<ChatReply> = {}): ChatReply => ({ reply, cards: ctx.cards, source: 'app', plus, chatOn, freeLeft, ...extra })
+  const out = (reply: string, extra: Partial<ChatReply> = {}): ChatReply => ({ reply: calm(reply), cards: ctx.cards, source: 'app', plus, chatOn, freeLeft, ...extra })
   const t = text.trim().slice(0, MAX_MSG)
 
   // 1) The deterministic parser (typo/slang tolerant, see commandParse.ts). No model call. Plus only for commands.
@@ -345,7 +347,7 @@ export async function companionChat(uid: number, text: string, history: Hist[] =
   const suggestions = () => { if (!ctx.cards.some(c => c.type === 'suggestions')) ctx.cards.push({ type: 'suggestions', options: suggestionsFor(it) }) }
   const readOnly = it.intent === 'balance' || it.intent === 'pot'
   if (it.confidence === 'medium' && it.canonical) {
-    if (!readOnly && !plus.ok) { pushUnlock(ctx); return out(plus.state === 'unknown' ? `${plus.reason ?? 'couldn’t check Plus'}. try again in a moment.` : 'that’s something i can do for you with Wifly Plus. you can still swap and set up DCA yourself from the screens.') }
+    if (!readOnly && !plus.ok) { pushUnlock(ctx); return out(plus.state === 'unknown' ? `${plus.reason ?? 'couldn’t check Plus'}. try again in a moment.` : 'that’s something i can do for you with wifly plus. you can still swap and set up DCA yourself from the screens.') }
     ctx.cards.push({ type: 'suggest', label: it.label ?? it.canonical, text: it.canonical, fixes: it.norm.fixes.map(f => ({ from: f.from, to: f.to })) })
     return out(`Did you mean: ${it.label ?? it.canonical}?`)
   }
@@ -353,7 +355,7 @@ export async function companionChat(uid: number, text: string, history: Hist[] =
   const cmd = parseCommand(pt), dca = parseDca(pt), swap = dca ? null : parseSwap(pt), manage = parseDcaManage(pt)
   const isCommand = cmd.kind !== 'refuse' || !!dca || !!swap || !!manage
   if (isCommand || (ACTION_WORDS.test(it.norm.text) && !/\?$/.test(t) && !/\b(balance|pot)\b/i.test(it.norm.text))) {
-    if (!plus.ok) { pushUnlock(ctx); return out(plus.state === 'unknown' ? `${plus.reason ?? 'couldn’t check Plus'}. try again in a moment.` : 'that’s something i can do for you with Wifly Plus. you can still swap and set up DCA yourself from the screens.') }
+    if (!plus.ok) { pushUnlock(ctx); return out(plus.state === 'unknown' ? `${plus.reason ?? 'couldn’t check Plus'}. try again in a moment.` : 'that’s something i can do for you with wifly plus. you can still swap and set up DCA yourself from the screens.') }
     if (dca) { ctx.cards.push({ type: 'dca', draft: { ...dca, depositEth: null } }); return out(`got it: ${dca.summary}. pick how much ETH to deposit, check the price guard, then sign.`) }
     if (swap) {
       const r = await runTool(ctx, 'prepare_swap', JSON.stringify({ direction: swap.dir, amount: swap.amount }))
@@ -380,7 +382,7 @@ export async function companionChat(uid: number, text: string, history: Hist[] =
   if (quick) return out(quick)
   const key = faqKey(t)
   const cached = !PERSONAL.test(t) && !history.length ? faq.get(key) : undefined
-  if (cached && Date.now() - cached.at < FAQ_TTL) return out(cached.a, { source: 'model', model: 'cache' })
+  if (cached && Date.now() - cached.at < FAQ_TTL && faqSafe(cached.a)) return out(cached.a, { source: 'model', model: 'cache' })
 
   // 3) Free users: a few model messages a day.
   if (!plus.ok && freeLeft === 0) { pushUnlock(ctx); return out(`that’s your ${freeCap} free questions for today. Plus unlocks the full chat and the agent. balance and pot questions still work.`, { freeLeft: 0 }) }
@@ -390,6 +392,8 @@ export async function companionChat(uid: number, text: string, history: Hist[] =
   const daily = llmDailyLimit()
   if (plus.ok && used >= daily) { suggestions(); return out(RESTING, { busy: true }) }
   try { await rateLimit(`ai:${uid}`, llmPerMinute(), 60_000) } catch { suggestions(); return out(RESTING, { busy: true }) }
+  // one network can't spend the shared free model quota for everyone: a daily cap on model calls per ip
+  if (ip) { try { await rateLimit(`aiipday:${ip}`, chatLimits().ipModelDay, 86_400_000) } catch { suggestions(); return out(IP_DAY_MSG, { busy: true }) } }
   await bumpUsage(uid)
   const tools = plus.ok ? TOOLS : TOOLS.filter(x => READ_ONLY.has(x.function.name))
   const posts = await myPosts(uid)
@@ -406,12 +410,14 @@ export async function companionChat(uid: number, text: string, history: Hist[] =
   ]
   try {
     let model = ''
+    const deadline = Date.now() + llmAnswerBudgetMs()
     for (let round = 0; round <= MAX_TOOL_ROUNDS; round++) {
-      const r = await provider.chat(messages, round === MAX_TOOL_ROUNDS ? [] : tools, { maxTokens: 350 })
+      const r = await provider.chat(messages, round === MAX_TOOL_ROUNDS ? [] : tools, { maxTokens: 350, deadline })
       model = r.model
       if (!r.toolCalls.length) {
         const a = clip(r.content) || (ctx.cards.length ? 'check the card and confirm.' : 'hmm, i lost my words. try again?')
-        if (round === 0 && !ctx.cards.length && !PERSONAL.test(t) && !history.length && r.content) { faq.set(key, { a, at: Date.now() }) }
+        // shared cache: never for a question that pulled in a post (someone else's text), and never an answer with a link or 0x… in it
+        if (round === 0 && !ctx.cards.length && !PERSONAL.test(t) && !history.length && !pm && r.content && faqSafe(a)) { faq.set(key, { a, at: Date.now() }) }
         return out(a, { source: 'model', model, freeLeft: freeLeft === null ? null : freeLeft - 1 })
       }
       messages.push({ role: 'assistant', content: r.content || null, tool_calls: r.toolCalls.slice(0, 3) })
@@ -426,8 +432,28 @@ export async function companionChat(uid: number, text: string, history: Hist[] =
     return out(e instanceof LlmBusy ? RESTING : 'i couldn’t think that through just now. try again in a moment.', { busy: true })
   }
 }
-const RESTING = 'The agent is resting, try again in a bit. commands like “tip @name 50”, “swap 0.01 eth to wif”, balance and pot still work.'
-const clip = (s: string) => s.replace(/<\/?data>/g, '').trim().slice(0, 700)
+/** a cached faq answer is shown to everyone: no urls, domains or 0x… strings, so an injected post can't plant one */
+export const faqSafe = (a: string) => !/(https?:\/\/|www\.|\b[a-z0-9-]+\.(com|xyz|io|app|net|org|gg|co|fun|link|me|ai|finance|money|site|online)\b|0x[0-9a-f]{3,}|\[[^\]]*\]\()/i.test(a)
+const IP_DAY_MSG = 'the agent has answered a lot from this network today. it opens again tomorrow. commands like “tip @name 50”, balance and pot still work.'
+const RESTING = 'the agent is resting, try again in a bit. commands like “tip @name 50”, “swap 0.01 eth to wif”, balance and pot still work.'
+/** the app is lowercase and calm: free models still like Capitals, so "Sure! I Can" becomes "sure! i can". ALLCAPS tickers,
+ * mixed-case ids/addresses, @handles and anything in a link or path stay exactly as written; wifly and plus go lowercase like the app. */
+export const calm = (s: string) => s.split(/(\s+)/).map(w => /[/@]|https?:|0x/i.test(w) ? w : w.replace(/(^|[^A-Za-z0-9’'])([A-Z])(?=[a-z’']*(?:[^A-Za-z0-9’']|$))/g, (_m, a, b) => a + b.toLowerCase()).replace(/^I$|^I(?=[’'])/, 'i')).join('')
+const clip = (s: string) => calm(s.replace(/<\/?data>/g, '').trim().slice(0, 700))
+
+/** Agent chat limits, env-tunable: per user per 10 minutes and per day, and per ip per 10 minutes. */
+const envNum = (k: string, d: number) => { const n = Number(process.env[k]); return Number.isFinite(n) && n > 0 ? Math.floor(n) : d }
+export const chatLimits = () => ({ user10m: envNum('AGENT_CHAT_PER_10MIN', 20), userDay: envNum('AGENT_CHAT_PER_DAY', 100), ip10m: envNum('AGENT_CHAT_PER_IP_10MIN', 60), ipModelDay: envNum('AGENT_MODEL_CALLS_PER_IP_DAY', 200) })
+export const CHAT_LIMIT_MSG = 'that’s a lot of chat for now. take a short break and try again in a few minutes.'
+export const CHAT_DAY_MSG = 'that’s today’s chat for this account. it opens again tomorrow.'
+async function chatLimited(uid: number, ip: string): Promise<{ error: string; code: 'chat_limit' } | null> {
+  const l = chatLimits()
+  const over = async (key: string, max: number, ms: number) => { try { await rateLimit(key, max, ms); return false } catch { return true } }
+  if (await over(`ccip:${ip}`, l.ip10m, 10 * 60_000)) return { error: CHAT_LIMIT_MSG, code: 'chat_limit' }
+  if (await over(`cc10:${uid}`, l.user10m, 10 * 60_000)) return { error: CHAT_LIMIT_MSG, code: 'chat_limit' }
+  if (await over(`ccday:${uid}`, l.userDay, 86_400_000)) return { error: CHAT_DAY_MSG, code: 'chat_limit' }
+  return null
+}
 
 export function registerCompanion(app: Hono<Env>) {
   app.get('/api/companion', async c => {
@@ -438,13 +464,17 @@ export function registerCompanion(app: Hono<Env>) {
   })
   app.post('/api/companion/chat', async c => {
     const uid = needUser(c)
+    // a guest never reaches the model (the write gate already says so; this keeps it true if that gate changes)
+    if (await isGuestAccount(uid)) return c.json(LINK_REQUIRED, 403)
+    const limited = await chatLimited(uid, clientIp(c))
+    if (limited) return c.json(limited, 429)
     await rateLimit(`cc:${uid}`, 20, 60_000)
     const b = await c.req.json<{ text?: string; history?: Hist[] }>().catch(() => ({} as { text?: string; history?: Hist[] }))
     const text = String(b.text ?? '')
     if (!text.trim()) fail(400, 'say something')
     if (text.length > MAX_MSG) fail(400, 'keep it short')
     const hist = Array.isArray(b.history) ? b.history.filter(h => h && (h.from === 'me' || h.from === 'face') && typeof h.text === 'string').slice(-MAX_HISTORY) : []
-    return c.json(await companionChat(uid, text, hist))
+    return c.json(await companionChat(uid, text, hist, clientIp(c)))
   })
   /** "My agent" (Plus): active DCA plans + recent agent actions, server-gated. */
   app.get('/api/companion/my-agent', async c => {

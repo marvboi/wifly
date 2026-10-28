@@ -155,6 +155,8 @@ CREATE UNIQUE INDEX IF NOT EXISTS dca_plans_chain ON dca_plans(chain_plan_id) WH
 CREATE TABLE IF NOT EXISTS dca_fills (id INTEGER PRIMARY KEY AUTOINCREMENT, plan_id INTEGER, chain_plan_id TEXT NOT NULL, owner TEXT, eth_in REAL NOT NULL, wif_out REAL NOT NULL,
   tx_hash TEXT NOT NULL, log_index INTEGER NOT NULL DEFAULT 0, created_at INTEGER NOT NULL, UNIQUE (tx_hash, log_index));
 CREATE INDEX IF NOT EXISTS dca_fills_chain ON dca_fills(chain_plan_id, created_at DESC);
+-- keeper backoff per onchain plan after a skip or a failed send: 10 min, doubling to 6h, cleared on a buy
+CREATE TABLE IF NOT EXISTS dca_backoff (chain_plan_id TEXT PRIMARY KEY, until_at INTEGER NOT NULL, step_ms INTEGER NOT NULL, reason TEXT, updated_at INTEGER NOT NULL);
 CREATE TABLE IF NOT EXISTS dca_actions (id INTEGER PRIMARY KEY AUTOINCREMENT, plan_id INTEGER NOT NULL, action TEXT NOT NULL, tx_hash TEXT, created_at INTEGER NOT NULL);
 CREATE TABLE IF NOT EXISTS llm_usage (user_id INTEGER NOT NULL, day INTEGER NOT NULL, n INTEGER NOT NULL DEFAULT 0, PRIMARY KEY (user_id, day));
 CREATE TABLE IF NOT EXISTS keeper_runs (id INTEGER PRIMARY KEY AUTOINCREMENT, epoch INTEGER, action TEXT NOT NULL, detail TEXT, tx_hash TEXT, attempts INTEGER NOT NULL DEFAULT 0, created_at INTEGER NOT NULL);
@@ -200,6 +202,21 @@ CREATE INDEX IF NOT EXISTS idx_name_listings_created ON name_listings(created_at
 CREATE INDEX IF NOT EXISTS idx_name_offers_name ON name_offers(name, status);
 CREATE INDEX IF NOT EXISTS idx_names_owner ON names(owner_id);
 CREATE INDEX IF NOT EXISTS idx_badge_burns_user ON badge_burns(user_id);
+-- direct messages: one thread per pair (lo_id < hi_id), a member row per side (requests, receipts, inbox order)
+CREATE TABLE IF NOT EXISTS dm_threads (id INTEGER PRIMARY KEY, lo_id INTEGER NOT NULL, hi_id INTEGER NOT NULL, created_at INTEGER NOT NULL, last_at INTEGER NOT NULL, UNIQUE (lo_id, hi_id));
+CREATE TABLE IF NOT EXISTS dm_members (thread_id INTEGER NOT NULL, user_id INTEGER NOT NULL, peer_id INTEGER NOT NULL, accepted INTEGER NOT NULL DEFAULT 0,
+  last_read INTEGER NOT NULL DEFAULT 0, last_at INTEGER NOT NULL DEFAULT 0, PRIMARY KEY (thread_id, user_id));
+CREATE INDEX IF NOT EXISTS dm_members_inbox ON dm_members(user_id, accepted, last_at DESC);
+CREATE TABLE IF NOT EXISTS dm_messages (id INTEGER PRIMARY KEY, thread_id INTEGER NOT NULL, sender_id INTEGER NOT NULL, kind TEXT NOT NULL DEFAULT 'text',
+  body TEXT NOT NULL DEFAULT '', image TEXT, meta TEXT NOT NULL DEFAULT '{}', created_at INTEGER NOT NULL);
+CREATE INDEX IF NOT EXISTS dm_messages_thread ON dm_messages(thread_id, id DESC);
+CREATE INDEX IF NOT EXISTS dm_messages_sender ON dm_messages(thread_id, sender_id);
+CREATE TABLE IF NOT EXISTS dm_hidden (user_id INTEGER NOT NULL, message_id INTEGER NOT NULL, PRIMARY KEY (user_id, message_id));
+CREATE TABLE IF NOT EXISTS blocks (user_id INTEGER NOT NULL, target_id INTEGER NOT NULL, created_at INTEGER NOT NULL, PRIMARY KEY (user_id, target_id));
+CREATE INDEX IF NOT EXISTS blocks_target ON blocks(target_id);
+CREATE TABLE IF NOT EXISTS reports (id INTEGER PRIMARY KEY, reporter_id INTEGER NOT NULL, target_id INTEGER NOT NULL, message_id INTEGER, reason TEXT NOT NULL,
+  note TEXT, status TEXT NOT NULL DEFAULT 'open', created_at INTEGER NOT NULL);
+CREATE INDEX IF NOT EXISTS reports_target ON reports(target_id, created_at DESC);
 `
 
 export async function migrate() {
@@ -217,6 +234,14 @@ export async function migrate() {
     UPDATE tips SET verified = 0 WHERE verified = 1 AND tx_hash IS NOT NULL AND id NOT IN (SELECT MIN(id) FROM tips WHERE verified = 1 AND tx_hash IS NOT NULL GROUP BY lower(tx_hash));
     CREATE UNIQUE INDEX IF NOT EXISTS tips_tx_verified ON tips(lower(tx_hash)) WHERE verified = 1;`)
   // soft-deleted accounts (with a backup row), the admin audit log and a small key/value store (sweep cursor).
+  // one notification per event: tip notifications carry dkey 'tip:<tx hash>' and the unique index keeps it to one.
+  const nfcols = await db.execute('PRAGMA table_info(notifications)')
+  if (!nfcols.rows.some(r => r.name === 'dkey')) await db.execute('ALTER TABLE notifications ADD COLUMN dkey TEXT')
+  await db.execute('CREATE UNIQUE INDEX IF NOT EXISTS notifs_dkey ON notifications(dkey) WHERE dkey IS NOT NULL')
+  // Tip notifications from before verify-first (no dkey) carry an amount the client claimed, never checked onchain.
+  // Hide it: the row stays and reads "tipped you" with no number. Rows are never deleted; safe to run every boot.
+  await db.execute(`UPDATE notifications SET meta = json_remove(meta, '$.amount', '$.gross')
+    WHERE kind = 'tip' AND dkey IS NULL AND json_valid(meta) AND (json_type(meta, '$.amount') IS NOT NULL OR json_type(meta, '$.gross') IS NOT NULL)`)
   const ucols = await db.execute('PRAGMA table_info(users)')
   if (!ucols.rows.some(r => r.name === 'deleted_at')) await db.execute('ALTER TABLE users ADD COLUMN deleted_at INTEGER')
   await db.executeMultiple(`CREATE TABLE IF NOT EXISTS deleted_users (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER NOT NULL, row_json TEXT NOT NULL, by_actor TEXT NOT NULL, admin_id INTEGER, deleted_at INTEGER NOT NULL);

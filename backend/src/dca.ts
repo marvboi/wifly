@@ -106,7 +106,7 @@ const previewView = (r: Row): DcaPlanView => {
     maxBuys: Number(r.max_buys), buysDone: Number(r.buys_done), buysLeft, startAt: Number(r.first_at), lastBuyAt: r.last_fill_at,
     nextAt: status === 'active' ? nextBuyAt(Number(r.first_at), Number(r.interval_s), Math.max(now(), (r.last_fill_at ?? 0) + 1)) : null,
     minWifPerEth: r.min_wif_per_eth, slippageBps: Number(r.slippage_bps), keeperTipEth: r.keeper_tip_eth, spentEth: r.spent_eth, wifBought: 0,
-    status, pauseReason: status === 'paused' ? 'you paused it' : status === 'plus_expired' ? 'Paused, Plus expired' : null,
+    status, pauseReason: status === 'paused' ? 'you paused it' : status === 'plus_expired' ? 'paused, plus expired' : null,
     tz: r.tz, txHash: r.tx_hash, preview: !r.tx_hash, createdAt: Number(r.created_at),
   }
 }
@@ -124,7 +124,7 @@ export function chainView(r: Row, p: ChainPlan, next: bigint, left: bigint): Dca
     maxBuys: p.maxBuys, buysDone: p.buysDone, buysLeft: Number(left), startAt: p.startAt * 1000, lastBuyAt: p.lastBuyAt ? p.lastBuyAt * 1000 : null,
     nextAt: status === 'active' || status === 'plus_expired' ? Number(next) * 1000 : null,
     minWifPerEth: e(p.minWifPerEth), slippageBps: p.maxSlippageBps, keeperTipEth: e(p.keeperTip), spentEth: e(p.totalEthSpent), wifBought: e(p.totalWifBought),
-    status, pauseReason: status === 'paused' ? 'you paused it' : status === 'plus_expired' ? 'Paused, Plus expired' : null,
+    status, pauseReason: status === 'paused' ? 'you paused it' : status === 'plus_expired' ? 'paused, plus expired' : null,
     tz: r.tz, txHash: r.tx_hash, preview: false, createdAt: Number(r.created_at),
   }
 }
@@ -203,7 +203,7 @@ export function registerDca(app: Hono<Env>) {
     await rateLimit(`dp:${uid}`, 60, 60_000)
     const { text } = await c.req.json<{ text?: string }>().catch(() => ({ text: '' }))
     const d = parseDca(String(text ?? '').slice(0, 200))
-    return c.json(d ? { ok: true, draft: d } : { ok: false, reason: 'try “buy $5 of WIF every Monday at 9am”' })
+    return c.json(d ? { ok: true, draft: d } : { ok: false, reason: 'try “buy $5 of WIF every monday at 9am”' })
   })
 
   /** Live: index the plan from the mined createPlan receipt (owner must be one of the user's wallets). Preview: save the plan. */
@@ -252,7 +252,7 @@ export function registerDca(app: Hono<Env>) {
     const b = await c.req.json<ActionBody>().catch(() => ({} as ActionBody))
     const live = !!row!.chain_plan_id
     if (live && !HASH.test(b.txHash ?? '')) fail(400, `send ${action} from your wallet first`)
-    if (action === 'resume' && row!.pause_reason === 'plus_expired' && !(await plusAccess(uid, true)).ok) fail(403, 'scheduled buys need Wifly Plus. renew Plus to resume, or withdraw your ETH any time.')
+    if (action === 'resume' && row!.pause_reason === 'plus_expired' && !(await plusAccess(uid, true)).ok) fail(403, 'scheduled buys need wifly plus. renew plus to resume, or withdraw your ETH any time.')
     if (live) {
       if (action === 'resume' || action === 'cancel') await run('UPDATE dca_plans SET pause_reason = NULL, updated_at = ? WHERE id = ?', [now(), id])
     } else {
@@ -289,8 +289,8 @@ export type DcaChain = {
   floorWifOut(id: bigint): Promise<bigint>
   /** Off-chain V4 quote: WIF out for `ethIn`. */
   quote(ethIn: bigint): Promise<bigint>
-  /** Simulates, then sends executeBatch. */
-  executeBatch(ids: bigint[], mins: bigint[]): Promise<Hex>
+  /** Simulates, then sends executeBatch. null = the simulation buys nothing (0 executed), so nothing is sent. */
+  executeBatch(ids: bigint[], mins: bigint[]): Promise<Hex | null>
   receipt(hash: Hex): Promise<{ status: 'success' | 'reverted'; bought: Bought[]; skipped: { planId: bigint; reason: number }[] }>
   keeperBalance(): Promise<bigint>
   gasPrice(): Promise<bigint>
@@ -302,10 +302,26 @@ let lastKeeper: { at: number; balanceEth: number | null; neededEth: number | nul
 async function keeperStatus() {
   const runs = await all<{ plan_id: number; action: string; tx_hash: string | null; created_at: number }>('SELECT plan_id, action, tx_hash, created_at FROM dca_actions WHERE action LIKE ? ORDER BY id DESC LIMIT 10', ['keeper%'])
   // enabled = the keeper is really running in this process (flag on AND contract AND signer), not just the env flag
-  return { enabled: keeperState === 'started', flag: dcaKeeperEnabled(), state: keeperState, live: dcaLive(), ...lastKeeper, runs }
+  // ready = the onchain preflight passed (allowed keeper, contract not paused): only then do plans really get bought
+  return { enabled: keeperState === 'started' && keeperReady.ok, flag: dcaKeeperEnabled(), state: keeperState, ready: keeperState === 'started' && keeperReady.ok,
+    waiting: keeperState === 'started' && !keeperReady.ok ? keeperReady.reason : null, live: dcaLive(), ...lastKeeper, runs }
 }
 
 const BATCH = 20
+// per-plan keeper backoff: a plan that is skipped or fails waits 10 min, then 20, 40 ... up to 6h. a buy clears it.
+export const BACKOFF_BASE_MS = 10 * 60_000, BACKOFF_MAX_MS = 6 * 3600_000
+async function backoffUntil(id: bigint): Promise<number> {
+  return Number((await one<{ until_at: number }>('SELECT until_at FROM dca_backoff WHERE chain_plan_id = ?', [id.toString()]))?.until_at ?? 0)
+}
+async function backOff(id: string, reason: string, at: number) {
+  const prev = await one<{ step_ms: number }>('SELECT step_ms FROM dca_backoff WHERE chain_plan_id = ?', [id])
+  const step = prev ? Math.min(BACKOFF_MAX_MS, Number(prev.step_ms) * 2) : BACKOFF_BASE_MS
+  await run(`INSERT INTO dca_backoff (chain_plan_id, until_at, step_ms, reason, updated_at) VALUES (?, ?, ?, ?, ?)
+    ON CONFLICT (chain_plan_id) DO UPDATE SET until_at = excluded.until_at, step_ms = excluded.step_ms, reason = excluded.reason, updated_at = excluded.updated_at`, [id, at + step, step, reason.slice(0, 120), at])
+}
+const clearBackoff = (id: string) => run('DELETE FROM dca_backoff WHERE chain_plan_id = ?', [id])
+/** read-only view for tests and status: the backoff row for one onchain plan, if any. */
+export const dcaBackoff = (id: string) => one<{ until_at: number; step_ms: number; reason: string }>('SELECT until_at, step_ms, reason FROM dca_backoff WHERE chain_plan_id = ?', [id])
 /** One pass over every plan on the contract. Never invents a fill: fills come from Bought logs in a successful receipt. */
 export async function runDcaKeeperOnce(chain: DcaChain, ownerPlus: OwnerPlus = a => plusAccessForAddress(a), at = now(), keeperAddress: string | null = null): Promise<DcaRun[]> {
   const out: DcaRun[] = []
@@ -314,13 +330,14 @@ export async function runDcaKeeperOnce(chain: DcaChain, ownerPlus: OwnerPlus = a
   const maxScan = BigInt(Math.max(1, Number(process.env.DCA_KEEPER_MAX_SCAN || 5000)))
   for (let id = last > maxScan ? last - maxScan : 1n; id < last; id++) {
     if ((await chain.status(id)) !== 0) continue
+    if ((await backoffUntil(id)) > at) continue // backing off after a skip or fail: no reads past this, nothing sent
     const p = await chain.plan(id)
     // Plus gate, read fresh before every scheduled buy (active or inside grace). Unreadable: skip quietly, retry next pass.
     const plus = await ownerPlus(p.owner).catch(() => ({ ok: false, state: 'unknown' } as PlusAccess))
     if (!plus.ok) {
       if (plus.state !== 'unknown') {
         await run(`UPDATE dca_plans SET pause_reason = 'plus_expired', updated_at = ? WHERE chain_plan_id = ? AND (pause_reason IS NULL OR pause_reason != 'plus_expired')`, [at, id.toString()])
-        out.push({ planId: id.toString(), action: 'plus_expired', detail: 'Paused, Plus expired' })
+        out.push({ planId: id.toString(), action: 'plus_expired', detail: 'paused, plus expired' })
       } else out.push({ planId: id.toString(), action: 'skipped', detail: 'couldn’t read Plus onchain' })
       continue
     }
@@ -329,9 +346,11 @@ export async function runDcaKeeperOnce(chain: DcaChain, ownerPlus: OwnerPlus = a
       const [q, floor] = await Promise.all([chain.quote(p.amountPerBuy), chain.floorWifOut(id)])
       const bySlip = p.maxSlippageBps ? q * BigInt(10_000 - p.maxSlippageBps) / 10_000n : 0n
       const min = bySlip > floor ? bySlip : floor
-      if (min === 0n) { out.push({ planId: id.toString(), action: 'skipped', detail: 'no price guard' }); continue }
+      if (min === 0n) { out.push({ planId: id.toString(), action: 'skipped', detail: 'no price guard' }); await backOff(id.toString(), 'no price guard', at); continue }
+      // the floor (or guard) asks for more WIF than the market gives: the contract would only emit Skipped, so don't pay gas for it
+      if (min > q) { out.push({ planId: id.toString(), action: 'skipped', detail: 'below the price floor' }); await backOff(id.toString(), 'below the price floor', at); continue }
       ready.push({ id, min })
-    } catch (err) { out.push({ planId: id.toString(), action: 'skipped', detail: `quote failed: ${errLine(err, 80)}` }) }
+    } catch (err) { out.push({ planId: id.toString(), action: 'skipped', detail: `quote failed: ${errLine(err, 80)}` }); await backOff(id.toString(), 'quote failed', at) }
   }
   if (!ready.length) return log(out, at)
   // gas: ~300k per buy. Warn below 2x what this pass needs; don't send when it can't cover one buy.
@@ -345,16 +364,18 @@ export async function runDcaKeeperOnce(chain: DcaChain, ownerPlus: OwnerPlus = a
     const chunk = ready.slice(i, i + BATCH)
     try {
       const hash = await chain.executeBatch(chunk.map(r => r.id), chunk.map(r => r.min))
+      if (!hash) { for (const r of chunk) { out.push({ planId: r.id.toString(), action: 'skipped', detail: 'nothing to buy, not sent' }); await backOff(r.id.toString(), 'simulated 0', at) } continue }
       const rc = await chain.receipt(hash)
-      if (rc.status !== 'success') { for (const r of chunk) out.push({ planId: r.id.toString(), action: 'failed', txHash: hash, detail: 'batch reverted' }); continue }
+      if (rc.status !== 'success') { for (const r of chunk) { out.push({ planId: r.id.toString(), action: 'failed', txHash: hash, detail: 'batch reverted' }); await backOff(r.id.toString(), 'batch reverted', at) } continue }
       for (const b of rc.bought) {
         await run(`INSERT INTO dca_fills (plan_id, chain_plan_id, owner, eth_in, wif_out, tx_hash, log_index, created_at)
           VALUES ((SELECT id FROM dca_plans WHERE chain_plan_id = ?1), ?1, ?, ?, ?, ?, ?, ?) ON CONFLICT DO NOTHING`,
           [b.planId.toString(), b.owner.toLowerCase(), e(b.ethIn), e(b.wifOut), hash, b.logIndex, at])
         out.push({ planId: b.planId.toString(), action: 'bought', txHash: hash })
+        await clearBackoff(b.planId.toString())
       }
-      for (const s of rc.skipped) out.push({ planId: s.planId.toString(), action: 'skipped', txHash: hash, detail: SKIP_REASONS[s.reason] ?? `reason ${s.reason}` })
-    } catch (err) { for (const r of chunk) out.push({ planId: r.id.toString(), action: 'failed', detail: errLine(err, 160) }) }
+      for (const s of rc.skipped) { const why = SKIP_REASONS[s.reason] ?? `reason ${s.reason}`; out.push({ planId: s.planId.toString(), action: 'skipped', txHash: hash, detail: why }); await backOff(s.planId.toString(), why, at) }
+    } catch (err) { for (const r of chunk) { out.push({ planId: r.id.toString(), action: 'failed', detail: errLine(err, 160) }); await backOff(r.id.toString(), 'send failed', at) } }
   }
   return log(out, at)
 }
@@ -376,7 +397,8 @@ export function viemDcaChain(contract: Address, signer: AgentSigner): DcaChain {
     floorWifOut: id => read<bigint>('floorWifOut', [id]),
     quote: async ethIn => BigInt((await quote('eth2wif', ethIn)).amountOut),
     executeBatch: async (ids, mins) => {
-      await c.simulateContract({ address: contract, abi: DCA_ABI, functionName: 'executeBatch', args: [ids, mins], account: signer.address })
+      const { result } = await c.simulateContract({ address: contract, abi: DCA_ABI, functionName: 'executeBatch', args: [ids, mins], account: signer.address })
+      if (BigInt(result as bigint) === 0n) return null // every plan would just emit Skipped: don't pay gas for that
       return signer.send(contract, encodeFunctionData({ abi: DCA_ABI, functionName: 'executeBatch', args: [ids, mins] }))
     },
     receipt: async hash => {
@@ -403,25 +425,50 @@ export function setDcaKeeperSigner(s: AgentSigner | null | undefined) { dcaSigne
  *  the contract sends WIF straight to plan owners. KEEPER_SIGNER=kms is the placeholder for a vault signer. */
 export function loadDcaKeeperSigner(): AgentSigner | null {
   if (dcaSigner !== undefined) return dcaSigner
-  dcaSigner = (process.env.KEEPER_SIGNER || 'env').toLowerCase() === 'kms' ? null : envSigner('WIFLY_KEEPER_PRIVATE_KEY', 'dca-keeper')
+  // WIFLY_KEEPER_PRIVATE_KEY first; else the week keeper's KEEPER_PRIVATE_KEY (both are meant for the keeper wallet
+  // 0xfE72…, which already has setKeeper on WiflyDCA). Never the agent key: it has no keeper role.
+  dcaSigner = (process.env.KEEPER_SIGNER || 'env').toLowerCase() === 'kms' ? null
+    : process.env.WIFLY_KEEPER_PRIVATE_KEY ? envSigner('WIFLY_KEEPER_PRIVATE_KEY', 'dca-keeper') : envSigner('KEEPER_PRIVATE_KEY', 'dca-keeper')
   return dcaSigner
 }
 
 let timer: ReturnType<typeof setInterval> | null = null
 let keeperState: 'off' | 'no-contract' | 'no-signer' | 'started' | 'not-started' = 'not-started'
+/** Onchain preflight, re-read every pass: the signer must be an allowed keeper and the contract unpaused, else nothing is sent. */
+let keeperReady: { ok: boolean; reason: string | null } = { ok: false, reason: 'not checked yet' }
+export type KeeperPreflight = { isKeeper(addr: Address): Promise<boolean>; paused(): Promise<boolean> }
+export async function dcaPreflight(pf: KeeperPreflight, addr: Address): Promise<{ ok: boolean; reason: string | null }> {
+  try {
+    const [k, p] = await Promise.all([pf.isKeeper(addr), pf.paused()])
+    if (!k) return { ok: false, reason: `keeper ${addr} is not allowed on WiflyDCA yet: the owner has to call setKeeper(${addr}, true)` }
+    if (p) return { ok: false, reason: 'WiflyDCA is paused by the owner' }
+    return { ok: true, reason: null }
+  } catch (err) { return { ok: false, reason: `couldn’t read WiflyDCA: ${errLine(err, 80)}` } }
+}
+export function setKeeperReadyForTest(v: { ok: boolean; reason: string | null }, state: typeof keeperState = 'started') { keeperReady = v; keeperState = state }
 /** Called from server.ts. Off unless DCA_KEEPER_ENABLED=true and the contract + keeper signer are set. */
 export function startDcaKeeper(): 'off' | 'no-contract' | 'no-signer' | 'started' {
   if (!dcaKeeperEnabled()) { console.log(`[dca-keeper] off (DCA_KEEPER_ENABLED=${JSON.stringify(process.env.DCA_KEEPER_ENABLED ?? '')}, only "true" turns it on)`); return (keeperState = 'off') }
   const contract = dcaContract()
   if (!contract) { console.log('[dca-keeper] off: DCA_KEEPER_ENABLED=true but DCA_CONTRACT_ADDRESS not set'); return (keeperState = 'no-contract') }
   const signer = loadDcaKeeperSigner()
-  if (!signer) { console.log('[dca-keeper] off: DCA_KEEPER_ENABLED=true but WIFLY_KEEPER_PRIVATE_KEY not set'); return (keeperState = 'no-signer') }
+  if (!signer) { console.log('[dca-keeper] off: DCA_KEEPER_ENABLED=true but neither WIFLY_KEEPER_PRIVATE_KEY nor KEEPER_PRIVATE_KEY is set'); return (keeperState = 'no-signer') }
   keeperState = 'started'
   const chain = viemDcaChain(contract as Address, signer)
+  const c = chainClient()
+  const pf: KeeperPreflight = {
+    isKeeper: a => c.readContract({ address: contract as Address, abi: DCA_ABI, functionName: 'isKeeper', args: [a] }) as Promise<boolean>,
+    paused: () => c.readContract({ address: contract as Address, abi: DCA_ABI, functionName: 'paused' }) as Promise<boolean>,
+  }
   let busy = false
   const tick = async () => {
     if (busy) return; busy = true
-    try { const r = await runDcaKeeperOnce(chain, undefined, now(), signer.address); for (const x of r) console.log(`[dca-keeper] plan ${x.planId}: ${x.action}${x.detail ? ` (${x.detail})` : ''}${x.txHash ? ` tx ${x.txHash}` : ''}`) }
+    try {
+      const was = keeperReady
+      keeperReady = await dcaPreflight(pf, signer.address)
+      if (!keeperReady.ok) { if (keeperReady.reason !== was.reason) console.log(`[dca-keeper] waiting: ${keeperReady.reason}`); return }
+      if (!was.ok) console.log(`[dca-keeper] ready: ${signer.address} is an allowed keeper`)
+      const r = await runDcaKeeperOnce(chain, undefined, now(), signer.address); for (const x of r) console.log(`[dca-keeper] plan ${x.planId}: ${x.action}${x.detail ? ` (${x.detail})` : ''}${x.txHash ? ` tx ${x.txHash}` : ''}`) }
     catch (err) { console.log('[dca-keeper] pass failed:', errLine(err)) } finally { busy = false }
   }
   timer = setInterval(tick, Math.max(30_000, Number(process.env.DCA_KEEPER_INTERVAL_MS || 60_000)))

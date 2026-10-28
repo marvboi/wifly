@@ -1,4 +1,5 @@
 /** /settings: grouped and short. profile, your name, accounts, tips, then the account zone (sign out, delete). */
+import { ThemeToggle } from '../components/ThemeToggle'
 import { useEffect, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
@@ -124,6 +125,16 @@ export function Settings() {
         <section className="set__group" data-testid="settings-tips">
           <h2 className="set__h">tips<InfoTip label="about the tip destination">tips go straight to this wallet. changing it needs a signature from the new wallet.</InfoTip></h2>
           <div className="card set__card"><TipDestination bare /></div>
+        </section>
+
+        <section className="set__group" data-testid="settings-appearance">
+          <h2 className="set__h">appearance</h2>
+          <div className="card set__card">
+            <div className="set__row set__row--theme">
+              <span className="set__theme-copy"><b>theme</b><span className="tiny muted">auto follows your device</span></span>
+              <ThemeToggle labeled />
+            </div>
+          </div>
         </section>
 
         <section className="set__group" data-testid="settings-account">

@@ -1,0 +1,89 @@
+/* dark theme: component overrides on top of the dark tokens in theme.css. calm warm near-black, raised surfaces a
+   step lighter, the same lime used sparingly. html[data-theme="dark"] only; light mode is untouched. */
+html[data-themed][data-theme="dark"] {
+  --raise: #161511; --raise-2: #1E1C18; --surface: var(--raise); --soft: rgba(244, 242, 236, .05); --bg-2: rgba(244, 242, 236, .05);
+  --ok: #6FD39B; --ok-bg: rgba(111, 211, 155, .12); --warn-ink: #E9BE78; --warn-bg: rgba(233, 190, 120, .1); --warn-line: rgba(233, 190, 120, .32);
+  --scrim: rgba(0, 0, 0, .62);
+}
+[data-theme="dark"] .warn, [data-theme="dark"] .usd__stale { color: var(--warn-ink); }
+
+/* ---------- top bar and bottom nav: dark glass, visible icons ---------- */
+[data-theme="dark"] .topbar { background: rgba(13, 12, 10, .82); box-shadow: 0 1px 0 var(--line); }
+@supports not (backdrop-filter: blur(1px)) { [data-theme="dark"] .topbar { background: var(--bg); } }
+[data-theme="dark"] .topbar__btn { color: var(--ink-2); }
+[data-theme="dark"] .topbar__btn:hover, [data-theme="dark"] .topbar__btn.active { background: var(--fill-2); color: var(--ink); }
+[data-theme="dark"] .topbar__count { box-shadow: 0 0 0 2px var(--bg); }
+/* the dock keeps its light-mode logic (an ink pill with paper text) by re-scoping the two tokens inside it */
+[data-theme="dark"] .dock { --ink: #1C1A16; --paper: #F4F2EC; background: rgba(28, 26, 22, .94); backdrop-filter: saturate(1.3) blur(16px);
+  box-shadow: 0 18px 44px rgba(0, 0, 0, .55), 0 0 0 1px rgba(244, 242, 236, .09) inset; }
+[data-theme="dark"] .dock__link { color: rgba(244, 242, 236, .66); }
+[data-theme="dark"] .dock__link:hover { color: #F4F2EC; background: rgba(244, 242, 236, .07); }
+[data-theme="dark"] .dock__link.active { color: #110E08; } /* the sliding .dock__pill (--paper) is the light pill */
+[data-theme="dark"] .dock__new { color: #110E08; }
+
+/* ---------- dark panels from light mode (ink cards with paper text): a raised warm surface with a hairline ---------- */
+[data-theme="dark"] :is(.agent-hero, .world__tile--vote, .plus-card) { --ink: #1A1915; --paper: #F4F2EC; background: var(--ink); color: var(--paper);
+  box-shadow: inset 0 0 0 1px rgba(244, 242, 236, .08); }
+[data-theme="dark"] :is(.cmp-bubble, .range__bubble, .infotip__pop) { background: var(--raise-2); color: var(--ink); box-shadow: 0 10px 28px rgba(0, 0, 0, .5), inset 0 0 0 1px var(--line-strong); }
+[data-theme="dark"] .range__bubble::after { background: var(--raise-2); }
+[data-theme="dark"] .cmp-msg--me .cmp-msg__text { background: var(--fill-2); color: var(--ink); }
+[data-theme="dark"] .dmb--me { background: #ECE9E1; color: #110E08; }
+
+/* ---------- sheets, popovers, menus, toasts: one step above the page ---------- */
+[data-theme="dark"] .sheet-wrap { background: var(--scrim); }
+[data-theme="dark"] .sheet { background: var(--raise); box-shadow: 0 24px 64px rgba(0, 0, 0, .6), inset 0 0 0 1px var(--line); }
+[data-theme="dark"] :is(.wallet-pop, .dmenu__pop, .pro-more__menu) { background: var(--raise-2); border-color: var(--line-strong); box-shadow: 0 16px 40px rgba(0, 0, 0, .55); }
+[data-theme="dark"] .toast { background: var(--raise-2); color: var(--ink); border-color: var(--line-strong); box-shadow: 0 12px 32px rgba(0, 0, 0, .5); }
+[data-theme="dark"] .toast--warn { background: #1F1A12; border-color: var(--warn-line); }
+[data-theme="dark"] .toast--warn .toast__icon { background: var(--warn-bg); color: var(--warn-ink); }
+[data-theme="dark"] .welcome__card { background: var(--raise); box-shadow: 0 1px 0 var(--line) inset, 0 18px 48px rgba(0, 0, 0, .4); }
+[data-theme="dark"] .cmp-dock__face { background: var(--raise-2); box-shadow: 0 10px 28px rgba(0, 0, 0, .5), 0 0 0 1px var(--line-strong); }
+[data-theme="dark"] .cmp-dock__min { background: var(--raise-2); }
+[data-theme="dark"] .sheet .card, [data-theme="dark"] .sheet .chip { background: transparent; }
+
+/* ---------- controls: selected pills, switches, toggles ---------- */
+[data-theme="dark"] :is(.seg button.is-on, .seg__pill, .follow-tabs a.is-on) { background: var(--line-strong); box-shadow: none; }
+[data-theme="dark"] .tt__pill { background: var(--line-strong); box-shadow: none; }
+[data-theme="dark"] :is(.switch__knob, .tgl span::after) { background: #A39E93; box-shadow: 0 1px 2px rgba(0, 0, 0, .5); }
+[data-theme="dark"] .switch.is-on .switch__knob, [data-theme="dark"] .tgl input:checked + span::after { background: #110E08; }
+[data-theme="dark"] .feed-switch { background: linear-gradient(var(--bg) 70%, rgba(13, 12, 10, 0)); }
+[data-theme="dark"] .avpick__busy { background: rgba(13, 12, 10, .6); }
+[data-theme="dark"] .composer__img-x { background: rgba(0, 0, 0, .72); color: #F4F2EC; }
+
+/* ---------- status colours ---------- */
+[data-theme="dark"] :is(.act--pass.is-on, .notif__icon--pass, .handle-field.is-ok .handle-field__state, .linkrow.is-done .linkrow__state,
+  .resolve-ok, .plusx-perk__title svg, .plusx-on > svg, .plusx-row__end, .namecard--art.is-available .namecard__state) { color: var(--ok); }
+[data-theme="dark"] .handle-field.is-ok .handle-field__box { border-color: var(--ok); }
+[data-theme="dark"] :is(.namecard--art.is-taken .namecard__state, .namecard--art.is-reserved .namecard__state, .set__del, .linksheet__err) { color: var(--danger); }
+[data-theme="dark"] .names-warn { background: var(--fill); }
+[data-theme="dark"] .chip-soft.is-warn { background: var(--warn-bg); color: var(--warn-ink); }
+
+/* ---------- plus ---------- */
+[data-theme="dark"] .plusx-hero { background: linear-gradient(180deg, #17150F 0%, var(--bg) 70%); }
+[data-theme="dark"] :is(.plusx-tag--active, .plusx-yes, .plusx-steps li.is-done .plusx-steps__n) { background: var(--ok-bg); color: var(--ok); }
+[data-theme="dark"] .plusx-tag--grace { background: var(--warn-bg); color: var(--warn-ink); }
+[data-theme="dark"] .plusx-alert { background: var(--warn-bg); border-color: var(--warn-line); }
+
+/* ---------- profile, names, admin ---------- */
+[data-theme="dark"] .pro__cover { background: radial-gradient(120% 140% at 85% 10%, rgba(204, 255, 0, .22), rgba(204, 255, 0, 0) 55%), linear-gradient(160deg, #1A1A12 0%, #12120D 100%); }
+[data-theme="dark"] .pro__av { box-shadow: 0 0 0 1px var(--line-strong), 0 6px 18px rgba(0, 0, 0, .4); }
+[data-theme="dark"] .pro-names__art { background: var(--fill); }
+[data-theme="dark"] .admin-accts__tag--todo { background: rgba(204, 255, 0, .16); color: var(--neon); }
+[data-theme="dark"] .themepick__opt.is-on { border-color: var(--ink); }
+[data-theme="dark"] .lift:hover { box-shadow: 0 10px 24px rgba(0, 0, 0, .4); }
+[data-theme="dark"] .medal.is-earned svg { filter: drop-shadow(0 1.5px 1.5px rgba(0, 0, 0, .5)); }
+
+/* ---------- theme rows ---------- */
+.moresheet__sep { height: 1px; margin: 6px 8px; background: var(--line); }
+.moresheet__disc--theme { color: var(--ink); }
+.switch--static { pointer-events: none; }
+.set__row--theme { align-items: center; }
+.set__theme-copy { display: grid; gap: 2px; min-width: 0; }
+.set__theme-copy b { font-size: 15px; font-weight: 600; }
+@media (max-width: 420px) { .set__row--theme .tt--labeled { width: 100%; } }
+
+/* neon chips and buttons keep dark ink in dark mode (--ink turns light there) */
+html[data-themed][data-theme="dark"] ::selection { background: var(--neon); color: #110E08; }
+html[data-themed][data-theme="dark"] :is(.tier__current, .toast__icon, .toast--ok .toast__icon, .floatup, .btn--neon, .plusx-pill, .tools__state--on, .moresheet__badge, .dx-search__clear) { color: #110E08; }
+html[data-themed][data-theme="dark"] .btn--neon { box-shadow: inset 0 0 0 1.5px rgba(17, 14, 8, .55); }
+html[data-themed][data-theme="dark"] .dx-search__clear:hover { background: var(--paper); color: #110E08; }
