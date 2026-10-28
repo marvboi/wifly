@@ -18,7 +18,6 @@ delete process.env.PRIVY_APP_ID; delete process.env.PRIVY_APP_SECRET
 const { app } = await import('../src/app')
 const { migrate, db, run, one } = await import('../src/db')
 const { resetRateLimits } = await import('../src/util')
-const { retireAssHandle } = await import('../src/maint')
 const { RESERVED } = await import('../src/features')
 const paths = await import('../../frontend/src/lib/paths')
 const share = await import('../../frontend/src/lib/share')
@@ -146,20 +145,6 @@ test('guest links X: the Privy login joins the same account; the same X on anoth
     assert.equal(at.status, 503)
     assert.match(at.body.error, /identity tokens/)
   } finally { delete process.env.PRIVY_APP_ID; delete process.env.PRIVY_VERIFICATION_KEY }
-})
-
-test('retire @ass (opt-in): off by default; when on, backup first and the account picks a new name, nothing deleted', async () => {
-  await run(`INSERT INTO users (handle, name, onboarded, created_at) VALUES ('ass', 'a', 1, 1)`)
-  const id = Number((await one<{ id: number }>(`SELECT id FROM users WHERE handle = 'ass'`))!.id)
-  assert.equal((await retireAssHandle({ log: () => {} })).ran, false)
-  const r = await retireAssHandle({ force: true, now: 222, log: () => {} })
-  assert.equal(r.ran, true)
-  assert.ok(existsSync(join(dir, 'wifly.db.bak-retire-ass-222')))
-  const row = (await one<{ handle: string; onboarded: number }>('SELECT handle, onboarded FROM users WHERE id = ?', [id]))!
-  assert.ok(row.handle.startsWith('~'))
-  assert.equal(Number(row.onboarded), 1, 'only the name step comes back')
-  assert.equal((await call('GET', '/api/users/ass')).status, 404)
-  assert.equal((await retireAssHandle({ force: true, log: () => {} })).ran, false, 'runs once')
 })
 
 test('profile urls: /@name, plain /name unless it is a route word, /u/name redirects', () => {

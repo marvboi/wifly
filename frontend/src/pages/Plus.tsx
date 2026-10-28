@@ -1,4 +1,5 @@
 import { useAnyAccount } from '../auth/privyBridge'
+import { InfoTip } from '../components/InfoTip'
 import { useMemo, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { companion } from '../lib/companion'
@@ -119,7 +120,7 @@ export function Plus() {
                 transition={{ type: 'spring', stiffness: 380, damping: 18, delay: 0.15 }}><PlusBadge size={44} variant="hero" title="" /></motion.span>}
           {stateTag && <span className={`plusx-tag plusx-tag--${v.state}`}>{stateTag}</span>}
         </div>
-        <h2 className="plusx-hero__title">{headline}</h2>
+        <h2 className="plusx-hero__title">{headline}<InfoTip label="about wifly plus">plus adds the check mark next to your name. only plus members get it.</InfoTip></h2>
         <p className="plusx-hero__lede">
           {v.state === 'active' && <>active until <b>{fmtDate(v.expiresAt)}</b>.{v.renewsOn ? <> renews on <b>{fmtDate(v.renewsOn)}</b>.</> : v.autoRenew ? null : ' auto-renew is off.'}</>}
           {v.state === 'grace' && <>it ended on {fmtDate(v.expiresAt)}. you keep the check until <b>{fmtDate(v.graceEndsAt)}</b>. renew before then.</>}
@@ -154,17 +155,16 @@ export function Plus() {
             <span className="small muted"><Token size={16} /> {wif === undefined ? 'connect a wallet to see your WIF' : <>you have <b className="num">{Math.floor(wif).toLocaleString()} WIF</b></>}</span>
             {(shortBy || wif === undefined) && <button className="btn btn--ghost btn--sm" onClick={getWif}>get WIF</button>}
           </div>
-          {has && <p className="small muted plusx-note">renewing early adds {plan === 'year' ? '365' : '30'} days to your current end date, so you never lose time.</p>}
+          {has && <p className="small muted plusx-note">renew early<InfoTip label="about renewing early">adds {plan === 'year' ? '365' : '30'} days to your current end date. you never lose time.</InfoTip></p>}
           {isTeam && <p className="small muted plusx-note"><Icon name="shield" size={14} /> this is the team wallet. it can’t subscribe to itself.</p>}
         </div>
       </section>
 
       {has || v.state === 'expired' ? (
         <section className="card plus-auto">
-          <div className="card__head"><span className="eyebrow">auto-renew</span>
+          <div className="card__head"><span className="eyebrow">auto-renew<InfoTip label="about auto-renew">renews only at or below your cap. if the price goes up, it asks first.</InfoTip></span>
             <label className="tgl"><input type="checkbox" checked={!!v.autoRenew} disabled={!!busy} onChange={e => setAuto(e.target.checked)} aria-label="auto-renew" /><span /></label>
           </div>
-          <p className="muted small">renews from your wallet only at or below your cap. if the price goes up, it asks first.</p>
           <label className="field"><span className="field__label">max price per renewal</span>
             <span className="field__input"><input inputMode="decimal" value={cap || ''} onChange={e => setCap(Number(e.target.value.replace(/[^0-9.]/g, '')) || 0)} /><span className="muted">WIF</span></span>
           </label>
@@ -187,9 +187,8 @@ export function Plus() {
         ))}
       </ul>
 
-      <h3 className="plusx-h">where your WIF goes</h3>
+      <h3 className="plusx-h">where your WIF goes<InfoTip label="about plus payments">paid to the wifly team. the {FEE_PERCENT_LABEL} fee: {FEE_SPLIT.pot}% weekly pot, {FEE_SPLIT.burn}% burned.</InfoTip></h3>
       <section className="card plusx-card">
-        <p className="muted small">paid to the wifly team. the usual {FEE_PERCENT_LABEL} fee goes {FEE_SPLIT.pot}% to the weekly community pot and {FEE_SPLIT.burn}% is burned.</p>
         <FeeSplit amount={price} recipientLabel="wifly team gets" />
       </section>
 

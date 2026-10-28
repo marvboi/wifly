@@ -13,7 +13,10 @@ import type { Hex } from 'viem'
 import { csrf, endSession, needUser, session, startSession, verifySiwe, issueNonce, type Env, type LoginVia } from './auth'
 import { ALLOWED_ORIGINS, AVATAR_MAX_BYTES, AVATAR_TOO_BIG, LIMITS, TIP_FEE_BPS, UPLOAD_DIR } from './config'
 import { all, one, run } from './db'
-import { verifyTip } from './verify'
+import { adoptWalletNames, verifyTip } from './verify'
+import { reconcileUser } from './reconcile'
+import { registerProofs } from './proofs'
+import { audit, failLog, guestWriteGate, isAdmin, isGuestAccount, listAccounts, softDeleteUser, uidForWallet } from './accounts'
 import { attestLinkHandle, attesterEnabled, privyEnabled, verifyPrivyAny, verifyPrivyToken, type PrivyIdentity } from './privy'
 import { isPendingHandle, needsHandle, pendingHandle } from './pending'
 import { hydrateDrops, hydrateUsers, type DropRow, type UserRow } from './hydrate'
@@ -26,12 +29,13 @@ import { registerDca } from './dca'
 import { registerCompanion } from './companion'
 import { registerPrice } from './price'
 import { imageSize, sizedName } from './imgsize'
+import { errLine } from './errline'
 
 export const app = new Hono<Env>()
 
 app.onError((err, c) => {
   if (err instanceof HTTPException) return c.json({ error: err.message }, err.status)
-  console.error(err)
+  console.error(`[api] ${c.req.method} ${c.req.path} 500:`, errLine(err))
   return c.json({ error: 'something broke on our side' }, 500)
 })
 // API responses are data, never pages: nothing may frame them, run script from them or sniff their type.
@@ -48,6 +52,9 @@ const gzip = compress()
 app.use('/api/*', (c, next) => (c.req.path.endsWith('/stream') ? next() : gzip(c, next)))
 app.use('/api/*', csrf)
 app.use('/api/*', session)
+app.use('/api/*', failLog)
+// guests browse, set up their profile and link; liking, tipping, posting, following, names and the rest need a link
+app.use('/api/*', guestWriteGate)
 // Logged-out reads are open (feed preview, profiles, the vote pot) but rate-limited per IP.
 app.use('/api/*', async (c, next) => { if (c.req.method === 'GET' && !c.get('uid')) await guestReadGate(c); return next() })
 // JSON GETs carry a weak ETag; a matching If-None-Match gets a bodyless 304. Responses can differ per viewer, so they
@@ -86,6 +93,7 @@ async function me(uid: number) {
   return {
     ...u, handle: isPendingHandle(u.handle) ? '' : u.handle, name: isPendingHandle(u.name) ? '' : u.name, onboarded: !!Number(r?.onboarded) && !pending, needsHandle: pending, renaming: !!Number(r?.onboarded) && pending,
     links: { x: p?.x_username ?? null, wallets: w.map(r => r.address), privy: !!privy },
+    guest: await isGuestAccount(uid),
   }
 }
 async function notify(userId: number, actorId: number, kind: string, dropId: string | null, meta: object = {}) {
@@ -119,23 +127,30 @@ app.get('/api/vote/keeper', async c => c.json(await keeperStatus()))
 app.get('/api/auth/nonce', async c => c.json({ nonce: await issueNonce() }))
 app.post('/api/auth/verify', async c => {
   await rateLimit(`auth:${clientIp(c)}`, 20, 60_000)
-  const body = await c.req.json<{ message: string; signature: Hex; turnstileToken?: string; website?: string }>()
+  const body = await c.req.json<{ message: string; signature: Hex; turnstileToken?: string; website?: string; guest?: boolean }>()
   const address = await verifySiwe(c, body.message, body.signature)
   let u = await userByWallet(address)
   if (!u) {
     await signupGate(c, address, body)
     // no made-up @name: it stays hidden until they pick one in onboarding
-    const r = await run('INSERT INTO users (address, handle, name, tone, created_at) VALUES (?, ?, ?, ?, ?)',
-      [address, pendingHandle(), '', parseInt(address.slice(-2), 16) % 6, now()])
+    const r = await run('INSERT INTO users (address, handle, name, tone, extras, created_at) VALUES (?, ?, ?, ?, ?, ?)',
+      [address, pendingHandle(), '', parseInt(address.slice(-2), 16) % 6, body.guest ? '{"guest":1}' : '{}', now()])
     u = { id: Number(r.lastInsertRowid) }
   }
+  await reconcileUser(Number(u.id)).catch(() => null)
   await startSession(c, Number(u.id), 'wallet')
   return c.json({ me: await me(Number(u.id)), login: await loginOf(Number(u.id), 'wallet') })
 })
 /** The account a wallet signs in to: its main address, or a wallet linked to it later. */
 async function userByWallet(address: string): Promise<{ id: number } | null> {
-  return (await one<{ id: number }>('SELECT id FROM users WHERE address = ?', [address]))
-    ?? (await one<{ id: number }>('SELECT user_id AS id FROM user_wallets WHERE address = ?', [address])) ?? null
+  const id = await uidForWallet(address) // main address, linked or guest wallet, or the Privy wallet of an X/email account
+  return id ? { id } : null
+}
+/** A sign-up that never got going (no @name, no posts, no names): safe to fold into the account that's linking it. */
+async function isShell(uid: number) {
+  const u = await one<{ handle: string; onboarded: number }>('SELECT handle, onboarded FROM users WHERE id = ? AND deleted_at IS NULL', [uid])
+  if (!u || Number(u.onboarded) || !isPendingHandle(u.handle)) return false
+  return !(await one(`SELECT 1 FROM drops WHERE author_id = ? UNION ALL SELECT 1 FROM names WHERE owner_id = ? UNION ALL SELECT 1 FROM tips WHERE from_id = ? OR to_id = ? LIMIT 1`, [uid, uid, uid, uid]))
 }
 // Privy: the frontend posts the identity token it got after X/email login. We verify it, then find or create the user.
 async function userForPrivy(id: PrivyIdentity, onCreate: () => Promise<unknown> = async () => {}): Promise<number> {
@@ -151,6 +166,7 @@ async function userForPrivy(id: PrivyIdentity, onCreate: () => Promise<unknown> 
     const u = await one<{ id: number }>('SELECT w.user_id AS id FROM user_wallets w LEFT JOIN privy_accounts p ON p.user_id = w.user_id WHERE w.address = ? AND p.did IS NULL', [wallet])
     if (u) uid = Number(u.id)
   }
+  if (!uid && wallet) uid = (await uidForWallet(wallet)) ?? 0 // the wallet already belongs to an account: never a second one
   if (!uid) {
     await onCreate()
     // no made-up @name: the X username is only a suggestion in onboarding
@@ -160,7 +176,9 @@ async function userForPrivy(id: PrivyIdentity, onCreate: () => Promise<unknown> 
       [free ? wallet : null, pendingHandle(), name, parseInt(id.did.slice(-2), 36) % 6 || 0, now()])
     uid = Number(r.lastInsertRowid)
   }
-  await run(`INSERT INTO privy_accounts (did, user_id, x_user_id, x_username, email, wallet, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)
+  // one privy login per account: a second privy user reaching this account through its wallet signs in, it doesn't re-link
+  const other = await one<{ did: string }>('SELECT did FROM privy_accounts WHERE user_id = ? AND did <> ?', [uid, id.did])
+  if (!other) await run(`INSERT INTO privy_accounts (did, user_id, x_user_id, x_username, email, wallet, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)
     ON CONFLICT(did) DO UPDATE SET x_user_id = excluded.x_user_id, x_username = excluded.x_username, email = excluded.email,
     wallet = excluded.wallet, updated_at = excluded.updated_at`, [id.did, uid, id.xUserId, id.xUsername, id.email, wallet, now()])
   return uid
@@ -176,6 +194,7 @@ app.post('/api/auth/privy', async c => {
   const b: PrivyBody = await c.req.json<PrivyBody>().catch(() => ({ identityToken: '' }))
   const id = await verifyPrivyAny(b)
   const uid = await userForPrivy(id, () => signupGate(c, id.did, b))
+  await reconcileUser(uid).catch(() => null)
   await startSession(c, uid, 'privy')
   return c.json({ me: await me(uid), login: await loginOf(uid, 'privy'), x: id.xUsername ? { username: id.xUsername } : null })
 })
@@ -189,6 +208,10 @@ app.post('/api/auth/link/privy', async c => {
   await rateLimit(`link:${uid}`, 20, 60_000)
   const b = await c.req.json<{ identityToken?: string; accessToken?: string }>().catch(() => ({}))
   const id = await verifyPrivyAny(b)
+  // the same X/email login used once on its own (an empty sign-up) merges into this account instead of a 409
+  const shellOf = async (other: number | null | undefined) => { if (other && other !== uid && await isShell(other)) { await softDeleteUser(other, { actor: 'self' }); return true } return false }
+  await shellOf(Number((await one<{ user_id: number }>('SELECT user_id FROM privy_accounts WHERE did = ?', [id.did]))?.user_id ?? 0))
+  if (id.embeddedWallet ?? id.smartWallet) await shellOf(await uidForWallet((id.embeddedWallet ?? id.smartWallet)!))
   const byDid = await one<{ user_id: number }>('SELECT user_id FROM privy_accounts WHERE did = ?', [id.did])
   if (byDid && Number(byDid.user_id) !== uid) fail(409, id.xUserId ? TAKEN_X : 'that sign-in already belongs to another wifly account')
   const mine = await one<{ did: string }>('SELECT did FROM privy_accounts WHERE user_id = ?', [uid])
@@ -205,7 +228,12 @@ app.post('/api/auth/link/privy', async c => {
   await run(`INSERT INTO privy_accounts (did, user_id, x_user_id, x_username, email, wallet, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)
     ON CONFLICT(did) DO UPDATE SET x_user_id = excluded.x_user_id, x_username = excluded.x_username, email = excluded.email,
     wallet = excluded.wallet, updated_at = excluded.updated_at`, [id.did, uid, id.xUserId, id.xUsername, id.email, wallet, now()])
-  if (wallet) await run('UPDATE users SET address = ? WHERE id = ? AND address IS NULL', [wallet, uid])
+  if (wallet) {
+    await run('UPDATE users SET address = ? WHERE id = ? AND address IS NULL', [wallet, uid])
+    // the Privy wallet signs in to (and holds names for) this account too, even when the account already had an address
+    await run(`INSERT OR IGNORE INTO user_wallets (address, user_id, kind, created_at) VALUES (?, ?, 'privy', ?)`, [wallet, uid, now()])
+    await adoptWalletNames(uid, wallet).catch(() => null)
+  }
   // the account is owned by this login now; the session follows it
   await startSession(c, uid, 'privy')
   return c.json({ me: await me(uid), login: await loginOf(uid, 'privy') })
@@ -216,7 +244,8 @@ app.post('/api/auth/link/wallet', async c => {
   await rateLimit(`link:${uid}`, 20, 60_000)
   const b = await c.req.json<{ message: string; signature: Hex; guest?: boolean }>()
   const address = await verifySiwe(c, b.message, b.signature)
-  const owner = await userByWallet(address)
+  let owner = await userByWallet(address)
+  if (owner && Number(owner.id) !== uid && await isShell(Number(owner.id))) { await softDeleteUser(Number(owner.id), { actor: 'self' }); owner = null }
   if (owner && Number(owner.id) !== uid) fail(409, TAKEN_WALLET)
   const cur = await one<{ address: string | null }>('SELECT address FROM users WHERE id = ?', [uid])
   if (cur?.address === address) return c.json({ me: await me(uid), login: await loginOf(uid, c.get('via')) })
@@ -227,6 +256,7 @@ app.post('/api/auth/link/wallet', async c => {
   }
   await run(`INSERT INTO user_wallets (address, user_id, kind, created_at) VALUES (?, ?, 'linked', ?)
     ON CONFLICT(address) DO UPDATE SET kind = 'linked'`, [address, uid, now()])
+  await adoptWalletNames(uid, address).catch(() => null)
   await startSession(c, uid, 'wallet')
   return c.json({ me: await me(uid), login: await loginOf(uid, 'wallet') })
 })
@@ -251,7 +281,82 @@ app.get('/api/x/resolve', async c => {
 })
 app.post('/api/auth/logout', c => { endSession(c); return c.json({ ok: true }) })
 
-/** Which sign-in this session used, for settings ("signed in with wallet 0x12…ab"). Null for sessions started before speed.4. */
+// ---------- delete my account (soft) ----------
+app.post('/api/me/delete', async c => {
+  const uid = needUser(c)
+  await rateLimit(`del:${uid}`, 3, 3600_000)
+  await rateLimit(`del:${clientIp(c)}`, 10, 3600_000)
+  const { confirm } = await c.req.json<{ confirm?: string }>().catch(() => ({ confirm: '' }))
+  const u = await one<{ handle: string }>('SELECT handle FROM users WHERE id = ?', [uid])
+  const want = isPendingHandle(u?.handle) ? 'delete' : u!.handle.toLowerCase()
+  if (String(confirm ?? '').trim().replace(/^@/, '').toLowerCase() !== want) fail(400, isPendingHandle(u?.handle) ? 'type delete to confirm' : 'type your @name to confirm')
+  await softDeleteUser(uid, { actor: 'self' })
+  clearRankCache()
+  endSession(c)
+  return c.json({ ok: true })
+})
+
+// ---------- owner-only accounts list (ADMIN_ADDRESSES; empty = off, 404 for everyone) ----------
+const needAdmin = async (c: Parameters<typeof needUser>[0]) => { const uid = c.get('uid'); if (!(await isAdmin(uid))) fail(404, 'not found'); return uid! }
+app.get('/api/admin/accounts', async c => {
+  const admin = await needAdmin(c)
+  await rateLimit(`adm:${admin}`, 60, 60_000)
+  const f = c.req.query('filter'); const filter = f === 'unfinished' || f === 'guests' ? f : 'all'
+  const rows = await listAccounts({ filter })
+  await audit(admin, 'list_accounts', null, { filter, n: rows.length })
+  return c.json({ accounts: rows })
+})
+app.post('/api/admin/accounts/:id/remove', async c => {
+  const admin = await needAdmin(c)
+  await rateLimit(`adm-rm:${admin}`, 20, 3600_000)
+  const id = Number(c.req.param('id'))
+  const { confirm } = await c.req.json<{ confirm?: string }>().catch(() => ({ confirm: '' }))
+  const u = await one<{ handle: string }>('SELECT handle FROM users WHERE id = ? AND deleted_at IS NULL', [id])
+  if (!u) fail(404, 'that account is gone')
+  if (id === admin) fail(400, 'use delete my account in settings for your own account')
+  const typed = String(confirm ?? '').trim().replace(/^@/, '').toLowerCase()
+  if (typed !== 'remove' && (isPendingHandle(u!.handle) || typed !== u!.handle.toLowerCase())) fail(400, 'type the @name or remove to confirm')
+  await softDeleteUser(id, { actor: 'admin', adminUid: admin })
+  await audit(admin, 'remove_account', id)
+  clearRankCache()
+  return c.json({ ok: true })
+})
+
+// ---------- landing: one real featured post (FEATURED_POST_ID env or the admin 'landing:featured' setting) ----------
+export const DEFAULT_FEATURED_POST = '88stVCX0GF'
+const FEATURED_RE = /^[A-Za-z0-9_-]{4,32}$/
+async function featuredId(): Promise<string> {
+  const kv = await one<{ v: string }>("SELECT v FROM kv WHERE k = 'landing:featured'").catch(() => null)
+  const id = kv?.v || process.env.FEATURED_POST_ID || DEFAULT_FEATURED_POST
+  return FEATURED_RE.test(id) ? id : DEFAULT_FEATURED_POST
+}
+/** Public, cached 30s. Only plain public posts: no locked, supporters-only, deleted, reply or seed posts. 404 otherwise, and the landing hides the card. */
+app.get('/api/landing/featured', async c => {
+  const id = await featuredId()
+  const out = await cached(['drop'], `landing:${id}`, 30_000, async () => {
+    const row = await one<DropRow>('SELECT * FROM drops WHERE id = ? AND deleted = 0', [id])
+    if (!row) return null
+    const [d] = await hydrateDrops([row.id], null)
+    if (!d || d.deleted || d.locked || d.supportersOnly || d.replyTo || d.seed || !d.author || d.author.seed) return null
+    return { id: d.id, text: d.text, likes: d.likes, tipped: d.tipped, createdAt: d.createdAt, author: { handle: d.author.handle, name: d.author.name, avatar: d.author.avatar } }
+  })
+  if (!out) fail(404, 'no featured post')
+  c.header('Cache-Control', 'public, max-age=30')
+  return c.json({ featured: out })
+})
+app.post('/api/admin/landing', async c => {
+  const admin = await needAdmin(c)
+  await rateLimit(`adm-land:${admin}`, 20, 3600_000)
+  const { featured } = await c.req.json<{ featured?: string | null }>().catch(() => ({ featured: undefined }))
+  if (featured === null || featured === '') await run("DELETE FROM kv WHERE k = 'landing:featured'")
+  else if (typeof featured === 'string' && FEATURED_RE.test(featured) && await one('SELECT id FROM drops WHERE id = ? AND deleted = 0', [featured]))
+    await run("INSERT INTO kv (k, v) VALUES ('landing:featured', ?) ON CONFLICT(k) DO UPDATE SET v = excluded.v", [featured])
+  else fail(400, 'that post is not there')
+  await audit(admin, 'set_landing_featured', null, { featured: featured || null })
+  return c.json({ featured: await featuredId() })
+})
+
+/** Which sign-in this session used, for settings ("signed in with wallet 0x12…ab"). Null for older sessions. */
 export type Login = { method: 'wallet'; address: string | null } | { method: 'x'; username: string } | { method: 'email' } | { method: 'privy' }
 async function loginOf(uid: number, via: LoginVia | null): Promise<Login | null> {
   if (via === 'wallet') return { method: 'wallet', address: (await one<{ address: string | null }>('SELECT address FROM users WHERE id = ?', [uid]))?.address ?? null }
@@ -263,7 +368,7 @@ app.get('/api/me', async c => {
   const uid = c.get('uid')
   if (!uid) return c.json({ me: null })
   const unread = await one<{ n: number }>('SELECT COUNT(*) AS n FROM notifications WHERE user_id = ? AND read = 0', [uid])
-  return c.json({ me: await me(uid), unread: Number(unread?.n ?? 0), login: await loginOf(uid, c.get('via')) })
+  return c.json({ me: await me(uid), unread: Number(unread?.n ?? 0), login: await loginOf(uid, c.get('via')), ...((await isAdmin(uid)) ? { admin: true } : {}) })
 })
 app.patch('/api/me', async c => {
   const uid = needUser(c)
@@ -777,6 +882,7 @@ app.post('/api/notifications/read', async c => {
 })
 
 registerFeatures(app, { me, notify })
+registerProofs(app, { me })
 registerAgent(app)
 registerDca(app)
 registerCompanion(app)

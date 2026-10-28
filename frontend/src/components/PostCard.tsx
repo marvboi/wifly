@@ -14,8 +14,8 @@ import { Amount, Avatar, FlatDisc, Sparkline, Token } from './Bits'
 import { Icon } from './Icon'
 import { useQueryClient } from '@tanstack/react-query'
 import { api, deleteDrop, toggleDrop } from '../api/client'
-import { useLive, useUser } from '../api/session'
-import { DropImage, QuoteEmbed, RichText, useGate } from './Social'
+import { useLive, useSession, useUser } from '../api/session'
+import { DropImage, QuoteEmbed, RichText, useGate, useNeedLink } from './Social'
 
 export function PostMedia({ post }: { post: Post }) {
   const m = post.media
@@ -199,6 +199,8 @@ export function PostActions({ post: p0 }: { post: Post; big?: boolean }) {
   const store = useStore()
   const { openSheet, votes, toast } = store
   const gate = useGate()
+  const need = useNeedLink()
+  const { me: viewer, guest } = useSession()
   const nav = useNavigate()
   const myVotes = votes[`post:${post.id}`] ?? 0
   const [pop, setPop] = useState(0)
@@ -216,9 +218,10 @@ export function PostActions({ post: p0 }: { post: Post; big?: boolean }) {
   const fail = (e: Error) => toast('that didn’t go through', e.message)
   const toggle = (kind: 'like' | 'pass' | 'bookmark') => {
     if (!server) { if (kind === 'like') store.toggleLike(post.id); else if (kind === 'pass') store.toggleRepost(post.id); return }
-    if (!gate(kind === 'like' ? 'sign in to like drops' : kind === 'pass' ? 'sign in to pass drops on' : 'sign in to save drops')) return
+    if (kind !== 'bookmark') { need(() => { toggleDrop(post.id, kind).catch(fail) }, kind === 'like' ? 'sign in to like drops' : 'sign in to pass drops on'); return }
+    if (!gate('sign in to save drops')) return
     toggleDrop(post.id, kind).catch(fail)
-    if (kind === 'bookmark') toast(post.bookmarked ? 'removed from bookmarks' : 'saved to bookmarks')
+    toast(post.bookmarked ? 'removed from bookmarks' : 'saved to bookmarks')
   }
   const share = async () => {
     const t = shareToast(await shareLink(postUrl(post), post.text.slice(0, 120)))
@@ -228,7 +231,7 @@ export function PostActions({ post: p0 }: { post: Post; big?: boolean }) {
     <div className="drop__actions" onClick={e => e.stopPropagation()}>
       <div className="acts">
         <button className="act" aria-label={`reply, ${post.replies} replies`} onClick={stop(() => {
-          if (server) { if (gate('sign in to reply')) openSheet({ type: 'compose', replyTo: post.id }) } else nav(`/post/${post.id}`)
+          if (server) need(() => openSheet({ type: 'compose', replyTo: post.id }), 'sign in to reply'); else nav(`/post/${post.id}`)
         })}><Icon name="reply" size={18} /><Count n={post.replies} /></button>
 
         <div className="dmenu" ref={passRef}>
@@ -238,12 +241,12 @@ export function PostActions({ post: p0 }: { post: Post; big?: boolean }) {
           </button>
           <Pop open={passOpen} onClose={closePass} anchor={passRef} align="left">
             <button role="menuitem" className={passed ? 'is-on' : ''} onClick={stop(() => { setPassOpen(false); toggle('pass') })}><Icon name="repost" size={16} /> {passed ? 'undo pass it on' : 'pass it on'}</button>
-            <button role="menuitem" onClick={stop(() => { setPassOpen(false); if (gate('sign in to quote drops')) openSheet({ type: 'compose', quoteOf: post.id }) })}><Icon name="quote" size={16} /> quote</button>
+            <button role="menuitem" onClick={stop(() => { setPassOpen(false); need(() => openSheet({ type: 'compose', quoteOf: post.id }), 'sign in to quote drops') })}><Icon name="quote" size={16} /> quote</button>
           </Pop>
         </div>
 
         <button className={`act act--like ${liked ? 'is-on' : ''}`} aria-label={`${liked ? 'unlike' : 'like'}, ${likes}`} aria-pressed={liked}
-          onClick={stop(() => { if (!liked) setBurst(b => b + 1); toggle('like') })}>
+          onClick={stop(() => { if (!liked && (!server || (viewer && !guest))) setBurst(b => b + 1); toggle('like') })}>
           <motion.span key={burst} className="act__icon" initial={burst ? { scale: 0.6 } : false} animate={{ scale: 1 }} transition={{ type: 'spring', stiffness: 600, damping: 14 }}>
             <Icon name="heart" size={18} fill={liked} />
           </motion.span>

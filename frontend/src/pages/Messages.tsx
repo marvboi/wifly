@@ -42,7 +42,7 @@ function ThreadInner() {
   if (!u) return <><PageHead title="messages" back /><Blank title="no one here by that name." body="maybe a typo, or they changed their name." mood="oops" action={<Link to="/search?type=people" className="btn btn--ghost btn--sm">find people</Link>} /></>
   return (
     <div className="dm">
-      <PageHead title={u.name} back sub={`${at(u.handle)}`} right={<button className="icon-btn" aria-label="Tip" onClick={() => openSheet({ type: 'tip', to: handle })}><TipJar size={17} title="" /></button>} />
+      <PageHead title={u.name} back sub={`${at(u.handle)}`} right={<button className="icon-btn" aria-label="tip" onClick={() => openSheet({ type: 'tip', to: handle })}><TipJar size={17} title="" /></button>} />
       <div className="dm__scroll">
         <div className="dm__intro"><Avatar handle={handle} size={64} /><div className="strong">{u.name}{u.plus && <PlusMark size={14} />}</div><div className="muted small">{at(u.handle)} · {u.followers.toLocaleString()} followers</div></div>
         <p className="muted small dm__note">no messages yet. direct messages are on the way.</p>
@@ -51,7 +51,7 @@ function ThreadInner() {
         <div className="paywall">
           <span className="paywall__icon"><Icon name="lock" size={18} /></span>
           <div><div className="strong">{u.name} charges {u.dmPrice} WIF for a first message</div><div className="muted small">from people they don’t follow. replies are free after that.</div></div>
-          <button className="btn btn--dark" onClick={() => openSheet({ type: 'paydm', handle })}>Pay {u.dmPrice} WIF</button>
+          <button className="btn btn--dark" onClick={() => openSheet({ type: 'paydm', handle })}>pay {u.dmPrice} WIF</button>
         </div>
       ) : (
         <div className="dm__compose">

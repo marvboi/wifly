@@ -10,13 +10,16 @@ import { migrate, one } from './db'
 import { startWeekKeeper } from './keeper'
 import { startDcaKeeper } from './dca'
 import { startVerifier } from './verify'
-import { retireAssHandle, runStartupMaintenance } from './maint'
+import { runStartupMaintenance } from './maint'
+import { reconcileAll } from './reconcile'
 import { warmPrice } from './price'
+import { errLine } from './errline'
 
 await migrate()
 // one-time data maintenance (marker in maint_runs), before the server listens
-await runStartupMaintenance().catch(e => console.error('maint failed', e))
-await retireAssHandle().catch(e => console.error('maint failed', e))
+await runStartupMaintenance().catch(e => console.error('[maint] failed:', errLine(e)))
+// .wif holders get their @name; reserved handles without a .wif go back to the name step
+await reconcileAll().catch(e => console.error('[reconcile] failed:', errLine(e)))
 // No demo seeding: an empty database stays empty until real people sign up.
 
 app.use('/uploads/*', async (c, next) => { await next(); c.header('Cache-Control', 'public, max-age=31536000, immutable'); c.header('X-Content-Type-Options', 'nosniff') })

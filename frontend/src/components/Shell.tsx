@@ -1,7 +1,7 @@
 import { profilePath } from '../lib/paths'
 import { FEED_PATH } from '../lib/hosts'
 import { Companion } from '../companion/Companion'
-import { NavLink, Link, Navigate, useLocation, useOutlet } from 'react-router-dom'
+import { NavLink, Link, useLocation, useOutlet } from 'react-router-dom'
 import { AnimatePresence, motion } from 'motion/react'
 import { useEffect } from 'react'
 import { useSession } from '../api/session'
@@ -18,6 +18,14 @@ const left: DockItem[] = [
   { to: '/search', label: 'search', icon: 'search', phone: true },
   { to: '/vote', label: 'vote', icon: 'vote', phone: true },
   { to: '/messages', label: 'messages', icon: 'mail' },
+]
+/** Logged out: a read-only dock (no new drop, no private pages) above the join bar. */
+const guestDock: DockItem[] = [
+  { to: FEED_PATH, label: 'home', icon: 'home', phone: true },
+  { to: '/search', label: 'explore', icon: 'search', phone: true },
+  { to: '/names', label: '.wif', icon: 'at', phone: true },
+  { to: '/vote', label: 'vote', icon: 'vote', phone: true },
+  { to: '/plus', label: 'plus', icon: 'plusmark' },
 ]
 const right: DockItem[] = [
   { to: '/agent', label: 'agent', icon: 'agent' },
@@ -38,20 +46,49 @@ function DockLink({ n }: { n: DockItem }) {
   )
 }
 
+/** Truly private pages: logged out, they show their own calm card and open the sign-in sheet (no hard redirect). */
+const PRIVATE: Record<string, string> = {
+  notifications: 'sign in to see your notifications', messages: 'sign in to see your messages',
+  settings: 'sign in to open your settings', bookmarks: 'sign in to see your saved drops', drafts: 'sign in to see your drafts',
+}
+
+/** Slim calm bar for logged-out visitors, like x: read everything, join or sign in when you want to do something. */
+function JoinBar() {
+  const { openSheet } = useStore()
+  return (
+    <motion.aside className="joinbar" aria-label="join wifly" data-testid="joinbar"
+      initial={{ y: 24, opacity: 0 }} animate={{ y: 0, opacity: 1 }} transition={{ type: 'spring', stiffness: 260, damping: 30, delay: 0.25 }}>
+      <div className="joinbar__inner">
+        <div className="joinbar__copy">
+          <span className="joinbar__title">don’t miss what’s happening</span>
+          <span className="joinbar__line">people on wifly are the first to know.</span>
+        </div>
+        <div className="joinbar__actions">
+          <button className="joinbar__btn joinbar__btn--ghost" onClick={() => openSheet({ type: 'signin' })}>sign in</button>
+          <button className="joinbar__btn joinbar__btn--main" onClick={() => openSheet({ type: 'signin', reason: 'join wifly' })}>join wifly</button>
+        </div>
+      </div>
+    </motion.aside>
+  )
+}
+
 /**
  * App frame: a top bar (wordmark, alerts, wallet) and a floating dock at the bottom, on every screen size.
  * Pages render into one centred column; Home adds the world strip above its feed.
  */
 export function AppShell() {
-  const { me, unread } = useSession()
+  const { me, unread, ready } = useSession()
+  const out = ready && !me
   const { pathname } = useLocation()
   const { openSheet } = useStore()
   const outlet = useOutlet()
   useEffect(() => { window.scrollTo(0, 0) }, [pathname])
-  // no public placeholder @names: a signed-in account without a picked @name goes to the name step first
-  if (me?.needsHandle && pathname !== '/settings') return <Navigate to={`/welcome${me.renaming ? '?step=you' : ''}`} replace />
+  const seg = pathname.split('/')[1] || ''
+  useEffect(() => { if (out && PRIVATE[seg]) openSheet({ type: 'signin', reason: PRIVATE[seg] }) }, [out, seg]) // eslint-disable-line react-hooks/exhaustive-deps
+  // public pages are open to everyone, like x. an account without a picked @name browses freely and is
+  // sent to the name step only when it acts (useNeedLink / gated sheets); private pages show their own sign-in card.
   return (
-    <div className="app" data-route={pathname.split('/')[1] || 'home'}>
+    <div className={`app${out ? ' app--out' : ''}`} data-route={pathname.split('/')[1] || 'home'}>
       <header className="topbar">
         <div className="topbar__inner">
           <Wordmark to={FEED_PATH} size="sm" />
@@ -64,8 +101,12 @@ export function AppShell() {
               </NavLink>
               <NavLink to="/bookmarks" className="topbar__btn topbar__btn--wide" aria-label="bookmarks"><Icon name="bookmark" size={20} /></NavLink>
               <WalletChip compact />
-              <Link to={profilePath(me.handle)} className="topbar__me" aria-label="your profile"><Avatar handle={me.handle} size={32} /></Link>
-            </> : <button className="btn btn--sm btn--dark" onClick={() => openSheet({ type: 'signin' })}>sign in</button>}
+              {me.needsHandle
+                ? <Link to={`/welcome${me.renaming ? '?step=you' : ''}`} className="btn btn--sm btn--dark">pick your @name</Link>
+                : <Link to={profilePath(me.handle)} className="topbar__me" aria-label="your profile"><Avatar handle={me.handle} size={32} /></Link>}
+            </> : ready ? <>
+              <button className="btn btn--sm btn--ghost topbar__signin" onClick={() => openSheet({ type: 'signin' })}>sign in</button>
+            </> : null}
           </div>
         </div>
       </header>
@@ -83,13 +124,16 @@ export function AppShell() {
         </AnimatePresence>
       </main>
 
-      <nav className="dock" aria-label="main">
+      {out ? <nav className="dock dock--out" aria-label="main">
+        {guestDock.map(n => <DockLink key={n.to} n={n} />)}
+      </nav> : <nav className="dock" aria-label="main">
         {left.map(n => <DockLink key={n.to} n={n} />)}
         <motion.button className="dock__new" whileTap={{ scale: 0.92 }} whileHover={{ y: -2 }} transition={{ type: 'spring', stiffness: 500, damping: 22 }} onClick={() => openSheet({ type: 'compose' })} aria-label="new drop">
           <Icon name="plus" size={20} /><span className="dock__new-label">new drop</span>
         </motion.button>
-        {right.map(n => <DockLink key={n.to} n={n.to === '/@you' && me ? { ...n, to: profilePath(me.handle) } : n} />)}
-      </nav>
+        {right.map(n => <DockLink key={n.to} n={n.to === '/@you' && me && !me.needsHandle ? { ...n, to: profilePath(me.handle) } : n} />)}
+      </nav>}
+      {out && <JoinBar />}
       <Companion />
     </div>
   )

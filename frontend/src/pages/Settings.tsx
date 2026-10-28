@@ -11,6 +11,10 @@ import { PageHead } from '../components/Shell'
 import { Icon, type IconName } from '../components/Icon'
 import { Mascot } from '../components/Mascot'
 import { LinkList } from '../components/LinkAccounts'
+import { InfoTip } from '../components/InfoTip'
+import { TipDestination, UseMyWif } from '../components/WalletProofs'
+import { RemoveAccountSheet } from '../components/AccountRemove'
+import { AnimatePresence } from 'motion/react'
 
 export function Settings() {
   const { me, ready, setMe, signOut, login } = useSession()
@@ -20,6 +24,7 @@ export function Settings() {
   const [name, setName] = useState(me?.name ?? '')
   const [avatar, setAvatar] = useState<string | null>(me?.avatar ?? null)
   const [busy, setBusy] = useState(false)
+  const [del, setDel] = useState(false)
   useEffect(() => { if (me) { setName(me.name ?? ''); setAvatar(me.avatar ?? null) } }, [me?.handle]) // eslint-disable-line react-hooks/exhaustive-deps
 
   if (ready && !me) return (
@@ -77,13 +82,32 @@ export function Settings() {
         </section>
 
         <section className="card settings-page__card" data-testid="settings-links">
-          <h2 className="settings-page__h">linked accounts</h2>
-          <p className="tiny muted">link x or a wallet to sign in to this same account from anywhere.</p>
+          <h2 className="settings-page__h">linked accounts<InfoTip label="about linked accounts">link x or a wallet to sign in to this same account from anywhere.</InfoTip></h2>
           <LinkList />
         </section>
 
+        <section className="card settings-page__card" data-testid="settings-wif">
+          <h2 className="settings-page__h">.wif name</h2>
+          {me.wifName ? <p className="small">{me.wifName}.wif <span className="muted">is your name here</span></p> : <p className="small muted">no .wif yet</p>}
+          <UseMyWif />
+        </section>
+
+        <TipDestination />
+
         <button className="linkbtn settings-page__out" disabled={busy} onClick={out}>sign out</button>
+
+        <section className="settings-page__danger" data-testid="settings-delete">
+          <p className="tiny muted">done with wifly? you can delete your account. your .wif names and WIF stay in your wallet.</p>
+          <button className="linkbtn settings-page__del" onClick={() => setDel(true)}>delete my account</button>
+        </section>
       </div>
+      <AnimatePresence>
+        {del && <RemoveAccountSheet mode="self" handle={me.handle || null} onClose={() => setDel(false)} onConfirm={async typed => {
+          await api('/me/delete', { method: 'POST', json: { confirm: typed } })
+          setDel(false); toast('your account is deleted')
+          await signOut().catch(() => {}); void qc.invalidateQueries(); nav(FEED_PATH, { replace: true })
+        }} />}
+      </AnimatePresence>
     </>
   )
 }

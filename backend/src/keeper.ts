@@ -16,6 +16,7 @@ import { chainClient } from './chain'
 import { wiflyContract } from './config'
 import { all, run } from './db'
 import { loadKeeperSigner, type AgentSigner } from './agent/signer'
+import { errLine } from './errline'
 
 export const KEEPER_ABI = parseAbi([
   'function currentEpoch() view returns (uint256)',
@@ -69,7 +70,7 @@ export async function runKeeperOnce(chain: KeeperChain, o: KeeperOpts = {}): Pro
       } catch (err) {
         const skip = skipOf(err)
         if (skip) { res = { epoch: Number(e), action: skip, attempts }; break }
-        if (attempts > retries) { res = { epoch: Number(e), action: 'failed', attempts, detail: String((err as Error)?.message ?? err).slice(0, 300) }; break }
+        if (attempts > retries) { res = { epoch: Number(e), action: 'failed', attempts, detail: errLine(err, 300) }; break }
         await sleep(base * 2 ** (attempts - 1))
       }
     }
@@ -113,7 +114,7 @@ export function startWeekKeeper(): 'off' | 'no-contract' | 'no-signer' | 'starte
   const tick = async () => {
     if (running) return
     running = true
-    try { await runKeeperOnce(chain, { log: logRun }) } catch (e) { await logRun({ epoch: -1, action: 'failed', attempts: 1, detail: String((e as Error)?.message ?? e).slice(0, 300) }).catch(() => {}) } finally { running = false }
+    try { await runKeeperOnce(chain, { log: logRun }) } catch (e) { await logRun({ epoch: -1, action: 'failed', attempts: 1, detail: errLine(e, 300) }).catch(() => {}) } finally { running = false }
   }
   timer = setInterval(tick, keeperIntervalMs())
   timer.unref?.()

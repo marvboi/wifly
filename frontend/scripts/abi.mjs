@@ -1,6 +1,6 @@
 // Copies the ABIs (and the deploy artifacts for /deploy) from contracts/out. Read-only on contracts/.
 //   npm run abi                      (reads ../contracts/out)
-//   ABI_OUT=/tmp/wifly-out npm run abi  (a build made with forge --out /tmp/wifly-out)
+//   ABI_OUT=<dir> npm run abi           (a build made with forge --out <dir>)
 // Writes: src/contracts/{wiflyAbi,namesAbi,badgesAbi,wiflyDca}.ts, ../backend/src/abi/wiflyDca.ts, src/deploy/artifacts.json
 // Every Wifly contract except WiflyNameRenderer is a UUPS proxy: the app always talks to the PROXY
 // address; the implementation ABI is the one to use with it (calls go through the proxy's delegatecall).

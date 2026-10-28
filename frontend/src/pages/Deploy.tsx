@@ -8,7 +8,7 @@
  * The steps are data (CONTRACTS below + src/deploy/artifacts.json from `npm run abi`), so a new script or ABI
  * means regenerating the artifacts and editing the init args here, not the page.
  * Order: Wifly → WiflyNames → WiflyGlyphs → WiflyNameRenderer(glyphs proxy) → WiflyBadges → setRenderer, setPot(wifly),
- * reserve wifly/marv/wif → WiflyDCA → setKeeper.
+ * reserve brand names → WiflyDCA → setKeeper.
  * Addresses only come from mined receipts. The app and Railway env always get the PROXY addresses; the implementation
  * addresses are shown for the record. Nothing here holds a key: the wallet signs.
  */

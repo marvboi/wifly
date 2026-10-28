@@ -27,6 +27,8 @@ export type SheetState =
   | { type: 'tiers' }
   | { type: 'compose'; replyTo?: string; quoteOf?: string }
   | { type: 'signin'; reason?: string }
+  /** guests: link a wallet, x or email, then `then` runs (gated sheets reopen on their own) */
+  | { type: 'link'; then?: () => void }
   | { type: 'badge'; id: string; handle?: string }
   | { type: 'profile' }
   | null
@@ -37,6 +39,9 @@ type Toast = { id: number; title: string; body?: string; tone: ToastTone }
 const WARN_RE = /couldn|can.t|cannot|didn.t|failed|fail|not sent|error|wrong|denied|rejected|declined|too (big|many|long|low)|must|over |sign in first|blocked|expired|not enough|unavailable|try again|isn.t/i
 const INFO_RE = /^(preview|heads up|note)|soon\b|copied/i
 export const toneOf = (title: string, body?: string): ToastTone => WARN_RE.test(title) || WARN_RE.test(body ?? '') && !/^(sent|saved|done|confirmed)/i.test(title) ? 'warn' : INFO_RE.test(title) ? 'info' : 'ok'
+
+/** The api's link_required message: never toasted, the link sheet opens instead. */
+const LINK_LINE = /^link a wallet, x or email to continue$/i
 
 type AgentState = typeof agentDefaults
 
@@ -80,6 +85,7 @@ export function StoreProvider({ children, initialSheet = null }: { children: Rea
   const nextId = useRef(1)
 
   const toast = useCallback((title: string, body?: string, tone?: ToastTone) => {
+    if (LINK_LINE.test(title) || LINK_LINE.test(body ?? '')) return // the link sheet already says it
     const id = nextId.current++
     const tn = tone ?? toneOf(title, body)
     setToasts(t => [...t.slice(-2), { id, title, body, tone: tn }])

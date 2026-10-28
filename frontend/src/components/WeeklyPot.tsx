@@ -5,6 +5,7 @@ import { useAnyAccount } from '../auth/privyBridge'
  * pendingVoterReward(epoch, voter). Claim sends claimVoterReward(epoch) per closed week, credited to the Wifly balance.
  * Weeks are closed by anyone calling finalizeEpoch(epoch, leader); our backend keeper does it when WEEK_KEEPER_ENABLED=true.
  */
+import { InfoTip } from './InfoTip'
 import { useEffect, useState } from 'react'
 import { AnimatePresence, motion } from 'motion/react'
 import { LIVE, TX_ENABLED } from '../config'
@@ -39,7 +40,7 @@ export function WeekPotCard() {
   return (
     <section className="weekpot card" aria-label="this week’s community pot">
       <div className="weekpot__head">
-        <span className="eyebrow">this week’s community pot{LIVE ? ' · live' : ''}</span>
+        <span className="eyebrow">this week’s community pot{LIVE ? ' · live' : ''}<InfoTip label="about the weekly pot" side="bottom">fees fill it. no votes in a week? it rolls over.</InfoTip></span>
         <div className="weekpot__clock" aria-label="time left this week">
           {[['d', c.d], ['h', c.h], ['m', c.m], ['s', c.s]].map(([k, n]) => <span key={k as string}><b className="num"><Tick value={n as number} format={x => String(x).padStart(2, '0')} /></b><i>{k}</i></span>)}
         </div>
@@ -52,7 +53,6 @@ export function WeekPotCard() {
       <ul className="weekpot__rule">
         <li><b className="num">{Math.round(w * 100)}%</b> to the top-voted creator</li>
         <li><b className="num">{Math.round(v * 100)}%</b> shared by that creator’s voters, by how much each voted</li>
-        <li>nobody voted? the whole pot rolls over to next week</li>
       </ul>
     </section>
   )

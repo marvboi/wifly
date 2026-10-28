@@ -11,6 +11,7 @@ import { privateKeyToAccount } from 'viem/accounts'
 import { chainClient, robinhoodChain } from './chain'
 import { attesterConfig, privyConfig } from './config'
 import { fail } from './util'
+import { errLine } from './errline'
 
 export type PrivyIdentity = {
   did: string
@@ -77,11 +78,15 @@ export async function verifyPrivyAccess(token: unknown): Promise<PrivyIdentity> 
   let did = ''
   try { did = (await privy().utils().auth().verifyAccessToken(token as string)).user_id } catch { fail(401, 'access token is not valid') }
   try { return identityFrom(await privy().users()._get(did)) }
-  catch (e) { console.error('[privy] user lookup failed', (e as Error)?.message); fail(502, 'could not reach the sign-in service. try again') }
+  catch (e) { console.error('[privy] user lookup failed:', errLine(e)); fail(502, 'could not reach the sign-in service. try again') }
   throw new Error('unreachable')
 }
 /** Identity token when the client has one, else the access token. */
+let testVerifier: ((b: { identityToken?: unknown; accessToken?: unknown }) => PrivyIdentity) | null = null
+/** Tests only: stand in for Privy's token check (never set in the app). */
+export function setPrivyVerifierForTests(fn: typeof testVerifier) { testVerifier = fn }
 export function verifyPrivyAny(b: { identityToken?: unknown; accessToken?: unknown }): Promise<PrivyIdentity> {
+  if (testVerifier) return Promise.resolve(testVerifier(b))
   return b.identityToken ? verifyPrivyToken(b.identityToken) : verifyPrivyAccess(b.accessToken)
 }
 

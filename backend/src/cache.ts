@@ -5,6 +5,7 @@
 import { Redis } from 'ioredis'
 import { onWrite } from './db'
 import { envInt, Lru } from './lru'
+import { errLine } from './errline'
 
 type Sub = (msg: string) => void
 interface Store {
@@ -103,7 +104,7 @@ function redis(url: string): Store {
   const r = new Redis(url, { maxRetriesPerRequest: 2, enableOfflineQueue: true, lazyConnect: false })
   let sub: Redis | null = null
   const handlers = new Map<string, Set<Sub>>()
-  r.on('error', e => console.error('[redis]', e.message))
+  r.on('error', e => console.error('[redis]', errLine(e)))
   return {
     kind: 'redis',
     get: k => r.get(k),

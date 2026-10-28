@@ -93,15 +93,31 @@ export function useGate() {
   return (reason?: string) => { if (me) return true; openSheet({ type: 'signin', reason }); return false }
 }
 
+/**
+ * Writes that need a real account (like, pass it on, reply, follow …): signed out opens sign-in, a guest opens the
+ * link sheet and the action runs right after linking, everyone else runs it now.
+ */
+export function useNeedLink() {
+  const { me, guest } = useSession()
+  const { openSheet } = useStore()
+  const nav = useNavigate()
+  return (run: () => void, reason?: string) => {
+    if (!me) { openSheet({ type: 'signin', reason }); return }
+    if (me.needsHandle) { nav(`/welcome${me.renaming ? '?step=you' : ''}`); return }
+    if (guest) { openSheet({ type: 'link', then: run }); return }
+    run()
+  }
+}
+
 export function FollowButton({ handle, size = 'md' }: { handle: string; size?: 'sm' | 'md' }) {
   const u = useUser(handle)
-  const gate = useGate()
+  const need = useNeedLink()
   const { toast } = useStore()
   if (!u || u.you) return null
   const on = !!u.youFollow
   return (
     <motion.button whileTap={{ scale: 0.95 }} className={`btn ${size === 'sm' ? 'btn--sm' : ''} ${on ? 'btn--ghost' : 'btn--dark'} follow-btn`}
-      onClick={e => { e.preventDefault(); e.stopPropagation(); if (!gate('sign in to follow people')) return; followUser(handle, !on).catch(err => toast('couldn’t update follow', err.message)) }}>
+      onClick={e => { e.preventDefault(); e.stopPropagation(); need(() => { followUser(handle, !on).catch(err => toast('couldn’t update follow', err.message)) }, 'sign in to follow people') }}>
       {on ? <span className="follow-btn__on">following</span> : 'follow'}
     </motion.button>
   )

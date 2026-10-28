@@ -7,7 +7,7 @@
 import { clientIp } from './abuse'
 import { cached, rpcCached } from './cache'
 import type { Hono } from 'hono'
-import { keccak256, toBytes, type Address } from 'viem'
+import { decodeEventLog, keccak256, parseAbi, toBytes, type Address } from 'viem'
 import { needUser, type Env } from './auth'
 import { chainClient } from './chain'
 import { BADGE_TIERS, FEE_SPLIT, splitFee, LIMITS, NAME_FEE_BPS, nameClaimFee, PLUS_GRACE_MS, badgesContract, demoSeedAllowed, namesContract, namesRendererContract, plusPlans, wiflyContract, type PlusPlan } from './config'
@@ -17,7 +17,10 @@ import { clearRankCache } from './rank'
 import { needsHandle } from './pending'
 import { adoptName, bumpOf, dropName, renameFree, settleBumps, wifClaimed } from './identity'
 import { charCount, fail, rateLimit } from './util'
+import { audit, isAdmin, listAccounts, softDeleteUser, uidForWallet, walletsOfUser } from './accounts'
 import { MAX_THEME, renderNameSvg, unclaimedPreview } from './names-art'
+import { setReconcileNotify } from './reconcile'
+import { chainListing, mirrorListing } from './market'
 
 const now = () => Date.now()
 /** Same rule as WiflyNames.isValidName: 3-20 bytes of [a-z0-9_]. Input is lowercased first. */
@@ -48,7 +51,7 @@ export async function checkHandle(raw: string, uid: number | null): Promise<Hand
     ({ handle: h, claimFee: nameClaimFee(h), ...r, suggestions: sugg ? await suggestHandles(h) : [] })
   if (!HANDLE_RE.test(h)) return out({ available: false, reason: 'invalid', message: `${LIMITS.handleMin}–${LIMITS.handleMax} lowercase letters, numbers or _` })
   const lower = h.toLowerCase()
-  if (RESERVED.has(lower)) return out({ available: false, reason: 'reserved', message: 'that one is reserved' }, true)
+  if (RESERVED.has(lower)) return out({ available: false, reason: 'reserved', message: 'that one is reserved' }) // no twists on a reserved word
   const user = await one<{ id: number }>('SELECT id FROM users WHERE handle = ? COLLATE NOCASE', [h])
   if (user && Number(user.id) === uid) return out({ available: true, reason: 'yours', message: 'that’s you' })
   if (user) return out({ available: false, reason: 'taken', message: 'taken' }, true)
@@ -56,14 +59,34 @@ export async function checkHandle(raw: string, uid: number | null): Promise<Hand
   const x = await one<{ user_id: number }>('SELECT user_id FROM privy_accounts WHERE lower(x_username) = ? LIMIT 1', [lower])
   if (x && Number(x.user_id) !== uid) return out({ available: false, reason: 'x-reserved', message: 'linked to the X account with that handle' }, true)
   // Owning x.wif wins @x, so a free @x can't be picked once x.wif is claimed by someone else (mirror or chain).
-  const w = await one<{ owner_id: number }>('SELECT owner_id FROM names WHERE name = ?', [lower])
-  if (w && Number(w.owner_id) !== uid) return out({ available: false, reason: 'wif-owned', message: `${lower}.wif is owned by another wallet` }, true)
-  let wifFree = !w
-  if (!w && namesContract()) {
-    try { wifFree = await chainClient().readContract({ address: namesContract() as Address, abi: NS_ABI, functionName: 'isAvailable', args: [lower] }) } catch { /* rpc down: let it through */ }
-    if (!wifFree) return out({ available: false, reason: 'wif-owned', message: `${lower}.wif is owned by another wallet` }, true)
+  // the chain decides who owns x.wif. If it's one of your wallets, @x is yours (and the mirror catches up).
+  const w = await one<{ owner_id: number; minted: number }>('SELECT owner_id, minted FROM names WHERE name = ?', [lower])
+  if (w && Number(w.owner_id) === uid && (Number(w.minted) || !namesContract())) return out({ available: true, reason: 'yours', message: `you own ${lower}.wif` })
+  if (namesContract()) {
+    const owner = await chainOwnerOf(lower)
+    if (owner !== undefined) {
+      if (!owner) return out({ available: !w, ...(w ? { reason: 'wif-owned' as const, message: `${lower}.wif is owned by another wallet` } : { wifFree: true }) }, !!w)
+      const ownerUid = await uidForWallet(owner)
+      if (uid && ownerUid === uid) { await syncName(lower).catch(() => null); return out({ available: true, reason: 'yours', message: `you own ${lower}.wif` }) }
+      return out({ available: false, reason: 'wif-owned', message: `${lower}.wif is owned by another wallet` }, true)
+    }
   }
-  return out({ available: true, wifFree })
+  if (w) return out({ available: false, reason: 'wif-owned', message: `${lower}.wif is owned by another wallet` }, true)
+  return out({ available: true, wifFree: !namesContract() })
+}
+
+/** The .wif this account's wallets hold that would be "yours" as an @name: each wallet's onchain primary (reverseName), then a minted mirror row. */
+async function ownedWifFor(uid: number): Promise<string | null> {
+  const N = namesContract()
+  const tries: string[] = []
+  if (N) for (const w of await walletsOfUser(uid)) {
+    const nm = await rpcCached(`ns:rev:${w}`, 10_000, () => chainClient().readContract({ address: N, abi: NS_ABI, functionName: 'reverseName', args: [w as Address] })).catch(() => '')
+    const label = String(nm || '').toLowerCase().replace(/\.wif$/, '')
+    if (label) tries.push(label)
+  }
+  for (const r of await all<{ name: string }>('SELECT name FROM names WHERE owner_id = ? AND (minted = 1 OR ?) ORDER BY created_at ASC LIMIT 4', [uid, N ? 0 : 1]).catch(() => [])) tries.push(r.name)
+  for (const t of [...new Set(tries)]) if (HANDLE_RE.test(t) && !RESERVED.has(t) && (await checkHandle(t, uid)).reason === 'yours') return t
+  return null
 }
 
 async function freeQuick(h: string) {
@@ -73,9 +96,8 @@ async function freeQuick(h: string) {
 }
 async function suggestHandles(base: string): Promise<string[]> {
   const b = base.toLowerCase().replace(/[^a-z0-9_]/g, '').slice(0, LIMITS.handleMax - 4) || 'flat'
-  const tries = [`${b}_wif`, `the${b}`, `${b}flat`, `${b}_${new Date().getFullYear() % 100}`, `${b}${Math.floor(Math.random() * 900 + 100)}`]
   const out: string[] = []
-  for (const t0 of tries) { const t = t0.slice(0, LIMITS.handleMax); if (out.length >= 3) break; if (await freeQuick(t)) out.push(t) }
+  for (const t of variants(b)) { if (out.length >= 3) break; if (await freeQuick(t) && await chainFree(t)) out.push(t) }
   return out
 }
 
@@ -83,8 +105,13 @@ export async function setHandle(uid: number, h: string) {
   const c = await checkHandle(h, uid)
   if (!c.available) fail(c.reason === 'invalid' ? 400 : 409, c.reason === 'reserved' ? 'that handle is reserved' : c.reason === 'x-reserved' ? 'that handle is linked to an X account'
     : c.reason === 'invalid' ? `handles are ${LIMITS.handleMin}–${LIMITS.handleMax} letters, numbers or _` : 'that handle is taken')
-  if (c.reason === 'yours') return
+  const cur = await one<{ handle: string }>('SELECT handle FROM users WHERE id = ?', [uid])
+  if (c.reason === 'yours' && cur?.handle.toLowerCase() === c.handle) return
   const wif = await primaryOf(uid)
+  if (c.reason === 'yours' && (await one('SELECT 1 FROM names WHERE name = ? AND owner_id = ?', [c.handle, uid]))) {
+    // you own x.wif: picking @x makes it your main name (one step, no "taken" for your own name)
+    if (wif !== c.handle) { await adoptName(uid, c.handle, notifyRef); return }
+  }
   if (wif) fail(409, `your @ follows your .wif (${wif}.wif). switch your main .wif to change it`)
   await renameFree(uid, c.handle)
 }
@@ -100,15 +127,21 @@ export async function checkName(raw: string, uid: number | null): Promise<NameCh
   const out = async (r: Omit<NameCheck, 'name' | 'display' | 'suggestions' | 'claimFee' | 'live'>, sugg = false): Promise<NameCheck> =>
     ({ name: n, display: `${n}.wif`, claimFee: nameClaimFee(n), live, ...r, suggestions: sugg ? await suggestNames(n) : [] })
   if (!HANDLE_RE.test(n)) return out({ available: false, reason: 'invalid', message: `${LIMITS.handleMin}–${LIMITS.handleMax} lowercase letters, numbers or _` })
-  if (RESERVED.has(n)) return out({ available: false, reason: 'reserved', message: 'reserved' }, true)
-  const row = await one<{ owner_id: number }>('SELECT owner_id FROM names WHERE name = ?', [n])
-  if (row && Number(row.owner_id) === uid) return out({ available: false, reason: 'yours', message: 'you hold this name' })
+  if (RESERVED.has(n)) return out({ available: false, reason: 'reserved', message: 'reserved' }) // no twists on a reserved word
+  let row = await one<{ owner_id: number; minted: number }>('SELECT owner_id, minted FROM names WHERE name = ?', [n])
+  if (row && Number(row.owner_id) === uid && (Number(row.minted) || !live)) return out({ available: false, reason: 'yours', message: `you own ${n}.wif` })
   if (live) {
-    try {
-      const free = await rpcCached(`ns:avail:${n}`, 30_000, () => chainClient().readContract({ address: namesContract() as Address, abi: NS_ABI, functionName: 'isAvailable', args: [n] }))
-      if (!free && !row) return out({ available: false, reason: 'taken', message: 'taken by another wallet' }, true)
-      if (free) return out({ available: true })
-    } catch { /* fall back to the mirror */ }
+    // when the chain says it's claimed, ask who holds it. Your own wallet = yours (and the mirror is backfilled,
+    // which is how a claim the app missed gets recorded). Before, a missing mirror row always read "taken by another wallet".
+    const owner = await chainOwnerOf(n)
+    if (owner === null) return out({ available: true })
+    if (owner) {
+      const ownerUid = await uidForWallet(owner)
+      if (uid && ownerUid === uid) { await syncName(n).catch(() => null); return out({ available: false, reason: 'yours', message: `you own ${n}.wif` }) }
+      if (ownerUid && (!row || Number(row.owner_id) !== ownerUid)) { await syncName(n, { onlyKnown: true }).catch(() => null); row = { owner_id: ownerUid, minted: 1 } }
+      else if (!ownerUid && row && !Number(row.minted)) row = undefined // an unconfirmed claim never outranks the chain
+      if (!row) return out({ available: false, reason: 'taken', message: 'held by another wallet', owner: null }, true)
+    }
   }
   if (row) {
     const owner = (await hydrateUsers([Number(row.owner_id)], uid)).get(Number(row.owner_id))
@@ -118,18 +151,52 @@ export async function checkName(raw: string, uid: number | null): Promise<NameCh
   }
   return out({ available: true })
 }
+const CLAIMED_EV = parseAbi(['event NameClaimed(uint256 indexed tokenId, string name, address indexed owner, uint256 fee)'])
+/** Does this mined tx carry WiflyNames.NameClaimed for `n`? */
+async function claimedIn(hash: string, n: string): Promise<boolean> {
+  const rc = await chainClient().getTransactionReceipt({ hash: hash as `0x${string}` }).catch(() => null)
+  if (!rc || rc.status !== 'success') return false
+  return rc.logs.some(l => { if (l.address.toLowerCase() !== String(namesContract()).toLowerCase()) return false
+    try { const e = decodeEventLog({ abi: CLAIMED_EV, data: l.data, topics: l.topics }); return String(e.args.name).toLowerCase().replace(/\.wif$/, '') === n } catch { return false } })
+}
+/** Calm look-alikes: no "_wif" tails or random digits first. */
+function variants(b: string): string[] {
+  if (hasReservedWord(b)) return [] // never suggest twists on a reserved word (live used to offer ass_wif, theass, assflat)
+  return [`the${b}`, `${b}hq`, `its${b}`, `real${b}`, `${b}flat`, `hey${b}`, `${b}_xyz`].map(t => t.slice(0, LIMITS.handleMax)).filter(t => !hasReservedWord(t))
+}
+const AFFIXES = ['the', 'hq', 'its', 'real', 'flat', 'hey', 'wif', 'xyz', 'official', 'og']
+/** Words that can't appear anywhere inside a suggestion. 'ass' always; plus every reserved word of 5+ letters (wifly, admin, robinhood…). */
+const BLOCK_INSIDE = ['ass', ...[...RESERVED].filter(w => w.length >= 5)]
+/** True when a suggestion is a reserved word in disguise: contains a blocked word, has a reserved part between _, or is a reserved word plus our affixes. */
+export function hasReservedWord(t: string): boolean {
+  const s = t.toLowerCase()
+  if (RESERVED.has(s) || BLOCK_INSIDE.some(w => s.includes(w))) return true
+  if (s.split('_').some(p => p && RESERVED.has(p))) return true
+  let core = s.replace(/_/g, '')
+  for (let i = 0; i < 3; i++) for (const a of AFFIXES) { if (core.startsWith(a) && core.length > a.length) core = core.slice(a.length); if (core.endsWith(a) && core.length > a.length) core = core.slice(0, -a.length) }
+  return RESERVED.has(core)
+}
+/** Owner of x.wif onchain: lowercase address, null when unclaimed, undefined when the chain can't be read. */
+export async function chainOwnerOf(n: string): Promise<string | null | undefined> {
+  const addr = namesContract(); if (!addr) return undefined
+  try {
+    const o = await rpcCached(`ns:owner:${n}`, 10_000, () => chainClient().readContract({ address: addr as Address, abi: NS_ABI, functionName: 'ownerOfName', args: [n] }))
+    return !o || /^0x0{40}$/i.test(o) ? null : o.toLowerCase()
+  } catch { return undefined }
+}
+const chainFree = async (n: string) => (await chainOwnerOf(n)) !== undefined ? (await chainOwnerOf(n)) === null : true
 async function suggestNames(base: string): Promise<string[]> {
   const b = base.replace(/[^a-z0-9_]/g, '').slice(0, LIMITS.handleMax - 4) || 'flat'
-  const tries = [`${b}_wif`, `the${b}`, `${b}flat`, `${b}_${new Date().getFullYear() % 100}`, `${b}${Math.floor(Math.random() * 900 + 100)}`]
   const out: string[] = []
-  for (const t0 of tries) { const t = t0.slice(0, LIMITS.handleMax); if (out.length >= 3) break; if (HANDLE_RE.test(t) && !RESERVED.has(t) && !(await one('SELECT 1 FROM names WHERE name = ?', [t]))) out.push(t) }
+  for (const t of variants(b)) { if (out.length >= 3) break; if (HANDLE_RE.test(t) && !RESERVED.has(t) && !(await one('SELECT 1 FROM names WHERE name = ?', [t])) && await chainFree(t)) out.push(t) }
   return out
 }
 
-/** WIF Names (WIFNAME) reads, final API (contracts/docs/WIF-NAMES.md). Every call accepts "marv" or "marv.wif" and never reverts. */
+/** WIF Names (WIFNAME) reads, final API (contracts/docs/WIF-NAMES.md). Every call accepts "alice" or "alice.wif" and never reverts. */
 const NS_ABI = [
   { type: 'function', name: 'isAvailable', stateMutability: 'view', inputs: [{ name: 'name', type: 'string' }], outputs: [{ type: 'bool' }] },
   { type: 'function', name: 'resolve', stateMutability: 'view', inputs: [{ name: 'name', type: 'string' }], outputs: [{ type: 'address' }] },
+  { type: 'function', name: 'ownerOfName', stateMutability: 'view', inputs: [{ name: 'name', type: 'string' }], outputs: [{ type: 'address' }] },
   { type: 'function', name: 'reverseName', stateMutability: 'view', inputs: [{ name: 'account', type: 'address' }], outputs: [{ type: 'string' }] },
   { type: 'function', name: 'text', stateMutability: 'view', inputs: [{ name: 'name', type: 'string' }, { name: 'key', type: 'string' }], outputs: [{ type: 'string' }] },
 ] as const
@@ -263,7 +330,8 @@ export async function syncName(name: string, opts: { onlyKnown?: boolean } = {})
   try {
     owner = await chainClient().readContract({ address: addr, abi: [{ type: 'function', name: 'ownerOf', stateMutability: 'view', inputs: [{ name: 'tokenId', type: 'uint256' }], outputs: [{ type: 'address' }] }] as const, functionName: 'ownerOf', args: [nameTokenId(name)] })
   } catch { return null }
-  const u = await one<{ id: number }>('SELECT id FROM users WHERE address = ? UNION SELECT user_id AS id FROM user_wallets WHERE address = ? LIMIT 1', [owner.toLowerCase(), owner.toLowerCase()])
+  const oid = await uidForWallet(owner)
+  const u = oid ? { id: oid } : null
   // the automatic sweep never resets a mirror row to an address it can't place (e.g. a wallet not linked yet)
   if (!u && opts.onlyKnown) return { owner, known: false }
   const prev = await one<{ owner_id: number }>('SELECT owner_id FROM names WHERE name = ?', [name])
@@ -283,6 +351,7 @@ let notifyRef: Helpers['notify'] | undefined
 
 export function registerFeatures(app: Hono<Env>, h: Helpers) {
   notifyRef = h.notify
+  setReconcileNotify(h.notify)
   // ---- onboarding
   app.get('/api/handles/check', async c => {
     await rateLimit(`hc:${c.get('uid') ?? clientIp(c)}`, 120, 60_000)
@@ -294,13 +363,15 @@ export function registerFeatures(app: Hono<Env>, h: Helpers) {
     const p = await one<{ x_username: string | null; email: string | null; wallet: string | null }>('SELECT x_username, email, wallet FROM privy_accounts WHERE user_id = ? ORDER BY updated_at DESC LIMIT 1', [uid])
     const u = await one<UserRow>('SELECT * FROM users WHERE id = ?', [uid])
     const x = p?.x_username ?? null
-    const suggested = x && (await checkHandle(x, uid)).available ? x.toLowerCase() : null
+    // a .wif one of your wallets already holds is offered first, one tap; notice = the @name that went to its .wif holder
+    const ownedWif = needsHandle(u) ? await ownedWifFor(uid) : null
+    const suggested = ownedWif ?? (x && (await checkHandle(x, uid)).available ? x.toLowerCase() : null)
     const people = await all<{ id: number }>(`SELECT id FROM users WHERE id <> ? AND onboarded = 1 AND id NOT IN (SELECT followee_id FROM follows WHERE follower_id = ?)
       ORDER BY creator DESC, (SELECT COUNT(*) FROM follows WHERE followee_id = users.id) + COALESCE(json_extract(extras, '$.baseFollowers'), 0) DESC LIMIT 8`, [uid, uid])
     const map = await hydrateUsers(people.map(r => Number(r.id)), uid)
     const tags = await all<{ tag: string }>(`SELECT tag, COUNT(*) AS n FROM tags GROUP BY tag ORDER BY n DESC LIMIT 12`)
     return c.json({
-      suggestedHandle: suggested, x: x ? { username: x } : null, wallet: p?.wallet ?? u?.address ?? null, email: !!p?.email,
+      suggestedHandle: suggested, ownedWif, notice: needsHandle(u) ? (JSON.parse(u?.extras || '{}').handleNotice ?? null) : null, x: x ? { username: x } : null, wallet: p?.wallet ?? u?.address ?? null, email: !!p?.email,
       users: people.map(r => map.get(Number(r.id))).filter(Boolean), tags: tags.map(t => t.tag),
     })
   })
@@ -310,7 +381,11 @@ export function registerFeatures(app: Hono<Env>, h: Helpers) {
     const b = await c.req.json<{ handle?: string; name?: string; bio?: string; avatar?: string | null; follow?: string[]; tags?: string[] }>().catch(() => ({} as Record<string, never>))
     const cur = await one<{ handle: string; extras: string | null }>('SELECT handle, extras FROM users WHERE id = ?', [uid])
     if (b.handle === undefined && needsHandle(cur)) fail(400, 'pick your @name first')
-    if (b.handle !== undefined) await setHandle(uid, String(b.handle)) // free @name; a .wif is an optional upgrade
+    if (b.handle !== undefined) {
+      // claimed a .wif as main name during onboarding: the @ already follows it, so finishing never fights it (was a 409)
+      const wifNow = await primaryOf(uid)
+      if (!(wifNow && cur?.handle.toLowerCase() === wifNow)) await setHandle(uid, String(b.handle)) // free @name; a .wif is an optional upgrade
+    }
     const sets: string[] = [], args: (string | null)[] = []
     if (b.name !== undefined) { const n = String(b.name).trim(); if (!n || charCount(n) > LIMITS.nameChars) fail(400, `names are 1–${LIMITS.nameChars} characters`); sets.push('name = ?'); args.push(n) }
     if (b.bio !== undefined) { const s = String(b.bio).trim(); if (charCount(s) > LIMITS.bioChars) fail(400, `bios are up to ${LIMITS.bioChars} characters`); sets.push('bio = ?'); args.push(s) }
@@ -322,7 +397,7 @@ export function registerFeatures(app: Hono<Env>, h: Helpers) {
     // one extras assignment (sqlite keeps only the last one per column)
     if (tags.length || b.handle !== undefined) {
       let ex = `COALESCE(extras, '{}')`
-      if (b.handle !== undefined) ex = `json_set(${ex}, '$.handlePicked', 1)`
+      if (b.handle !== undefined) ex = `json_remove(json_set(${ex}, '$.handlePicked', 1), '$.handleNotice')`
       if (tags.length) { ex = `json_set(${ex}, '$.interests', json(?))`; args.push(JSON.stringify(tags)) }
       sets.push(`extras = ${ex}`)
     }
@@ -410,27 +485,45 @@ export function registerFeatures(app: Hono<Env>, h: Helpers) {
     const t = theme == null ? 0 : Number(theme)
     if (!Number.isInteger(t) || t < 0 || t > MAX_THEME) fail(400, 'pick white or green')
     const chk = await checkName(String(name ?? ''), uid)
+    // the tx confirms before this call, so a live claim of your own wallet reads 'yours' here. That used to be
+    // a 409 ("that name isn't free"), and the claim never reached the mirror. Now it's recorded (and made primary).
+    if (chk.reason === 'yours' && namesContract()) {
+      const prev0 = await primaryOf(uid)
+      if (!prev0 || makePrimary) await adoptName(uid, chk.name, h.notify)
+      return c.json({ ok: true, name: chk.name, display: chk.display, claimFee: nameClaimFee(chk.name), primary: (!prev0 || makePrimary) ? chk.name : prev0, pending: false, me: await h.me(uid) }, 201)
+    }
+    if (!chk.available && namesContract() && isTx(txHash) && !chk.owner && !(await one('SELECT 1 FROM names WHERE name = ?', [chk.name])) && await claimedIn(txHash!, chk.name)) {
+      // claimed onchain by a wallet this account hasn't linked yet: keep it pending; it lands once that wallet is linked
+      await run('INSERT OR IGNORE INTO names (name, owner_id, created_at, theme) VALUES (?, ?, ?, ?)', [chk.name, uid, now(), t])
+      return c.json({ ok: true, name: chk.name, display: chk.display, claimFee: nameClaimFee(chk.name), primary: await primaryOf(uid), pending: true, me: await h.me(uid) }, 202)
+    }
     if (!chk.available) fail(409, chk.reason === 'yours' ? 'you already hold it' : chk.reason === 'invalid' ? chk.message! : 'that name isn’t free')
     const n = await one<{ n: number }>('SELECT COUNT(*) AS n FROM names WHERE owner_id = ?', [uid])
     if (Number(n?.n ?? 0) >= 4) fail(409, 'you can hold up to 4 names for now')
     // Live: the claim is a WiflyNames.claim tx the user already sent; the indexer flips minted once ownerOf agrees.
     if (namesContract() && !isTx(txHash)) fail(400, 'claim it onchain first, then share the tx hash')
     await run('INSERT INTO names (name, owner_id, created_at, theme) VALUES (?, ?, ?, ?)', [chk.name, uid, now(), t])
+    // Live: a pending row only. No @name, pill or bump on the client's word; that waits for ownerOfName (sweep / reconcile).
+    if (namesContract()) return c.json({ ok: true, name: chk.name, display: chk.display, claimFee: nameClaimFee(chk.name), primary: await primaryOf(uid), pending: true, me: await h.me(uid) }, 201)
     // "Make it yours onchain" is multicall([claim, setPrimary]); the first claim is primary anyway (WiflyNames _mintName).
     const prev = await primaryOf(uid)
     if (!prev || makePrimary) await adoptName(uid, chk.name, h.notify)
     else await wifClaimed(chk.name, uid, h.notify)
-    if (namesContract()) await syncName(chk.name, { onlyKnown: true }).catch(() => null) // minted = 1 once ownerOf agrees
-    return c.json({ ok: true, name: chk.name, display: chk.display, claimFee: nameClaimFee(chk.name), primary: (!prev || makePrimary) ? chk.name : prev, pending: !!namesContract(), me: await h.me(uid) }, 201)
+    return c.json({ ok: true, name: chk.name, display: chk.display, claimFee: nameClaimFee(chk.name), primary: (!prev || makePrimary) ? chk.name : prev, pending: false, me: await h.me(uid) }, 201)
   })
   app.post('/api/names/:name/list', async c => {
     const uid = needUser(c)
     const name = await ownName(uid, c.req.param('name'))
-    if ((await primaryOf(uid)) === name.toLowerCase()) fail(409, 'that’s your primary .wif. pick another primary before you list it')
-    const { price, buyer } = await c.req.json<{ price: number; buyer?: string }>()
-    const p = money(price)
+    const { price, buyer } = await c.req.json<{ price?: number; buyer?: string }>().catch(() => ({} as { price?: number; buyer?: string }))
     let buyerId: number | null = null
     if (buyer) { const b = await one<{ id: number }>('SELECT id FROM users WHERE handle = ? COLLATE NOCASE', [buyer]); if (!b) fail(404, 'no one here by that name'); buyerId = Number(b!.id) }
+    // live: the listing is the onchain one (seller and price read from WiflyNames.listings), never the client's numbers
+    if (namesContract()) {
+      if (!(await mirrorListing(name, uid, buyerId))) fail(409, 'that listing isn’t onchain yet. send the list transaction first')
+      const row = await one<ListingRow>('SELECT * FROM name_listings WHERE name = ?', [name])
+      return c.json({ ok: true, listing: (await listingJson([row!], uid))[0] })
+    }
+    const p = money(price)
     await run(`INSERT INTO name_listings (name, seller_id, price, buyer_id, created_at) VALUES (?, ?, ?, ?, ?)
       ON CONFLICT(name) DO UPDATE SET price = excluded.price, buyer_id = excluded.buyer_id, seller_id = excluded.seller_id, created_at = excluded.created_at, seed = 0`, [name, uid, p, buyerId, now()])
     const row = await one<ListingRow>('SELECT * FROM name_listings WHERE name = ?', [name])
@@ -439,6 +532,11 @@ export function registerFeatures(app: Hono<Env>, h: Helpers) {
   app.delete('/api/names/:name/list', async c => {
     const uid = needUser(c)
     const name = await ownName(uid, c.req.param('name'))
+    if (namesContract()) {
+      const l = await chainListing(name)
+      if (l === undefined) fail(503, 'couldn’t read the chain just now. try again in a minute')
+      if (l && (await walletsOfUser(uid)).has(l.seller)) fail(409, 'it’s still listed onchain. cancel it in your wallet first')
+    }
     await run('DELETE FROM name_listings WHERE name = ? AND seller_id = ?', [name, uid])
     return c.json({ ok: true })
   })
@@ -484,7 +582,8 @@ export function registerFeatures(app: Hono<Env>, h: Helpers) {
     if (!o) return fail(404, 'that offer is gone')
     if (Number(o.owner_id) !== uid) fail(403, 'you don’t hold that name')
     if ((await primaryOf(uid)) === String(o.name).toLowerCase()) fail(409, 'that’s your primary .wif. pick another primary first')
-    await run(`INSERT INTO name_listings (name, seller_id, price, buyer_id, created_at) VALUES (?, ?, ?, ?, ?)
+    if (namesContract()) { if (!(await mirrorListing(o.name, uid, Number(o.buyer_id)))) fail(409, 'list it onchain at the offer price first') }
+    else await run(`INSERT INTO name_listings (name, seller_id, price, buyer_id, created_at) VALUES (?, ?, ?, ?, ?)
       ON CONFLICT(name) DO UPDATE SET price = excluded.price, buyer_id = excluded.buyer_id, created_at = excluded.created_at, seed = 0`, [o.name, uid, o.price, o.buyer_id, now()])
     await run(`UPDATE name_offers SET status = 'accepted' WHERE id = ?`, [o.id])
     await h.notify(Number(o.buyer_id), uid, 'name_offer_accepted', null, { name: o.name, price: Number(o.price) })
@@ -543,7 +642,8 @@ export function registerFeatures(app: Hono<Env>, h: Helpers) {
     if (prev === name.toLowerCase()) fail(409, 'that’s already your name')
     const price = b.old === 'list' ? money(b.price) : 0
     await adoptName(uid, name, h.notify)
-    if (b.old === 'list' && prev)
+    if (b.old === 'list' && prev && namesContract()) await mirrorListing(prev, uid) // only if the list tx already landed
+    else if (b.old === 'list' && prev)
       await run(`INSERT INTO name_listings (name, seller_id, price, buyer_id, created_at) VALUES (?, ?, ?, NULL, ?)
         ON CONFLICT(name) DO UPDATE SET price = excluded.price, buyer_id = NULL, seller_id = excluded.seller_id, created_at = excluded.created_at, seed = 0`, [prev, uid, price, now()])
     clearRankCache()
@@ -570,7 +670,7 @@ export function registerFeatures(app: Hono<Env>, h: Helpers) {
       [name, address, avatar, x, url, bio, now()])
     return c.json({ ok: true, records: await recordsOf(name) })
   })
-  /** Public name page data (marv.wif). */
+  /** Public name page data (alice.wif). */
   // name card art from the onchain WiflyNameRenderer (deployed: read from chain; before deploy: same bytecode, in-process)
   app.get('/api/names/art/:file', async c => {
     const n = c.req.param('file').replace(/\.svg$/i, '').replace(/\.wif$/i, '').trim().toLowerCase()

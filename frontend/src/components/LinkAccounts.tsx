@@ -93,7 +93,7 @@ export function GuestBanner() {
   if (!show) return null
   return (
     <div className="guestbar" role="region" aria-label="guest account" data-testid="guest-banner">
-      <span className="guestbar__text"><Icon name="user" size={16} /> you’re on a guest account. link x or a wallet to own it</span>
+      <span className="guestbar__text"><Icon name="user" size={16} /> guest account. link x or a wallet so you never lose it</span>
       <span className="guestbar__acts">
         {canX && <button className="btn btn--dark btn--sm" disabled={!!busy} onClick={() => run('x')}>{busy === 'x' ? 'linking…' : 'link x'}</button>}
         <button className="btn btn--ghost btn--sm" disabled={!!busy} onClick={() => run('wallet')}>{busy === 'wallet' ? 'check your wallet…' : 'link a wallet'}</button>

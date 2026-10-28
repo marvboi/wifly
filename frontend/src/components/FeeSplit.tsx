@@ -1,6 +1,7 @@
 import { FEE_PERCENT_LABEL, shares, splitLabel, type SplitKind } from '../lib/fees'
 import { useQuoteFee, useQuoteSplit } from '../lib/wifly'
 import { Icon } from './Icon'
+import { InfoTip } from './InfoTip'
 
 const f = (n: number) => n.toLocaleString('en-US', { maximumFractionDigits: n < 100 ? 2 : 0 })
 
@@ -37,9 +38,8 @@ export function FeeSplit({ amount, recipientLabel = 'creator receives' }: { amou
     <div className="fee">
       <div className="fee__rows">
         <div className="fee__row"><span>{recipientLabel}</span><span className="num strong">{f(s.receives)} WIF</span></div>
-        <div className="fee__row"><span>fee · {FEE_PERCENT_LABEL}</span><span className="num">{f(s.fee)} WIF</span></div>
+        <div className="fee__row"><span>fee · {FEE_PERCENT_LABEL}<InfoTip label="where the fee goes">{splitLabel('fee')}. {f(s.pot)} WIF to the weekly pot, {f(s.burn)} WIF burned.</InfoTip></span><span className="num">{f(s.fee)} WIF</span></div>
       </div>
-      <FeeParts fee={s.fee} />
     </div>
   )
 }

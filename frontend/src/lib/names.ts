@@ -1,11 +1,11 @@
 /**
  * WIF Names (WIFNAME), final API (contracts/docs/WIF-NAMES.md).
- * - name -> wallet: resolve("marv.wif") (setAddr record, else owner, else 0x0 = unclaimed)
- * - wallet -> name: reverseName(address) (verified "marv.wif" or ""). Never display nameOf.
+ * - name -> wallet: resolve("alice.wif") (setAddr record, else owner, else 0x0 = unclaimed)
+ * - wallet -> name: reverseName(address) (verified "alice.wif" or ""). Never display nameOf.
  * - records: setAddr(id, addr) + setText(id, key, value) for keys avatar, x, url, bio (values <= 256 bytes)
  * - claim + records in ONE tx via multicall([claim, setText…, setAddr])
  * - records reset on every sale or transfer; the card theme (setTheme: 0 default, 1 white, 2 green) is kept
- * Every function accepts "marv" or "marv.wif". @handles are a separate, off-chain namespace resolved by the API.
+ * Every function accepts "alice" or "alice.wif". @handles are a separate, off-chain namespace resolved by the API.
  */
 import { useEffect, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
@@ -21,7 +21,7 @@ export type TextKey = typeof TEXT_KEYS[number]
 export const MAX_TEXT_BYTES = 256
 export const bytesOf = (s: string) => new TextEncoder().encode(s).length
 
-/** Lowercase + trim, drop a leading @ and the .wif suffix: "  Marv.WIF " -> "marv". */
+/** Lowercase + trim, drop a leading @ and the .wif suffix: "  Alice.WIF " -> "alice". */
 export const normalizeName = (raw: string) => raw.trim().toLowerCase().replace(/^@/, '').replace(/\.wif$/, '')
 export const wif = (label: string) => `${normalizeName(label)}.wif`
 export const nameId = (label: string) => BigInt(keccak256(toBytes(normalizeName(label))))
@@ -56,8 +56,8 @@ export function useNameCheck(raw: string) {
 export type Resolved = { input: string; kind: 'wif' | 'handle' | 'address'; label: string; address: string | null; source: string; owner?: { handle: string; name: string; wifName?: string | null } | null }
 
 /**
- * Anything an address field accepts: marv.wif (onchain resolve, holder's wallet), @marv (the DB), or 0x…
- * marv.wif never falls back to whoever holds @marv.
+ * Anything an address field accepts: alice.wif (onchain resolve, holder's wallet), @alice (the DB), or 0x…
+ * alice.wif never falls back to whoever holds @alice.
  */
 export async function resolveRecipient(raw: string): Promise<Resolved | null> {
   const s = raw.trim()

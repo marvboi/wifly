@@ -5,6 +5,7 @@
  * Live (VITE_DCA_ADDRESS set + the backend sees the contract): every change is a transaction from your wallet, then the
  * hash goes to the backend, which re-reads the chain. Preview: the plan is saved in the app only and nothing is sent.
  */
+import { InfoTip } from '../components/InfoTip'
 import { useMemo, useState } from 'react'
 import { useSearchParams, Link } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
@@ -128,8 +129,8 @@ export function DCA() {
       <PageHead title="recurring buys" back />
       <section className="soon-card card">
         <span className="soon-card__nap" aria-hidden="true"><Mascot size={60} mood="sleepy" title="" /></span>
-        <h2 className="soon-card__title">buy WIF on a schedule.</h2>
-        <p className="muted">like $5 of WIF every monday. pause or withdraw any time. opens soon.</p>
+        <h2 className="soon-card__title">buy WIF on a schedule.<InfoTip label="about recurring buys">like $5 of WIF every monday. pause or withdraw any time.</InfoTip></h2>
+        <p className="muted">opens soon.</p>
         <ul className="soon-card__list small">
           <li><Icon name="calendar" size={16} /> hourly, daily, weekly or monthly</li>
           <li><PlusMark size={16} /> <span>scheduled buys are part of <Link to="/plus">wifly plus</Link></span></li>

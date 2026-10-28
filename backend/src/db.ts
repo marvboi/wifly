@@ -216,4 +216,12 @@ export async function migrate() {
     UPDATE badge_burns SET tx_hash = lower(tx_hash) WHERE tx_hash <> lower(tx_hash) AND lower(tx_hash) NOT IN (SELECT tx_hash FROM badge_burns);
     UPDATE tips SET verified = 0 WHERE verified = 1 AND tx_hash IS NOT NULL AND id NOT IN (SELECT MIN(id) FROM tips WHERE verified = 1 AND tx_hash IS NOT NULL GROUP BY lower(tx_hash));
     CREATE UNIQUE INDEX IF NOT EXISTS tips_tx_verified ON tips(lower(tx_hash)) WHERE verified = 1;`)
+  // soft-deleted accounts (with a backup row), the admin audit log and a small key/value store (sweep cursor).
+  const ucols = await db.execute('PRAGMA table_info(users)')
+  if (!ucols.rows.some(r => r.name === 'deleted_at')) await db.execute('ALTER TABLE users ADD COLUMN deleted_at INTEGER')
+  await db.executeMultiple(`CREATE TABLE IF NOT EXISTS deleted_users (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER NOT NULL, row_json TEXT NOT NULL, by_actor TEXT NOT NULL, admin_id INTEGER, deleted_at INTEGER NOT NULL);
+    CREATE TABLE IF NOT EXISTS admin_audit (id INTEGER PRIMARY KEY AUTOINCREMENT, admin_id INTEGER NOT NULL, action TEXT NOT NULL, target_id INTEGER, detail TEXT NOT NULL DEFAULT '{}', created_at INTEGER NOT NULL);
+    CREATE TABLE IF NOT EXISTS kv (k TEXT PRIMARY KEY, v TEXT NOT NULL);`)
+  await db.executeMultiple(`CREATE TABLE IF NOT EXISTS wallet_proofs (nonce TEXT PRIMARY KEY, user_id INTEGER NOT NULL, purpose TEXT NOT NULL, address TEXT NOT NULL, message TEXT NOT NULL, expires_at INTEGER NOT NULL, used_at INTEGER);
+    CREATE TABLE IF NOT EXISTS tip_wallet_log (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER NOT NULL, address TEXT NOT NULL, prev TEXT, created_at INTEGER NOT NULL);`)
 }

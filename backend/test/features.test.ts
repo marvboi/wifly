@@ -83,7 +83,7 @@ test('names: claim, list (not your primary), offer, accept, buy needs the contra
   assert.equal(cl.status, 201, JSON.stringify(cl.body))
   assert.equal(cl.body.claimFee, 100)
   assert.equal(cl.body.primary, 'sunrise_club', 'first .wif becomes primary')
-  assert.equal((await call('POST', '/api/names/sunrise_club/list', { cookie: seller.cookie, body: { price: 10 } })).status, 409, 'can’t list your primary')
+  assert.equal((await call('POST', '/api/names/sunrise_club/list', { cookie: seller.cookie, body: { price: 10 } })).status, 200, 'your main .wif can be listed from its pill (if it sells, the @name goes back to the name step)')
   assert.equal((await call('POST', '/api/names/claim', { cookie: seller.cookie, body: { name: 'sunrise_two' } })).status, 201)
   assert.equal((await call('POST', '/api/names/sunrise_two/primary', { cookie: seller.cookie })).status, 200)
   const l = await call('POST', '/api/names/sunrise_club/list', { cookie: seller.cookie, body: { price: 5000 } })

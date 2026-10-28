@@ -23,3 +23,19 @@ export function GuestWall({ line = 'there’s a lot more on wifly.' }: { line?: 
     </div>
   )
 }
+
+/** A gentle in-feed note for logged-out readers, a few posts in: no wall, just an open door. */
+export function GuestNudge() {
+  const { openSheet } = useStore()
+  return (
+    <motion.div className="guestnudge" data-testid="guest-nudge" initial={{ opacity: 0, y: 10 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }}
+      transition={{ type: 'spring', stiffness: 260, damping: 30 }}>
+      <Mascot size={40} mood="calm" />
+      <div className="guestnudge__copy">
+        <span className="guestnudge__title">enjoying the read?</span>
+        <span className="muted small">join wifly to like, tip, reply and follow the people you see here.</span>
+      </div>
+      <button className="btn btn--sm btn--dark guestnudge__btn" onClick={() => openSheet({ type: 'signin', reason: 'join wifly' })}>join</button>
+    </motion.div>
+  )
+}

@@ -1,4 +1,5 @@
 /** Soulbound burn badges (WiflyBadges): medal art, the profile shelf and the detail sheet. No glows. */
+import { InfoTip } from './InfoTip'
 import { useId, useMemo } from 'react'
 import { medalSvg } from '../lib/medal'
 import { BADGE_LEVELS } from '../config'
@@ -28,7 +29,7 @@ export function BadgeShelf({ handle, mine }: { handle: string; mine?: boolean })
   return (
     <section className="badgeshelf" aria-label="burn badges">
       <div className="badgeshelf__head">
-        <div><b>badges</b> <span className="muted small">· {burned.toLocaleString()} WIF burned <WifUsd wif={burned} /></span></div>
+        <div><b>badges</b><InfoTip label="about burn badges">soulbound badges for WIF you burn: 1k, 10k, 100k, 1m.</InfoTip> <span className="muted small">· {burned.toLocaleString()} WIF burned <WifUsd wif={burned} /></span></div>
         {mine && <button className="btn btn--ghost btn--sm" onClick={() => openSheet({ type: 'burn' })}>burn to earn</button>}
       </div>
       <div className="badgeshelf__row">

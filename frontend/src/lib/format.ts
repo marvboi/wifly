@@ -13,5 +13,5 @@ export function shortAddr(a?: string) {
   return a ? `${a.slice(0, 6)}…${a.slice(-4)}` : ''
 }
 
-/** Your @username is your .wif name: @marv.wif. Placeholder handles from before sign-up (wif_…) stay bare. */
-export const at = (handle?: string | null) => !handle ? '' : /^wif_(u\d+|[0-9a-f]{6,10})$/.test(handle) ? `@${handle}` : `@${handle.replace(/\.wif$/i, '')}.wif`
+/** A username as people see it: always the plain @name, never @name.wif. */
+export const at = (handle?: string | null) => !handle ? '' : `@${handle.replace(/\.wif$/i, '')}`

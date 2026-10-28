@@ -24,6 +24,7 @@ import { getPrice } from '../price'
 import { fail, rateLimit } from '../util'
 import { plusAccess } from '../plusGate'
 import { loadAgentSigner } from './signer'
+import { errLine } from '../errline'
 
 /** Exact Wifly.sol agent-path signatures (mirrored from the contract). */
 export const AGENT_ABI = parseAbi([
@@ -303,7 +304,7 @@ export function registerAgent(app: Hono<Env>) {
       const id = await log('sent', null, hash)
       return c.json({ ok: true, status: 'sent', hash, id, action: a, state: await agentState(uid) })
     } catch (err) {
-      const id = await log('failed', (err as Error).message.slice(0, 200), null)
+      const id = await log('failed', errLine(err, 200), null)
       return c.json({ ok: false, status: 'failed', reason: 'the chain refused it (cap, balance or authorisation)', id, action: a }, 502)
     }
   })

@@ -21,6 +21,7 @@ import { Vote } from './pages/Vote'
 import GetWif from './pages/GetWif'
 import { PayLink } from './pages/PayLink'
 import { NotFound } from './pages/NotFound'
+import { AdminAccounts } from './pages/AdminAccounts'
 import { Settings } from './pages/Settings'
 import { lazy, Suspense } from 'react'
 import { DCA } from './pages/DCA'
@@ -111,6 +112,7 @@ export function App() {
           <Route path="/dca" element={<DCA />} />
           <Route path="/deploy" element={<Suspense fallback={null}><Deploy /></Suspense>} />
           <Route path="/settings" element={<Settings />} />
+          <Route path="/settings/accounts" element={<AdminAccounts />} />
           <Route path="/messages" element={<Inbox />} />
           <Route path="/messages/:handle" element={<Thread />} />
           <Route path="*" element={<NotFound />} />

@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "tsx watch src/server.ts",
     "start": "tsx src/server.ts",
-    "test": "tsx --test test/api.test.ts test/features.test.ts test/agent.test.ts test/names.test.ts test/keeper.test.ts test/abuse.test.ts test/rank.test.ts test/identity.test.ts test/dca-companion.test.ts test/commandParse.test.ts test/origins.test.ts test/maint.test.ts test/cache.test.ts test/lru.test.ts test/ip-ratekeys.test.ts test/imgsize.test.ts test/names-per-user.test.ts test/fees.test.ts test/pot.test.ts test/onboarding-links.test.ts test/pending-verify.test.ts",
+    "test": "tsx --test test/api.test.ts test/features.test.ts test/agent.test.ts test/names.test.ts test/keeper.test.ts test/abuse.test.ts test/rank.test.ts test/identity.test.ts test/dca-companion.test.ts test/commandParse.test.ts test/origins.test.ts test/maint.test.ts test/cache.test.ts test/lru.test.ts test/ip-ratekeys.test.ts test/imgsize.test.ts test/names-per-user.test.ts test/fees.test.ts test/pot.test.ts test/onboarding-links.test.ts test/pending-verify.test.ts test/name-claims.test.ts test/wif-handles.test.ts test/guest-gating.test.ts test/public-browse.test.ts",
     "typecheck": "tsc --noEmit"
   },
   "devDependencies": {

@@ -14,6 +14,8 @@ import {
   PLUS_PRICE_FALLBACK, TOPSPOT_HOLDER_SHARE, TOPSPOT_MIN_RAISE, VOTE_PRICE,
 } from '../config'
 import { useBurnStats } from '../api/hooks'
+import { useQuery } from '@tanstack/react-query'
+import { api } from '../api/client'
 import { useThemedPage } from '../lib/theme'
 import '../styles/landing.css'
 
@@ -24,6 +26,22 @@ const pct = (x: number) => `${Math.round(x * 100)}%`
 const ease = [0.22, 1, 0.36, 1] as const
 const TIPS = [100, 500, 1000]
 const COIN = '/brand/wif-coin-96.webp'
+/** The landing's one real post (GET /api/landing/featured: FEATURED_POST_ID or the admin setting, default 88stVCX0GF). Null while loading or on any failure: then the card is simply not shown. */
+type Featured = { id: string; text: string; likes: number; tipped: number; author: { handle: string; name: string; avatar: string | null } }
+function useFeatured(): Featured | null {
+  const q = useQuery({ queryKey: ['landing', 'featured'], queryFn: () => api<{ featured: Featured }>('/landing/featured').then(r => r.featured), retry: 1, staleTime: 30_000, refetchInterval: 60_000 })
+  const f = q.data
+  return f && f.author?.handle && f.text ? f : null
+}
+/** A real profile photo; falls back to the first letter if the image can't load. Never a grey placeholder. */
+function Pfp({ user, size }: { user: Featured['author']; size: number }) {
+  const [bad, setBad] = useState(false)
+  return user.avatar && !bad
+    ? <img className="lp-pfp" src={user.avatar} alt="" width={size} height={size} decoding="async" onError={() => setBad(true)} />
+    : <span className="lp-pfp lp-pfp--letter" style={{ width: size, height: size }} aria-hidden="true">{(user.name || user.handle).slice(0, 1).toLowerCase()}</span>
+}
+const compact = (n: number) => n >= 10_000 ? `${Math.round(n / 1000)}k` : n.toLocaleString()
+
 const isReduced = () => typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches
 
 /** Fades and lifts a block once as it scrolls into view. Transform + opacity only, so nothing around it moves. */
@@ -83,10 +101,11 @@ const qb = (a: number, c: number, b: number, t: number) => (1 - t) * (1 - t) * a
 /**
  * The signature moment: a tip leaves the drop and flies into the wallet as $WIF coins. The mascot watches the lead
  * coin, hops when it lands, and leans as you scroll. Plays once when first seen; the tip button replays it.
- * No people and no balances: the card is placeholder bars, the amounts are the app's tip presets.
+ * The card is a real post (live likes and tips); the amounts are the app's tip presets and the wallet is a demo, labelled as such.
+ * No post (loading or the fetch failed): no card at all, never stand-in content.
  * Reduced motion: no flight, no scroll lean, the wallet just shows the tip as received.
  */
-function TipStage() {
+function TipStage({ post }: { post: Featured | null }) {
   const reduced = useReducedMotion()
   const [ref, on] = useOnScreen<HTMLDivElement>(0.5)
   const btn = useRef<HTMLButtonElement>(null)
@@ -170,13 +189,13 @@ function TipStage() {
 
   // Play once when the stage is first well in view.
   useEffect(() => {
-    if (!on || played.current) return
+    if (!on || !post || played.current) return
     played.current = true
     if (reduced) { setGot(1); return }
     const t = window.setTimeout(send, 900)
     return () => window.clearTimeout(t)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [on, reduced])
+  }, [on, reduced, post])
 
   return (
     <div className="lp-stage" ref={ref}>
@@ -185,11 +204,18 @@ function TipStage() {
         <Mascot size={128} title="wifly" mood={mood} pulse={hop} lookAt={look} />
       </div>
 
-      <div className="lp-dropcard">
-        <div className="lp-dropcard__head" aria-hidden="true"><span className="lp-sk lp-sk--av" /><div className="lp-dropcard__lines"><span className="lp-sk" style={{ width: '46%' }} /><span className="lp-sk lp-sk--soft" style={{ width: '28%' }} /></div></div>
-        <span className="lp-sk lp-sk--soft" style={{ width: '94%' }} aria-hidden="true" />
-        <span className="lp-sk lp-sk--soft" style={{ width: '68%' }} aria-hidden="true" />
-        <div className="lp-dropcard__media" aria-hidden="true"><img src="/brand/wif-grid-mark-192.png" alt="" width={36} height={36} /></div>
+      {post && <motion.div className="lp-dropcard" initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5, ease }} data-testid="featured-post">
+        <AppLink to={`/post/${post.id}`} className="lp-dropcard__post">
+          <span className="lp-dropcard__head">
+            <Pfp user={post.author} size={36} />
+            <span className="lp-dropcard__who"><b>{post.author.name || post.author.handle}</b><span>@{post.author.handle}</span></span>
+          </span>
+          <span className="lp-dropcard__text">{post.text}</span>
+          <span className="lp-dropcard__stats">
+            <span><Icon name="heart" size={13} /> <b className="num">{compact(post.likes)}</b> {post.likes === 1 ? 'like' : 'likes'}</span>
+            <span><Token size={13} /> <b className="num">{compact(post.tipped)}</b> WIF tipped</span>
+          </span>
+        </AppLink>
         <div className="lp-dropcard__tips" role="group" aria-label="tip amount">
           {TIPS.map((v, i) => (
             <button key={v} type="button" className={`lp-chip${pick === i ? ' is-on' : ''}`} aria-pressed={pick === i} onClick={() => setPick(i)}>
@@ -201,13 +227,13 @@ function TipStage() {
           onPointerEnter={() => { if (!busy.current) setMood('wow') }} onPointerLeave={() => { if (!busy.current) setMood('calm') }}>
           <Icon name="tip" size={16} /> send a tip
         </button>
-      </div>
+      </motion.div>}
 
       <div className={`lp-wallet${got ? ' is-got' : ''}`} ref={wallet}>
         <span className="lp-wallet__icon"><Icon name="wallet" size={22} /></span>
-        <span className="lp-wallet__label">their wallet</span>
+        <span className="lp-wallet__label">{post ? `@${post.author.handle}'s wallet` : 'their wallet'}</span>
         <span className="lp-wallet__state" aria-live="polite">
-          {got ? <><Icon name="check" size={14} /> {TIPS[pick].toLocaleString()} WIF tip in</> : 'waiting for a tip'}
+          {got ? <><Icon name="check" size={14} /> {TIPS[pick].toLocaleString()} WIF would land here</> : 'tips land here'}
         </span>
         <div className="lp-wallet__split" aria-hidden="true"><span style={{ flex: 100 - FEE_BPS / 100 }} /><span style={{ flex: FEE_BPS / 100 }} /></div>
         <span className="lp-wallet__row"><span>they keep <b>{KEEP}</b></span><span>fee <b>{FEE}</b></span></span>
@@ -242,6 +268,38 @@ function FeeFlow() {
   )
 }
 
+const CAPTION = 'my full $WIF chart notes for the week are in this drop. levels, the world is flat thesis, what i\'m watching next. unlock once for 50 WIF and it stays yours.'
+/** Chapter 01: a composer typing a real-sounding paid drop. Author is the same live featured user; without one it reads as "you". */
+function ComposeMock({ author }: { author: Featured['author'] | null }) {
+  const reduced = useReducedMotion()
+  const [ref, on] = useOnScreen<HTMLDivElement>(0.4)
+  const [n, setN] = useState(0)
+  useEffect(() => {
+    if (reduced) { setN(CAPTION.length); return }
+    if (!on || n >= CAPTION.length) return
+    const ch = CAPTION[n]
+    const t = window.setTimeout(() => setN(x => x + 1), ch === ' ' ? 45 : /[.,]/.test(ch) ? 260 : 28 + ((n * 7) % 30))
+    return () => window.clearTimeout(t)
+  }, [on, n, reduced])
+  return (
+    <div className="lp-art lp-compose" ref={ref} aria-label={`a paid drop: ${CAPTION}`} role="img">
+      <div className="lp-compose__top">
+        {author ? <Pfp user={author} size={32} /> : <span className="lp-pfp lp-pfp--you" aria-hidden="true"><Mascot size={30} /></span>}
+        <span className="lp-compose__who"><b>{author ? author.name || author.handle : 'you'}</b><span>{author ? `@${author.handle}` : 'new drop'}</span></span>
+      </div>
+      <div className="lp-compose__body">
+        <p className="lp-compose__text"><span>{CAPTION.slice(0, n)}</span><span className="lp-compose__caret" aria-hidden="true" /><span className="lp-compose__ghost" aria-hidden="true">{CAPTION.slice(n)}</span></p>
+      </div>
+      <div className="lp-compose__media"><img src="/brand/wif-asset-256.png" alt="" width={72} height={72} loading="lazy" /></div>
+      <div className="lp-compose__row">
+        <span className="lp-switch is-on"><i /></span><span>paid drop</span>
+        <span className="lp-compose__price"><Icon name="lock" size={13} /> <Token size={13} /> <b className="num">50</b> WIF</span>
+        <span className="lp-compose__post">post</span>
+      </div>
+    </div>
+  )
+}
+
 function NameCards() {
   const tilt = (e: RPointerEvent<HTMLDivElement>) => {
     if (isReduced()) return
@@ -271,6 +329,9 @@ function Chapter({ n, title, children, art, id }: { n: string; title: string; ch
   )
 }
 
+/** Example tier names and prices a creator might set (any three, any price). */
+const TIER_EXAMPLES = [{ name: 'supporter', price: 100 }, { name: 'inner circle', price: 500 }, { name: 'front row', price: 1000 }]
+
 const BENTO: { icon: Parameters<typeof Icon>[0]['name']; title: string; body: string; cls?: string }[] = [
   { icon: 'pot', title: 'weekly community pot', body: `vote for the creators you like, ${VOTE_PRICE} WIF a vote. each week the pot goes to the creator voted up most and to the people who voted for them.`, cls: 'lp-b--wide' },
   { icon: 'pin', title: 'top spot', body: `pin a drop above every feed. outbid by ${pct(TOPSPOT_MIN_RAISE)} or more and the last holder gets ${pct(TOPSPOT_HOLDER_SHARE)} of your offer.` },
@@ -284,6 +345,7 @@ const BENTO: { icon: Parameters<typeof Icon>[0]['name']; title: string; body: st
 export function Landing() {
   useThemedPage()
   const burn = useBurnStats()
+  const featured = useFeatured()
   const burned = burn.value !== undefined && burn.value > 0 ? burn.value : undefined
   const [ctaRef, ctaOn] = useOnScreen<HTMLElement>()
   const [ctaRain, setCtaRain] = useState(0)
@@ -325,7 +387,7 @@ export function Landing() {
                 <a href="#how" className="btn btn--ghost btn--lg">how it works</a>
               </div>
             </div>
-            <div className="lp-hero__art"><TipStage /></div>
+            <div className="lp-hero__art"><TipStage post={featured} /></div>
           </div>
         </section>
 
@@ -339,15 +401,7 @@ export function Landing() {
               <span className="lp-story__rail" aria-hidden="true"><i /></span>
 
               <Chapter n="01" title="post a drop." art={
-                <div className="lp-art lp-compose" aria-hidden="true">
-                  <div className="lp-compose__top"><span className="lp-sk lp-sk--av" /><span className="lp-sk" style={{ width: '30%' }} /></div>
-                  <div className="lp-compose__body"><span className="lp-sk lp-sk--soft" style={{ width: '88%' }} /><span className="lp-sk lp-sk--soft" style={{ width: '62%' }} /><span className="lp-compose__caret" /></div>
-                  <div className="lp-compose__media"><img src="/brand/wif-asset-256.png" alt="" width={72} height={72} loading="lazy" /></div>
-                  <div className="lp-compose__row">
-                    <span className="lp-switch is-on"><i /></span><span>paid drop</span><Icon name="lock" size={14} />
-                    <span className="lp-compose__post">post</span>
-                  </div>
-                </div>
+<ComposeMock author={featured?.author ?? null} />
               }>
                 <p>words, an image, or a paid drop. set a price and it unlocks once, then stays unlocked for whoever paid.</p>
               </Chapter>
@@ -371,13 +425,17 @@ export function Landing() {
                   <li><b className="num">{NAME_SHORT_CLAIM_FEE.toLocaleString()} WIF</b> for short names</li>
                   <li><b className="num">{SALE_FEE}</b> on sales</li>
                 </ul>
+                <a className="lp-opensea" href="https://opensea.io/collection/wif-names" target="_blank" rel="noopener noreferrer" data-testid="opensea-link">
+                  <img src="/brand/opensea-logomark.svg" alt="" width={18} height={18} loading="lazy" decoding="async" />
+                  <span>wif names on opensea</span><span aria-hidden="true" className="lp-opensea__arrow">↗</span>
+                </a>
               </Chapter>
 
               <Chapter n="04" title="subscribe, or go plus." art={
                 <div className="lp-art lp-plusart" aria-hidden="true">
                   <div className="lp-tiers">
-                    {[0.42, 0.6, 0.78].map((w, i) => (
-                      <div key={i} className="lp-tier"><span className="lp-tier__n">{i + 1}</span><span className="lp-sk" style={{ width: `${w * 100}%` }} /><Icon name="lock" size={14} /></div>
+                    {TIER_EXAMPLES.map((t, i) => (
+                      <div key={t.name} className="lp-tier"><span className="lp-tier__n">{i + 1}</span><span className="lp-tier__name">{t.name}</span><span className="lp-tier__price"><b className="num">{t.price.toLocaleString()}</b> WIF / mo</span><Icon name="lock" size={14} /></div>
                     ))}
                   </div>
                   <div className="lp-pluscard">

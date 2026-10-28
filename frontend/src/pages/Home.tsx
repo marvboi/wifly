@@ -10,7 +10,7 @@ import { Composer } from '../components/Composer'
 import { NewPill, Sentinel, Trending, WhoToFollow } from '../components/Social'
 import { WorldStrip } from '../components/TopSpot'
 import { Icon } from '../components/Icon'
-import { GuestWall } from '../components/GuestWall'
+import { GuestNudge, GuestWall } from '../components/GuestWall'
 import { Mascot } from '../components/Mascot'
 import { BumpNotice, NameNudge } from '../components/Identity'
 import { FEE_SPLIT } from '../config'
@@ -29,7 +29,7 @@ export function Home() {
   const [params, setParams] = useSearchParams()
   const tab = (params.get('tab') as FeedTab) || 'foryou'
   const { openSheet } = useStore()
-  const { me } = useSession()
+  const { me, ready } = useSession()
   useEffect(() => {
     if (params.get('compose')) { openSheet({ type: 'compose' }); setParams({}, { replace: true }) }
   }, [params, openSheet, setParams])
@@ -113,6 +113,7 @@ export function Home() {
                 </div>
                 {i === 2 && tab !== 'crowd' && <div className="feed__item feed__inline"><WhoToFollow limit={3} /></div>}
                 {i === 8 && <div className="feed__item feed__inline"><Trending limit={5} /></div>}
+                {i === 4 && ready && !me && <div className="feed__item feed__inline"><GuestNudge /></div>}
               </Fragment>
             ))}
           </div>

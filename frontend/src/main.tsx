@@ -44,6 +44,7 @@ function sheetFromUrl(): SheetState {
     case 'compose': return { type: 'compose', replyTo: g('replyTo'), quoteOf: g('quote') }
     case 'signin': return { type: 'signin' }
     case 'profile': return { type: 'profile' }
+    case 'link': return { type: 'link' }
     default: return null
   }
 }

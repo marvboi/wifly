@@ -89,7 +89,7 @@ const tones = [
   ['#B3884F', '#FFFFFF'], ['#D9D4C7', '#110E08'], ['#6F6A60', '#FFFFFF'],
 ]
 
-/** Two letters from the @username: "luna_tiles" -> "LT", "marv" -> "MA". */
+/** Two letters from the @username: "luna_tiles" -> "LT", "alice" -> "AL". */
 export function initialsOf(handle: string) {
   const parts = handle.replace(/^@/, '').split(/[_.\-\s]+/).filter(Boolean)
   const s = parts.length > 1 ? parts[0][0] + parts[1][0] : (parts[0] ?? '').slice(0, 2)

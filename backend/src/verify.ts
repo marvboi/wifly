@@ -10,17 +10,19 @@
 import { decodeEventLog, keccak256, parseAbi, parseEther, toBytes, type Address, type Hex } from 'viem'
 import { chainClient } from './chain'
 import { badgesContract, namesContract, wiflyContract } from './config'
-import { all, one, writeTx } from './db'
+import { all, one, run, writeTx } from './db'
 import { syncName } from './features'
+import { reconcileAll, reconcileUser } from './reconcile'
+import { uidForWallet, walletsOfUser } from './accounts'
+import { payoutOf } from './proofs'
+import { backfillTransfers, syncListings } from './market'
+import { errLine } from './errline'
 
 const WIFLY_EVENTS = parseAbi(['event Tipped(address indexed from, address indexed creator, bytes32 indexed postId, uint256 amount, uint256 fee)'])
 const BADGE_EVENTS = parseAbi(['event BurnedForBadges(address indexed user, uint256 amount, uint256 totalBurnedByUser)'])
 const DAY = 86400_000
 
-async function walletsOf(uid: number): Promise<Set<string>> {
-  const rows = await all<{ a: string | null }>('SELECT address AS a FROM users WHERE id = ? UNION SELECT address AS a FROM user_wallets WHERE user_id = ?', [uid, uid])
-  return new Set(rows.map(r => String(r.a ?? '').toLowerCase()).filter(Boolean))
-}
+const walletsOf = walletsOfUser // users.address, linked/guest wallets and the Privy embedded wallet
 /** Matching events from a successful receipt (null = not mined yet, [] = reverted or none). */
 async function eventsIn<A extends readonly unknown[]>(hash: string, contract: Address, abi: A) {
   const rc = await chainClient().getTransactionReceipt({ hash: hash as Hex }).catch(() => null)
@@ -43,6 +45,8 @@ export async function verifyTip(id: number): Promise<boolean> {
   if (await one('SELECT 1 FROM tips WHERE tx_hash = ? COLLATE NOCASE AND verified = 1', [hash])) return false // cheap early out; the UPDATE below is the real guard
   const ev = await eventsIn(hash, W, WIFLY_EVENTS); if (!ev) return false
   const [from, to] = await Promise.all([walletsOf(Number(t.from_id)), walletsOf(Number(t.to_id))])
+  // the creator's tip destination (chosen + signed, or where their .wif resolves) counts, as does any wallet on their account
+  const pay = (await payoutOf(Number(t.to_id))).address; if (pay) to.add(pay)
   const postId = keccak256(toBytes(`post:${t.drop_id}`)).toLowerCase()
   const ok = ev.some(e => e.eventName === 'Tipped' && from.has(String(e.args.from).toLowerCase()) && to.has(String(e.args.creator).toLowerCase())
     && String(e.args.postId).toLowerCase() === postId && e.args.amount === wei(Number(t.amount)))
@@ -97,14 +101,56 @@ async function sweep(limit: number) {
     const names = await all<{ name: string }>(`SELECT name FROM names WHERE minted = 0 AND created_at > ?
       UNION SELECT name FROM name_sales WHERE verified = 0 AND created_at > ? LIMIT ?`, [since, since, limit])
     for (const x of names) if ((await syncName(x.name, { onlyKnown: true }).catch(() => null))?.known) n++
+    n += await backfillClaims().catch(e => { console.warn('[names-backfill]', errLine(e, 80)); return 0 })
+    n += await backfillTransfers().catch(e => { console.warn('[names-transfers]', errLine(e, 80)); return 0 })
+    n += await syncListings().catch(() => 0)
+    n += (await reconcileAll({ light: true, limit: 200 }).catch(() => [])).length
   }
   return n
+}
+
+/**
+ * claims the app never recorded (the claim call failed, or the wallet wasn't linked yet). Walks
+ * WiflyNames.NameClaimed logs from a saved block cursor; a claim by a wallet that belongs to an account and has no
+ * mirror row is synced from ownerOf. Read-only (eth_getLogs + eth_call).
+ */
+const CLAIMED = parseAbi(['event NameClaimed(uint256 indexed tokenId, string name, address indexed owner, uint256 fee)'])
+const CHUNK = 50_000n
+export async function backfillClaims(maxChunks = 8): Promise<number> {
+  const N = namesContract(); if (!N) return 0
+  const c = chainClient()
+  const head = await c.getBlockNumber()
+  const saved = await one<{ v: string }>("SELECT v FROM kv WHERE k = 'names:cursor'")
+  let from = saved ? BigInt(saved.v) : head > BigInt(process.env.NAMES_BACKFILL_BLOCKS ?? 3_000_000) ? head - BigInt(process.env.NAMES_BACKFILL_BLOCKS ?? 3_000_000) : 0n
+  let n = 0
+  for (let i = 0; i < maxChunks && from <= head; i++) {
+    const to = from + CHUNK - 1n < head ? from + CHUNK - 1n : head
+    const logs = await c.getLogs({ address: N, event: CLAIMED[0], fromBlock: from, toBlock: to })
+    for (const l of logs) {
+      const name = String(l.args.name ?? '').toLowerCase().replace(/\.wif$/, ''), owner = String(l.args.owner ?? '')
+      if (!name || await one('SELECT 1 FROM names WHERE name = ? AND minted = 1', [name])) continue
+      if (!(await uidForWallet(owner))) continue
+      if ((await syncName(name, { onlyKnown: true }).catch(() => null))?.known) n++
+    }
+    from = to + 1n
+    await run("INSERT INTO kv (k, v) VALUES ('names:cursor', ?) ON CONFLICT(k) DO UPDATE SET v = excluded.v", [String(from)])
+  }
+  return n
+}
+/** A wallet was just linked: pick up any .wif it already holds (its primary onchain, plus the backfill walk). */
+export async function adoptWalletNames(uid: number, address: string): Promise<void> {
+  const N = namesContract(); if (!N) return
+  const nm = await chainClient().readContract({ address: N, abi: parseAbi(['function reverseName(address) view returns (string)']), functionName: 'reverseName', args: [address as Address] }).catch(() => '')
+  const label = String(nm || '').toLowerCase().replace(/\.wif$/, '')
+  if (label) await syncName(label, { onlyKnown: true }).catch(() => null)
+  for (const r of await all<{ name: string }>('SELECT name FROM names WHERE minted = 0 AND owner_id = ? LIMIT 8', [uid])) await syncName(r.name, { onlyKnown: true }).catch(() => null)
+  await reconcileUser(uid).catch(() => null)
 }
 
 let timer: ReturnType<typeof setInterval> | null = null
 /** Runs whenever any contract address is set. Read-only, so it needs no flag or key. */
 export function startVerifier(intervalMs = Number(process.env.VERIFY_INTERVAL_MS ?? 60_000)) {
   if (timer || !(wiflyContract() || badgesContract() || namesContract())) return
-  timer = setInterval(() => { verifyPending().catch(e => console.error('verify failed', e)) }, Math.max(15_000, intervalMs))
+  timer = setInterval(() => { verifyPending().catch(e => console.error('[verify] failed:', errLine(e))) }, Math.max(15_000, intervalMs))
   timer.unref?.()
 }

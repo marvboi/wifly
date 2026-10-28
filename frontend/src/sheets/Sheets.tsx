@@ -1,4 +1,3 @@
-import { FEED_PATH } from '../lib/hosts'
 import { useAnyAccount } from '../auth/privyBridge'
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react'
 import { AnimatedNumber } from '../components/Motion'
@@ -6,9 +5,11 @@ import { Mascot } from '../components/Mascot'
 import { CoinRain } from '../components/CoinRain'
 import { companion } from '../lib/companion'
 import { TipJar } from '../components/BrandSlots'
-import { useEffect, useState, type ReactNode } from 'react'
-import { useQueryClient } from '@tanstack/react-query'
-import { adoptUser, api, getDrop, uploadAvatar } from '../api/client'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { PayoutLine } from '../components/WalletProofs'
+import { InfoTip } from '../components/InfoTip'
+import { adoptUser, api, getDrop, LINK_REQUIRED_EVENT, uploadAvatar } from '../api/client'
 import { AvatarPicker } from '../components/AvatarPicker'
 import { useSession } from '../api/session'
 import { privyEnabled, wantPrivy } from '../auth/privyBridge'
@@ -35,7 +36,7 @@ import { isWifName, useResolve } from '../lib/names'
 // Top Spot shares as labels (TOP_SPOT_PREV_BPS 9000 onchain)
 const pct = (x: number) => `${Math.round(x * 100)}%`
 
-export function Sheet({ title, onClose, children, footer }: { title: string; onClose: () => void; children: ReactNode; footer?: ReactNode }) {
+export function Sheet({ title, onClose, children, footer, size }: { title: string; onClose: () => void; children: ReactNode; footer?: ReactNode; size?: 'sm' }) {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
     document.addEventListener('keydown', onKey)
@@ -46,7 +47,7 @@ export function Sheet({ title, onClose, children, footer }: { title: string; onC
   return (
     <motion.div className="sheet-wrap" role="presentation" onMouseDown={e => { if (e.target === e.currentTarget) onClose() }}
       initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0, transition: { duration: 0.2 } }}>
-      <motion.div className="sheet" role="dialog" aria-modal="true" aria-label={title}
+      <motion.div className={size ? `sheet sheet--${size}` : 'sheet'} role="dialog" aria-modal="true" aria-label={title}
         initial={phone ? { y: '100%' } : { opacity: 0, y: 36, scale: 0.96 }}
         animate={phone ? { y: 0 } : { opacity: 1, y: 0, scale: 1 }}
         exit={phone ? { y: '100%', transition: { duration: 0.22, ease: [0.4, 0, 1, 1] } } : { opacity: 0, y: 20, scale: 0.97, transition: { duration: 0.16 } }}
@@ -179,13 +180,15 @@ function TipSheet({ to, postId, xHandle }: { to?: string; postId?: string; xHand
   const [phase, setPhase] = useState<TipPhase>('idle')
   const reduced = useReducedMotion()
   const net = useQuoteFee(amount).receives
+  const pay = useQuery({ queryKey: ['payout', to], queryFn: () => api<{ address: string | null }>(`/users/${to}/payout`), enabled: mode === 'member' && !!target })
+  const payTo = (pay.data?.address ?? addrOf(to)) as Address | undefined
   const netLabel = net.toLocaleString('en-US', { maximumFractionDigits: 2 })
 
   const confirm = async () => {
     if (phase !== 'idle') return
     setPhase('sending')
     let plan: Plan | null = null
-    if (mode === 'member') { const a = addrOf(to); if (a) plan = plans.tip(a, amount, postId) }
+    if (mode === 'member') { if (payTo) plan = plans.tip(payTo, amount, postId) }
     else if (mode === 'name') { if (!resolved?.address) { setPhase('idle'); return } plan = plans.tip(resolved.address as Address, amount, postId) }
     else {
       // resolveXUserId knows people who signed in to wifly with X (id from Privy's verified token); anyone else needs the pasted id.
@@ -227,11 +230,15 @@ function TipSheet({ to, postId, xHandle }: { to?: string; postId?: string; xHand
         <button role="tab" aria-selected={mode === 'x'} className={mode === 'x' ? 'is-on' : ''} onClick={() => setMode('x')}>any X account</button>
       </div>
       {mode === 'member' && target ? (
+        <>
         <div className="recipient">
           <Avatar handle={target.handle} size={44} />
           <div><Name handle={target.handle} />{post && <div className="muted small clamp-1">for: “{post.text}”</div>}</div>
         </div>
+        <PayoutLine address={payTo ?? null} />
+        </>
       ) : mode === 'name' ? (
+        <>
         <div className="xfield">
           <label className="field">
             <span className="field__label">send to</span>
@@ -239,6 +246,8 @@ function TipSheet({ to, postId, xHandle }: { to?: string; postId?: string; xHand
           </label>
           <ResolveLine raw={dest} loading={res.isFetching} r={resolved} />
         </div>
+        <PayoutLine address={resolved?.address ?? null} />
+        </>
       ) : (
         <div className="xfield">
           <label className="field">
@@ -251,7 +260,7 @@ function TipSheet({ to, postId, xHandle }: { to?: string; postId?: string; xHand
               <span className="field__input"><input value={xId} inputMode="numeric" onChange={e => setXId(e.target.value.replace(/\D/g, ''))} placeholder="e.g. 1449012345678901248" /></span>
             </label>
           )}
-          <p className="muted small">not on {APP_NAME} yet? the tip waits for them. the moment they link this X account it goes straight to their wallet. if they never do, you can take it back after 30 days.</p>
+          <p className="muted small">held until they join<InfoTip label="about tips to x accounts">it goes to their wallet when they link this x account on {APP_NAME}. not claimed in 30 days? take it back.</InfoTip></p>
         </div>
       )}
       {self && <SelfNote what="tip" />}
@@ -265,7 +274,7 @@ function TipSheet({ to, postId, xHandle }: { to?: string; postId?: string; xHand
 
 /** Shows where a name.wif / @handle / 0x… resolves before anything is sent. Unclaimed names resolve to no wallet. */
 export function ResolveLine({ raw, loading, r }: { raw: string; loading: boolean; r: { label: string; address: string | null; kind: string; source: string } | null }) {
-  if (raw.length < 3) return <p className="tiny muted">name.wif resolves onchain to the wallet that holds it. @username resolves to that member’s wallet.</p>
+  if (raw.length < 3) return null
   if (loading) return <p className="tiny muted">resolving {raw}…</p>
   if (!r) return <p className="tiny error">that isn’t a name.wif, @username or address</p>
   if (!r.address) return <p className="tiny error">{r.label} resolves to no wallet, so it can’t receive WIF</p>
@@ -386,7 +395,7 @@ function BidSheet() {
         </button>
         <PreviewNote />
       </>}>
-      <p className="muted">pin your latest drop above every feed. it stays until someone pays more.</p>
+      <p className="muted">pin your latest drop on top<InfoTip label="about promotion">it stays above every feed until someone pays more.</InfoTip></p>
       {!me ? <p className="small warn">sign in first. the top spot pins your latest drop.</p> : !postId && <p className="small warn">post a drop first. the top spot pins your latest one.</p>}
       <AmountPicker value={bid} onChange={setBid} presets={[min, Math.ceil(min * 1.25), Math.ceil(min * 1.5)]} />
       {bid < min && <p className="small error">minimum bid is {min.toLocaleString()} WIF{empty ? '' : ` (${pct(TOPSPOT_MIN_RAISE)} over the current spot)`}.</p>}
@@ -491,7 +500,7 @@ function VoteSheet({ handle, postId }: { handle: string; postId?: string }) {
         <Avatar handle={handle} size={44} />
         <div><Name handle={handle} />{post && <div className="muted small clamp-1">“{post.text}”</div>}</div>
       </div>
-      <p className="muted">the crowd decides what rises, not an algorithm. each vote costs {VOTE_PRICE} WIF: {FEE_SPLIT.pot}% to the weekly community pot, {FEE_SPLIT.burn}% burned.</p>
+      <p className="muted">{VOTE_PRICE} WIF per vote<InfoTip label="about votes">the crowd decides what rises. {FEE_SPLIT.pot}% to the weekly pot, {FEE_SPLIT.burn}% burned.</InfoTip></p>
       {self && <SelfNote what="vote for" />}
       <div className="vote-cheer" aria-hidden="true"><Mascot size={56} mood={cheer ? 'happy' : n >= 25 ? 'wow' : 'calm'} happy={cheer} pulse={cheer ? 1 : n} /></div>
       {cheer && <CoinRain />}
@@ -607,7 +616,8 @@ function SignInSheet({ reason }: { reason?: string }) {
   const nav = useNavigate()
   const done = (m: { onboarded?: boolean; handle: string }) => {
     closeSheet()
-    if (!m.onboarded) nav('/welcome'); else { nav(FEED_PATH); toast(`signed in as @${m.handle}`) }
+    // like x: stay on the page you were reading; only a brand-new account goes through /welcome
+    if (!m.onboarded) nav('/welcome'); else toast(`signed in as @${m.handle}`)
   }
   const wallet = async () => {
     setBusy('wallet')
@@ -699,9 +709,65 @@ function ProfileSheet() {
   )
 }
 
+/** Guests: one calm line, three ways to link, a quiet "not now". Once linked, the action carries on. */
+function LinkSheet({ then }: { then?: () => void }) {
+  const { closeSheet } = useStore()
+  const { me, guest, linkX, linkEmail, linkWallet } = useSession()
+  const { address, isConnected } = useAccount()
+  const { connectAsync, connectors } = useConnect()
+  const [busy, setBusy] = useState<'wallet' | 'x' | 'email' | null>(null)
+  const [err, setErr] = useState<string | null>(null)
+  const pending = useRef(then)
+  // linked: a gated sheet turns into its action by itself; a plain action (like, follow …) runs once
+  useEffect(() => {
+    if (!me || guest || !pending.current) return
+    const run = pending.current; pending.current = undefined
+    closeSheet(); run()
+  }, [me, guest, closeSheet])
+  useEffect(() => { if (privyEnabled) wantPrivy() }, [])
+  const go = (kind: 'wallet' | 'x' | 'email') => async () => {
+    if (busy) return
+    setBusy(kind); setErr(null)
+    try {
+      if (kind === 'wallet') {
+        let a = isConnected ? address : undefined
+        if (!a) { const c = connectors[0]; if (!c) throw new Error('no wallet found in this browser'); a = (await connectAsync({ connector: c })).accounts[0] }
+        await linkWallet(a!)
+      } else if (kind === 'x') await linkX()
+      else await linkEmail()
+    } catch (e) {
+      const m = (e as Error).message || 'that didn’t go through'
+      if (!/rejected|denied|closed/i.test(m)) setErr(m.toLowerCase())
+    } finally { setBusy(null) }
+  }
+  return (
+    <Sheet title="link to continue" onClose={closeSheet} size="sm">
+      <div className="linksheet" data-testid="link-sheet">
+        <p className="linksheet__line muted">create a free account to like, tip and post</p>
+        <div className="linksheet__btns">
+          <button className="btn btn--dark btn--block" disabled={!!busy} onClick={go('wallet')}><Icon name="wallet" size={18} /> {busy === 'wallet' ? 'check your wallet…' : 'wallet'}</button>
+          <button className="btn btn--ghost btn--block" disabled={!!busy || !privyEnabled} onClick={go('x')}><Icon name="x" size={16} /> {busy === 'x' ? 'opening…' : 'x'}{!privyEnabled && <span className="linksheet__soon">soon</span>}</button>
+          <button className="btn btn--ghost btn--block" disabled={!!busy || !privyEnabled} onClick={go('email')}><Icon name="mail" size={18} /> {busy === 'email' ? 'opening…' : 'email'}{!privyEnabled && <span className="linksheet__soon">soon</span>}</button>
+        </div>
+        {err && <p className="linksheet__err small" role="alert">{err}</p>}
+        <button className="btn btn--text btn--sm linksheet__later" onClick={closeSheet}>not now</button>
+      </div>
+    </Sheet>
+  )
+}
+
 export function Sheets() {
-  const { sheet } = useStore()
-  return <AnimatePresence>{sheet && <SheetSwitch key={sheet.type === 'signin' || sheet.type === 'profile' ? 'auth' : sheet.type} sheet={sheet} />}</AnimatePresence>
+  const { sheet, openSheet } = useStore()
+  const { me, ready, guest } = useSession()
+  // any write the api turned down for a guest opens the link sheet (a safety net behind the button gates)
+  useEffect(() => {
+    const open = () => openSheet({ type: 'link' })
+    window.addEventListener(LINK_REQUIRED_EVENT, open)
+    return () => window.removeEventListener(LINK_REQUIRED_EVENT, open)
+  }, [openSheet])
+  const asLink = !!sheet && (sheet.type === 'link' || (!!GUEST_ASK[sheet.type] && ready && !!me && guest))
+  const key = !sheet ? '' : asLink ? 'link' : sheet.type === 'signin' || sheet.type === 'profile' ? 'auth' : sheet.type
+  return <AnimatePresence>{sheet && <SheetSwitch key={key} sheet={sheet} />}</AnimatePresence>
 }
 
 /** Guest actions open a gentle sign-up sheet instead of the action sheet. */
@@ -711,11 +777,23 @@ const GUEST_ASK: Partial<Record<NonNullable<SheetState>['type'], string>> = {
   bid: 'sign up to bid', burn: 'sign up to earn badges', tiers: 'sign up to set up memberships',
 }
 
+/** A signed-in account still without a picked @name browses freely; the first action takes it to the name step. */
+function ToWelcome({ renaming }: { renaming: boolean }) {
+  const { closeSheet } = useStore()
+  const nav = useNavigate()
+  useEffect(() => { closeSheet(); nav(`/welcome${renaming ? '?step=you' : ''}`) }, []) // eslint-disable-line react-hooks/exhaustive-deps
+  return null
+}
+
 function SheetSwitch({ sheet }: { sheet: NonNullable<SheetState> }) {
   const { me, ready } = useSession()
   const ask = GUEST_ASK[sheet.type]
+  if (ask && !ready) return null // wait for the session so a gated sheet never flashes (or fetches) before the sign-in / link sheet
   if (ask && ready && !me) return <SignInSheet reason={ask} />
+  if (ask && me?.needsHandle) return <ToWelcome renaming={!!me.renaming} />
+  if (ask && me?.guest) return <LinkSheet />
   switch (sheet.type) {
+    case 'link': return me ? <LinkSheet then={sheet.then} /> : <SignInSheet />
     case 'tip': return <TipSheet {...sheet} />
     case 'unlock': return <UnlockSheet postId={sheet.postId} />
     case 'subscribe': return <SubscribeSheet handle={sheet.handle} tierId={sheet.tierId} />

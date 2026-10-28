@@ -21,7 +21,7 @@ export const session: MiddlewareHandler<Env> = async (c, next) => {
     try {
       const p = await verify(tok, SESSION_SECRET, 'HS256')
       const id = Number(p.sub)
-      if (id && (await one('SELECT id FROM users WHERE id = ?', [id]))) { c.set('uid', id); c.set('via', p.via === 'wallet' || p.via === 'privy' ? p.via : null) }
+      if (id && (await one('SELECT id FROM users WHERE id = ? AND deleted_at IS NULL', [id]))) { c.set('uid', id); c.set('via', p.via === 'wallet' || p.via === 'privy' ? p.via : null) }
     } catch { /* expired or tampered: treat as signed out */ }
   }
   await next()

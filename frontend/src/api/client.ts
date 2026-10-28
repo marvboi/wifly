@@ -23,7 +23,9 @@ export type Page = { items: ApiDrop[]; next: string | null; snapshot?: number; s
 export type Notif = { id: string; kind: 'like' | 'pass' | 'reply' | 'quote' | 'follow' | 'mention' | 'tip' | 'name_offer' | 'name_offer_accepted' | 'handle_bump'; actors: ApiUser[]; count: number; drop: ApiDrop | null; meta: Record<string, unknown>; read: boolean; createdAt: number }
 export type Limits = { dropChars: number; bioChars: number; nameChars: number; handleMin: number; handleMax: number; imageBytes: number }
 
-export class ApiError extends Error { constructor(public status: number, message: string) { super(message) } }
+export class ApiError extends Error { constructor(public status: number, message: string, public code?: string) { super(message) } }
+/** A guest tried a write that needs a linked wallet, x or email: the app opens the link sheet. */
+export const LINK_REQUIRED_EVENT = 'wifly:link-required'
 
 export async function api<T>(path: string, init: RequestInit & { json?: unknown } = {}): Promise<T> {
   const { json, headers, ...rest } = init
@@ -39,10 +41,11 @@ export async function api<T>(path: string, init: RequestInit & { json?: unknown 
     body: json !== undefined ? JSON.stringify(json) : rest.body,
   })
   if (!res.ok) {
-    let msg = res.statusText
-    try { msg = (await res.json()).error ?? msg } catch { /* not json */ }
+    let msg = res.statusText, code: string | undefined
+    try { const b = await res.json(); msg = b.error ?? msg; code = typeof b.code === 'string' ? b.code : undefined } catch { /* not json */ }
     if (res.status === 502 || res.status === 504) msg = 'the wifly api isn’t running (cd backend && npm run dev)'
-    throw new ApiError(res.status, msg)
+    if (code === 'link_required' && typeof window !== 'undefined') window.dispatchEvent(new CustomEvent(LINK_REQUIRED_EVENT))
+    throw new ApiError(res.status, msg, code)
   }
   return res.json() as Promise<T>
 }

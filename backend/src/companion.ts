@@ -14,6 +14,7 @@
 import { Lru } from './lru'
 import { cached, rpcCached } from './cache'
 import type { Hono } from 'hono'
+import { errLine } from './errline'
 import { erc20Abi, formatUnits, parseAbi, parseEther, parseUnits, type Address } from 'viem'
 import { needUser, type Env } from './auth'
 import { chainClient } from './chain'
@@ -415,7 +416,7 @@ export async function companionChat(uid: number, text: string, history: Hist[] =
       }
       messages.push({ role: 'assistant', content: r.content || null, tool_calls: r.toolCalls.slice(0, 3) })
       for (const call of r.toolCalls.slice(0, 3) as ToolCall[]) {
-        const res = await runTool(ctx, call.function.name, call.function.arguments).catch(e => bad(String((e as Error).message).slice(0, 120)))
+        const res = await runTool(ctx, call.function.name, call.function.arguments).catch(e => bad(errLine(e, 120)))
         messages.push({ role: 'tool', tool_call_id: call.id, content: JSON.stringify(res).slice(0, 1500) })
       }
     }

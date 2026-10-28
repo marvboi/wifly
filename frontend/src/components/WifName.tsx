@@ -3,15 +3,11 @@ import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { Mascot } from './Mascot'
 
-/**
- * A WIF Name as people see it: "marv.wif" plus a small ink check when it's the holder's verified primary
- * (reverseName(address) returned it). Links to the public name page.
- */
-export function WifName({ label, verified = true, link = true, size = 'md' }: { label: string; verified?: boolean; link?: boolean; size?: 'sm' | 'md' | 'lg' }) {
+/** A WIF Name as plain text ("alice.wif"), linked to its name page. No check mark: that is for Wifly Plus only. */
+export function WifName({ label, link = true, size = 'md' }: { label: string; verified?: boolean; link?: boolean; size?: 'sm' | 'md' | 'lg' }) {
   const body = (
     <>
       <span className="wifname__label">{label}</span><span className="wifname__tld">.wif</span>
-      {verified && <svg className="wifname__check" viewBox="0 0 16 16" width="14" height="14" aria-label="verified primary name"><circle cx="8" cy="8" r="8" /><path d="M4.6 8.3l2.2 2.2 4.6-4.8" fill="none" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" /></svg>}
     </>
   )
   return link ? <Link to={`/n/${label}`} className={`wifname wifname--${size}`}>{body}</Link> : <span className={`wifname wifname--${size}`}>{body}</span>

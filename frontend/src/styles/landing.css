@@ -1,4 +1,4 @@
-/* landing v2 (speed.8). calm and premium in light and dark: tokens only (app.css, html[data-themed]).
+/* landing v2. calm and premium in light and dark: tokens only (app.css, html[data-themed]).
    motion is transform/opacity (and a few colour/stroke loops); every size is reserved up front so nothing shifts. */
 .lp { background: var(--bg); color: var(--ink); }
 .lp-wrap { width: 100%; max-width: 1200px; margin: 0 auto; padding: 0 40px; }
@@ -322,3 +322,49 @@ html[data-theme="dark"] .lp-title em::before { height: .07em; bottom: .02em; }
   .lp-wallet__row { font-size: 10px; gap: 4px; }
   .lp-dropcard { width: 64%; }
 }
+
+/* the hero card is a real post, the composer types a real caption, no skeleton bars anywhere */
+.lp-pfp { flex: none; border-radius: 50%; object-fit: cover; background: var(--fill); border: 1px solid var(--line); }
+.lp-pfp--letter { display: grid; place-items: center; font-weight: 700; font-size: 15px; color: var(--ink); background: var(--fill-2); }
+.lp-pfp--you { width: 32px; height: 32px; display: grid; place-items: center; background: var(--fill); }
+.lp-dropcard__post { display: flex; flex-direction: column; gap: 10px; color: inherit; text-decoration: none; min-width: 0; }
+.lp-dropcard__head { min-width: 0; }
+.lp-dropcard__who { display: flex; flex-direction: column; min-width: 0; line-height: 1.2; }
+.lp-dropcard__who b { font-size: 14px; font-weight: 700; color: var(--ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.lp-dropcard__who span { font-size: 12.5px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.lp-dropcard__text { font-size: 16px; line-height: 1.35; font-weight: 500; color: var(--ink); overflow-wrap: anywhere; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+.lp-dropcard__stats { display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: 12px; color: var(--muted); padding-bottom: 2px; }
+.lp-dropcard__stats > span { display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; }
+.lp-dropcard__stats b { color: var(--ink); font-weight: 700; }
+.lp-dropcard__post:hover .lp-dropcard__text { text-decoration: underline; text-decoration-color: var(--line-strong); text-underline-offset: 3px; }
+.lp-compose__top { min-width: 0; }
+.lp-compose__who { display: flex; flex-direction: column; line-height: 1.2; min-width: 0; }
+.lp-compose__who b { font-size: 14px; color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.lp-compose__who span { font-size: 12px; color: var(--muted); }
+.lp-compose__body { display: block; }
+.lp-compose__text { margin: 0; font-size: 15px; line-height: 1.5; color: var(--ink); overflow-wrap: anywhere; }
+.lp-compose__text .lp-compose__caret { position: static; display: inline-block; vertical-align: -3px; width: 2px; height: 1.05em; margin: 0 1px; }
+.lp-compose__ghost { visibility: hidden; }
+.lp-compose__row { flex-wrap: wrap; row-gap: 8px; }
+.lp-compose__price { display: inline-flex; align-items: center; gap: 4px; height: 26px; padding: 0 9px; border-radius: 999px; background: var(--fill); font-size: 12px; white-space: nowrap; }
+.lp-compose__price b { font-weight: 700; }
+.lp-tier { color: var(--ink); min-width: 0; }
+.lp-tier__name { font-size: 14px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.lp-tier__price { margin-left: auto; font-size: 12.5px; color: var(--muted); white-space: nowrap; }
+.lp-tier__price b { color: var(--ink); }
+.lp-tier__price + svg { margin-left: 0; color: var(--muted); }
+@media (max-width: 760px) {
+  .lp-dropcard__post { gap: 8px; }
+  .lp-dropcard__text { font-size: 14px; -webkit-line-clamp: 2; }
+  .lp-dropcard__who b { font-size: 13px; }
+  .lp-dropcard__who span { font-size: 11.5px; }
+  .lp-dropcard__stats { font-size: 11px; gap: 2px 10px; }
+  .lp-dropcard__head .lp-pfp { width: 30px; height: 30px; }
+  .lp-compose__text { font-size: 14px; }
+  .lp-tier { gap: 10px; padding: 0 12px; }
+}
+.lp-opensea { display: inline-flex; align-self: flex-start; justify-self: start; width: fit-content; max-width: 100%; align-items: center; gap: 8px; margin-top: 14px; padding: 6px 12px 6px 8px; border-radius: 999px; border: 1px solid var(--line); color: var(--ink-2); font-size: 13px; font-weight: 500; text-decoration: none; transition: border-color .15s, color .15s; }
+.lp-opensea:hover { border-color: var(--line-strong, var(--ink-2)); color: var(--ink); }
+.lp-opensea:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
+.lp-opensea img { display: block; border-radius: 999px; }
+.lp-opensea__arrow { color: var(--muted); font-size: 12px; }

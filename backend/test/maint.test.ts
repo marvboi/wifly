@@ -1,4 +1,4 @@
-/** One-time startup maintenance (remove-ass-2026-10-25): backup first, exact SQL, marker, never twice. `npm test` */
+/** One-time startup maintenance (remove-ass): backup first, exact SQL, marker, never twice. `npm test` */
 import { after, before, test } from 'node:test'
 import assert from 'node:assert/strict'
 import { existsSync, mkdtempSync, readdirSync, rmSync } from 'node:fs'

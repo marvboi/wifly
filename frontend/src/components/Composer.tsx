@@ -48,7 +48,8 @@ export function Composer({ replyTo, quoteOf, onDone, autoFocus, placeholder, com
   /** Extra fields for POST /drops, e.g. { locked: { price, teaser } } or { supportersOnly: 't1' }. */
   extra?: Record<string, unknown>; canSubmit?: boolean
 }) {
-  const { me, expectMe } = useSession()
+  const { me, expectMe, guest } = useSession()
+  const submitRef = useRef<() => Promise<void>>(async () => {})
   const { toast, openSheet } = useStore()
   const qc = useQueryClient()
   const [text, setText] = useState('')
@@ -97,6 +98,8 @@ export function Composer({ replyTo, quoteOf, onDone, autoFocus, placeholder, com
 
   const submit = async () => {
     if (!ok) return
+    // a guest links first, then the same drop goes out
+    if (guest) { openSheet({ type: 'link', then: () => void submitRef.current() }); return }
     if (preview) { toast('not posted', 'posting is off here'); onDone?.(null); return }
     setBusy(true)
     try {
@@ -115,6 +118,7 @@ export function Composer({ replyTo, quoteOf, onDone, autoFocus, placeholder, com
       onDone?.(p)
     } catch (e) { toast('couldn’t drop that', (e as Error).message) } finally { setBusy(false) }
   }
+  submitRef.current = submit
 
   const replyingTo = replyTo ? getDrop(replyTo)?.author : undefined
   const open = !compact || focused || !!text || !!image

@@ -31,7 +31,7 @@ export function BurnSheet({ amount: initial }: { amount?: number }) {
   const { closeSheet, toast } = useStore()
   const { me } = useSession()
   const qc = useQueryClient()
-  const b = useBadges(me?.handle ?? 'you').data
+  const b = useBadges(me?.handle).data
   const burned = b?.burned ?? 0
   const next = BADGE_LEVELS.find(l => l.min > burned)
   const [amount, setAmount] = useState(initial ?? (next ? next.min - burned : 1000))

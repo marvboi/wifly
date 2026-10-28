@@ -17,8 +17,9 @@ import { Mascot, type LookPoint, type Mood } from '../components/Mascot'
 import { NAME_MIN } from '../config'
 import { useStore } from '../state/store'
 import { ClaimBox, ClaimSoon, NAMES_LIVE, type ClaimState } from './Names'
+import { UseMyWif } from '../components/WalletProofs'
 
-type Onb = { suggestedHandle: string | null; x: { username: string } | null; wallet: string | null; email: boolean; users: ApiUser[]; tags: string[] }
+type Onb = { suggestedHandle: string | null; ownedWif?: string | null; notice?: string | null; x: { username: string } | null; wallet: string | null; email: boolean; users: ApiUser[]; tags: string[] }
 const STEPS = ['you', 'wif', 'follow', 'link'] as const
 const TITLES = ['about you', 'onchain name', 'your feed', 'links']
 
@@ -45,6 +46,7 @@ export function Welcome() {
   useEffect(() => { const m = window.matchMedia('(max-width: 760px)'); const f = () => setNarrow(m.matches); m.addEventListener('change', f); return () => m.removeEventListener('change', f) }, [])
 
   // No @name is filled in for you: an X sign-in gets its X handle offered as a tap-to-use suggestion, that's all.
+  const owned = onb.data?.ownedWif ?? null
   const suggestion = (onb.data?.x?.username ?? onb.data?.suggestedHandle ?? '').toLowerCase()
   // an older account that only ever had an auto-made @name: pick one, then straight back to the feed
   const renaming = !!me?.renaming
@@ -98,11 +100,13 @@ export function Welcome() {
   const host = useMemo((): { mood: Mood; line: string } => {
     const first = name.trim().split(/\s+/)[0]
     if (step === 0) {
+      if (!handle && owned) return { mood: 'happy', line: `welcome back. you own ${owned}.wif, so @${owned} is yours in one tap.` }
       if (!handle) return { mood: 'calm', line: first ? `nice to meet you, ${first}. now pick a username.` : 'hi, i’m your wifly companion. what should people call you?' }
       if (checking) return { mood: 'think', line: `checking @${handle}…` }
+      if (check?.available && check.reason === 'yours') return { mood: 'happy', line: `that’s you. ${at(handle)} is yours.` }
       if (check?.available) return { mood: 'happy', line: check.reason === 'x-reserved' || onb.data?.x?.username === handle ? `${at(handle)}, straight from X. good pick.` : `${at(handle)} is free. good pick${first ? `, ${first}` : ''}.` }
       if (check?.reason === 'reserved') return { mood: 'oops', line: `${at(handle)} isn’t available. try a twist on it?` }
-      if (check?.reason === 'wif-owned') return { mood: 'oops', line: `someone owns ${handle}.wif onchain, and a .wif owner gets the matching @. try a twist on it?` }
+      if (check?.reason === 'wif-owned') return { mood: 'oops', line: `${handle}.wif belongs to another wallet, and its owner gets the matching @. try a twist on it?` }
       if (check?.reason === 'invalid') return { mood: handle.length < NAME_MIN ? 'calm' : 'oops', line: check.message ?? '3–20 characters: a–z, 0–9 and _' }
       return { mood: 'oops', line: `${at(handle)} is taken. one of the suggestions?` }
     }
@@ -111,14 +115,14 @@ export function Welcome() {
       if (claimed) return { mood: 'wow', line: `${claimed}.wif is yours and it’s your main name. people can send WIF straight to it.` }
       const l = wifState.label
       if (wifState.s === 'available') return { mood: 'wow', line: `${l}.wif is open. want it too? or maybe later, it’s up to you.` }
-      if (wifState.s === 'taken') return { mood: 'calm', line: `someone already holds ${l}.wif. your @${handle} stays yours. a close one, or maybe later?` }
+      if (wifState.s === 'taken') return { mood: 'calm', line: `${l}.wif belongs to another wallet. your @${handle} stays yours. pick a close one, or maybe later.` }
       if (wifState.s === 'reserved') return { mood: 'oops', line: `${l}.wif isn’t available.` }
-      if (wifState.s === 'yours') return { mood: 'happy', line: `you already hold ${l}.wif.` }
+      if (wifState.s === 'yours') return { mood: 'happy', line: `you own ${l}.wif. nice, let’s keep going.` }
       return { mood: 'think', line: `your @${handle} is free already. ${handle}.wif is the onchain version. you can skip this.` }
     }
     if (step === 2) return follow.size ? { mood: 'happy', line: `following ${follow.size}. your feed’s warming up.` } : { mood: 'calm', line: 'follow a few people so your feed isn’t empty.' }
     return linkState === 'ready' ? { mood: 'calm', line: 'all optional. link x to show your handle on your profile.' } : { mood: 'calm', line: 'all optional. you can link accounts later in settings.' }
-  }, [step, handle, check, checking, name, wifState, claimed, follow.size, onb.data, linkState])
+  }, [step, handle, check, checking, name, wifState, claimed, follow.size, onb.data, linkState, owned])
 
   if (ready && !me) return <Navigate to="/" replace />
   if (me?.onboarded && !me.needsHandle && !sp.get('step') && !sp.get('h')) return <Navigate to={FEED_PATH} replace />
@@ -129,7 +133,7 @@ export function Welcome() {
   const finish = async () => {
     setBusy(true)
     try {
-      const r = await api<{ me?: ApiUser }>('/onboarding', { method: 'POST', json: { handle, name: name.trim() || undefined, avatar, follow: [...follow], tags: [...tags] } })
+      const r = await api<{ me?: ApiUser }>('/onboarding', { method: 'POST', json: { handle: claimed || handle, name: name.trim() || undefined, avatar, follow: [...follow], tags: [...tags] } })
       if (r.me) setMe({ ...r.me, onboarded: true })
       refresh()
       nav(FEED_PATH, { replace: true })
@@ -163,7 +167,8 @@ export function Welcome() {
           <motion.section key={step} className="welcome__card" aria-label={TITLES[step]} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }} transition={{ duration: 0.2 }}>
             {step === 0 && <>
               <h1>{renaming ? 'pick your @name' : 'who are you?'}</h1>
-              {renaming && <p className="welcome__sub">your account got a made-up @name when it started. choose the one you want. everything else stays.</p>}
+              {onb.data?.notice ? <p className="welcome__sub welcome__notice" data-testid="handle-notice">@{onb.data.notice} now goes with {onb.data.notice}.wif, held by another wallet. pick a new @name; your posts stay.</p>
+                : renaming && <p className="welcome__sub">pick the @name you want. everything else stays.</p>}
               <div className="welcome__profile">
                 <AvatarPicker size={72} src={avatar} name={name} handle={handle} onPick={pick} onRemove={() => setAvatar(null)} onError={m => toast('couldn’t add that photo', m)} />
                 <label className="field"><span className="field__label">display name</span>
@@ -173,8 +178,12 @@ export function Welcome() {
               </div>
               <div className="welcome__handle">
                 <HandleField quiet value={handle} onChange={v => { setHandle(v); requestAnimationFrame(() => { const el = document.activeElement; if (el instanceof HTMLInputElement) watchInput({ currentTarget: el }) }) }} autoFocus {...watchProps} />
-                <p className="welcome__sub">free, and yours. make it onchain later.</p>
-                {suggestion && handle !== suggestion && <p className="welcome__sub">{onb.data?.x ? 'from your x: ' : 'idea: '}<button className="linkbtn" onClick={() => setHandle(suggestion)}>@{suggestion}</button></p>}
+                <p className="welcome__sub">free, and yours.</p>
+                {owned && handle !== owned && <button type="button" className="welcome__owned" data-testid="use-owned" onClick={() => { setHandle(owned); if (!renaming) setStep(1) }}>
+                  <span className="welcome__owned-l">you own <b>{owned}.wif</b></span><span className="welcome__owned-r">use @{owned} <Icon name="chevron" size={14} /></span>
+                </button>}
+                {!owned && <UseMyWif compact onDone={n => { setHandle(n); setClaimed(n); if (renaming) nav(FEED_PATH, { replace: true }); else setStep(2) }} />}
+                {!owned && suggestion && handle !== suggestion && <p className="welcome__sub">{onb.data?.x ? 'from your x: ' : 'idea: '}<button className="linkbtn" onClick={() => setHandle(suggestion)}>@{suggestion}</button></p>}
               </div>
               <button className="btn btn--dark btn--lg btn--block" disabled={!okHandle || busy} onClick={renaming ? saveName : next}>{renaming ? (busy ? 'saving…' : 'save my @name') : 'continue'}</button>
             </>}
@@ -182,7 +191,7 @@ export function Welcome() {
               <h1>want {handle}.wif too?</h1>
               <p className="welcome__sub">the onchain version of @{handle}. optional.</p>
               <ClaimBox compact andPrimary initial={handle} onState={(s, label) => setWifState({ s, label })} onClaimed={l => setClaimed(l)} />
-              <button className={`btn btn--lg btn--block ${claimed ? 'btn--dark' : 'btn--ghost'}`} onClick={next}>{claimed ? 'continue' : 'skip, you can claim one later.'}</button>
+              <button className={`btn btn--lg btn--block ${claimed || wifState.s === 'yours' ? 'btn--dark' : 'btn--ghost'}`} onClick={next}>{claimed || wifState.s === 'yours' ? 'continue' : 'skip for now'}</button>
               <div className="welcome__foot"><button className="linkbtn" onClick={back}>back</button></div>
             </> : <>
               <h1>your .wif name</h1>

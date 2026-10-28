@@ -26,6 +26,7 @@ import { fail, rateLimit } from './util'
 import { envSigner, type AgentSigner } from './agent/signer'
 import { WIFLY_DCA_ABI } from './abi/wiflyDca'
 import { plusAccess, plusAccessForAddress, type PlusAccess } from './plusGate'
+import { errLine } from './errline'
 
 export const DCA_ABI = WIFLY_DCA_ABI
 export const INTERVALS = { hour: 3600, day: 86400, week: 7 * 86400, month: 30 * 86400 } as const
@@ -329,7 +330,7 @@ export async function runDcaKeeperOnce(chain: DcaChain, ownerPlus: OwnerPlus = a
       const min = bySlip > floor ? bySlip : floor
       if (min === 0n) { out.push({ planId: id.toString(), action: 'skipped', detail: 'no price guard' }); continue }
       ready.push({ id, min })
-    } catch (err) { out.push({ planId: id.toString(), action: 'skipped', detail: `quote failed: ${String((err as Error).message).slice(0, 80)}` }) }
+    } catch (err) { out.push({ planId: id.toString(), action: 'skipped', detail: `quote failed: ${errLine(err, 80)}` }) }
   }
   if (!ready.length) return log(out, at)
   // gas: ~300k per buy. Warn below 2x what this pass needs; don't send when it can't cover one buy.
@@ -352,7 +353,7 @@ export async function runDcaKeeperOnce(chain: DcaChain, ownerPlus: OwnerPlus = a
         out.push({ planId: b.planId.toString(), action: 'bought', txHash: hash })
       }
       for (const s of rc.skipped) out.push({ planId: s.planId.toString(), action: 'skipped', txHash: hash, detail: SKIP_REASONS[s.reason] ?? `reason ${s.reason}` })
-    } catch (err) { for (const r of chunk) out.push({ planId: r.id.toString(), action: 'failed', detail: String((err as Error).message).slice(0, 160) }) }
+    } catch (err) { for (const r of chunk) out.push({ planId: r.id.toString(), action: 'failed', detail: errLine(err, 160) }) }
   }
   return log(out, at)
 }
@@ -418,7 +419,7 @@ export function startDcaKeeper(): 'off' | 'no-contract' | 'no-signer' | 'started
   const tick = async () => {
     if (busy) return; busy = true
     try { const r = await runDcaKeeperOnce(chain, undefined, now(), signer.address); for (const x of r) console.log(`[dca-keeper] plan ${x.planId}: ${x.action}${x.detail ? ` (${x.detail})` : ''}${x.txHash ? ` tx ${x.txHash}` : ''}`) }
-    catch (err) { console.log('[dca-keeper] pass failed:', (err as Error).message) } finally { busy = false }
+    catch (err) { console.log('[dca-keeper] pass failed:', errLine(err)) } finally { busy = false }
   }
   timer = setInterval(tick, Math.max(30_000, Number(process.env.DCA_KEEPER_INTERVAL_MS || 60_000)))
   timer.unref?.()

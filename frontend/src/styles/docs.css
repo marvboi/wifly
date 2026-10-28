@@ -1,4 +1,4 @@
-/* docs (speed.5): one calm page. left nav on desktop, a collapsible "on this page" bar on mobile. */
+/* docs: one calm page. left nav on desktop, a collapsible "on this page" bar on mobile. */
 .dx { background: var(--bg); min-height: 100vh; }
 .dx-wrap { width: 100%; max-width: 1120px; margin: 0 auto; padding: 0 40px; }
 .dx-top { position: sticky; top: 0; z-index: 30; background: var(--glass); backdrop-filter: saturate(1.4) blur(14px); -webkit-backdrop-filter: saturate(1.4) blur(14px); border-bottom: 1px solid var(--line); }

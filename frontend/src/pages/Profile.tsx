@@ -1,11 +1,14 @@
 import { LinkList, useLinked } from '../components/LinkAccounts'
-import { NameCard, WifName } from '../components/WifName'
+import { InfoTip } from '../components/InfoTip'
+import { ListNameButton } from '../components/ListName'
+import { NameCard } from '../components/WifName'
 import { BumpNotice, MakeItYours } from '../components/Identity'
 import { at } from '../lib/format'
 import { PlusMark, TipJar } from '../components/BrandSlots'
 import { BadgeShelf } from '../components/Badges'
 import { useState } from 'react'
-import { motion } from 'motion/react'
+import { AnimatePresence, motion } from 'motion/react'
+import { Sheet } from '../sheets/Sheets'
 import { Link, Navigate, useNavigate, useParams } from 'react-router-dom'
 import { followPath, profilePath } from '../lib/paths'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
@@ -21,7 +24,7 @@ import { PageHead } from '../components/Shell'
 import { Icon } from '../components/Icon'
 import { GuestWall } from '../components/GuestWall'
 import { Mascot } from '../components/Mascot'
-import { FollowButton, RichText, Sentinel, UserRow } from '../components/Social'
+import { FollowButton, RichText, Sentinel, UserRow, useNeedLink } from '../components/Social'
 import { Blank, PostSkel, ProfileSkel, SkelRows } from '../components/Delight'
 import { AnimatedNumber } from '../components/Motion'
 
@@ -73,7 +76,9 @@ function ProfileOf({ handle }: { handle: string }) {
   const { me: session } = useSession()
   const qc = useQueryClient()
   const nav = useNavigate()
+  const need = useNeedLink()
   const [tab, setTab] = useState<Tab>('drops')
+  const [wifOpen, setWifOpen] = useState(false)
   const moved = (q.error as { redirect?: string } | null)?.redirect
   if (moved) return <Navigate to={profilePath(moved)} replace />
   if (!u && q.isLoading) return <><PageHead title="profile" back /><div className="profile"><ProfileSkel /><PostSkel n={2} /></div></>
@@ -92,10 +97,10 @@ function ProfileOf({ handle }: { handle: string }) {
     } catch (e) { toast('that didn’t go through', (e as Error).message) }
   }
 
-  const message = () => {
+  const message = () => need(() => {
     if (u.dmPrice && !u.followsYou && !paidDms.has(u.handle)) openSheet({ type: 'paydm', handle: u.handle })
     else nav(`/messages/${u.handle}`)
-  }
+  }, 'sign in to message')
 
   return (
     <>
@@ -111,12 +116,19 @@ function ProfileOf({ handle }: { handle: string }) {
               <motion.span className="pcard__av" initial={{ scale: 0.7, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} transition={{ type: 'spring', stiffness: 380, damping: 18 }}><Avatar handle={u.handle} size={84} /></motion.span>
               <div className="pcard__names">
                 <h2 className="profile__name">{u.name} {u.plus && <PlusMark size={20} />}</h2>
-                {u.wifName && <div className="profile__wif"><WifName label={u.wifName} /></div>}
                 <div className="muted small">{at(u.handle)} {u.followsYou && <span className="chip-soft">follows you</span>}</div>
+                {u.wifName && <button type="button" className="profile__wifpill" data-testid="wif-pill" onClick={() => setWifOpen(true)} aria-label={`${u.wifName}.wif name card`}>{u.wifName}.wif</button>}
                 {u.wifName && q.data?.formerly && <div className="muted tiny profile__formerly">formerly @{q.data.formerly.name}</div>}
               </div>
             </div>
-            {u.wifName && <div className="profile__wifcard"><NameCard size="sm" label={u.wifName} state="yours" theme={(u as { wifTheme?: number }).wifTheme} /></div>}
+            <AnimatePresence>{wifOpen && u.wifName && (
+              <Sheet title={`${u.wifName}.wif`} onClose={() => setWifOpen(false)}
+                footer={<div className="listsheet__acts">
+                  <Link className="btn btn--dark btn--block" to={`/n/${u.wifName}`} onClick={() => setWifOpen(false)}>open the name page</Link>
+                  {session?.handle === u.handle && <ListNameButton name={u.wifName} />}</div>}>
+                <div className="profile__wifsheet" data-testid="wif-card"><NameCard size="md" label={u.wifName} state="yours" theme={(u as { wifTheme?: number }).wifTheme} />
+                  <p className="muted small">held by {at(u.handle)}<InfoTip label="about .wif names">an onchain name in this wallet. the card is drawn onchain.</InfoTip></p></div>
+              </Sheet>)}</AnimatePresence>
             {u.bio && <RichText text={u.bio} className="profile__bio" />}
             <div className="profile__meta muted small">
               {u.location && <span><Icon name="globe" size={14} /> {u.location}</span>}

@@ -8,6 +8,7 @@ import { privyBridge, usePrivyState } from '../auth/privyBridge'
  * through sendPlan(). sendPlan() refuses to send while TX_ENABLED is false, so this build never sends a transaction.
  */
 import { useCallback } from 'react'
+import { LINK_REQUIRED_EVENT } from '../api/client'
 import {
   BaseError, ContractFunctionRevertedError, decodeErrorResult, UserRejectedRequestError, encodeFunctionData, erc20Abi, formatUnits,
   keccak256, parseUnits, toBytes, zeroAddress, type Address, type Hex,
@@ -399,6 +400,11 @@ export function useSendPlan() {
   return useCallback(async (plan: Plan): Promise<SendResult> => {
     const to = plan.to ?? W
     if (to === zeroAddress) return { sent: false, kind: 'off', reason: 'payments aren’t live yet, so nothing was sent' }
+    // guests link an account before anything goes on chain (the link sheet opens; nothing is sent)
+    if ((qc.getQueryData(['me']) as { me?: { guest?: boolean } | null } | undefined)?.me?.guest) {
+      window.dispatchEvent(new Event(LINK_REQUIRED_EVENT))
+      return { sent: false, kind: 'off', reason: 'link a wallet, x or email to continue' }
+    }
     if (!address) return { sent: false, kind: 'off', reason: 'connect a wallet first' }
     if (!client) return { sent: false, kind: 'error', reason: 'can’t reach the network right now' }
     const want = plan.approve ?? plan.pull

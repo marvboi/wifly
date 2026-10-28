@@ -20,17 +20,23 @@ import { users, type Post, type User } from '../state/registry'
 
 /** links: what this account can sign in with besides a guest key (from /api/me). */
 export type MeLinks = { x: string | null; wallets: string[]; privy: boolean }
-export type Me = ApiUser & { onboarded?: boolean; needsHandle?: boolean; renaming?: boolean; suggestedHandle?: string | null; links?: MeLinks }
+export type Me = ApiUser & { onboarded?: boolean; needsHandle?: boolean; renaming?: boolean; suggestedHandle?: string | null; links?: MeLinks; guest?: boolean }
 /** How this session signed in (from /api/me). 'guest' = SIWE with this browser's guest key. Null = an older session. */
 export type Login = { method: 'wallet' | 'guest'; address: string | null } | { method: 'x'; username: string } | { method: 'email' } | { method: 'privy' }
 type ServerLogin = { method: 'wallet'; address: string | null } | { method: 'x'; username: string } | { method: 'email' } | { method: 'privy' }
 type Session = {
   me: Me | null; ready: boolean; unread: number; login: Login | null
+  /** owner-only pages (server gate stays authoritative) */
+  admin: boolean
   /** while the session loads: this browser was signed in last time, so draw the signed-in shape (no layout shift) */
   expectMe: boolean
   signInGuest: () => Promise<Me>; signInWallet: (address?: `0x${string}`) => Promise<Me>; signInPrivy: () => Promise<Me>; signOut: () => Promise<void>
   /** Link X to the signed-in account (guests included). Resolves false when the window was closed; may leave the page for X. */
   linkX: () => Promise<boolean>
+  /** Link an email (Privy) to the signed-in account. Resolves false when the window was closed. */
+  linkEmail: () => Promise<boolean>
+  /** A guest: no wallet, x or email linked yet. Liking, tipping, posting and the rest open the link sheet. */
+  guest: boolean
   /** Link a wallet to the signed-in account by signing a message with it. A guest account moves onto the wallet. */
   linkWallet: (address: `0x${string}`) => Promise<Me>
   refresh: () => void; setMe: (m: Me) => void; clearUnread: () => void
@@ -46,10 +52,10 @@ const intent = {
   has: () => { try { return !!sessionStorage.getItem(LINK_INTENT) } catch { return false } },
 }
 /** Privy's link errors in plain words. */
-export function linkErrorText(e: unknown, kind: 'x' | 'wallet'): string {
+export function linkErrorText(e: unknown, kind: 'x' | 'wallet' | 'email'): string {
   const m = String((e as Error)?.message ?? e ?? '')
   if (/linked_to_another_user|already.*(linked|belongs)|account_already_linked/i.test(m))
-    return /wallet/i.test(m) || kind === 'wallet' ? 'that wallet already belongs to another wifly account' : 'that x account already belongs to another wifly account'
+    return kind === 'email' && !/wallet|different/i.test(m) ? 'that email already belongs to another wifly account' : /wallet/i.test(m) || kind === 'wallet' ? 'that wallet already belongs to another wifly account' : 'that x account already belongs to another wifly account'
   if (/different x or email/i.test(m)) return 'this account already has a different x or email sign-in linked'
   return m.toLowerCase() || 'that didn’t go through'
 }
@@ -62,10 +68,10 @@ async function siweMessage(address: `0x${string}`, statement: string) {
   const { nonce } = await api<{ nonce: string }>('/auth/nonce')
   return createSiweMessage({ address, chainId: robinhoodChain.id, domain: location.host, uri: location.origin, nonce, version: '1', statement })
 }
-async function siwe(address: `0x${string}`, sign: (m: string) => Promise<Hex>): Promise<Me> {
+async function siwe(address: `0x${string}`, sign: (m: string) => Promise<Hex>, guest = false): Promise<Me> {
   const message = await siweMessage(address, 'sign in to wifly. this is a signature, not a transaction: nothing is sent.')
   const signature = await sign(message)
-  const r = await api<{ me: Me }>('/auth/verify', { method: 'POST', json: { message, signature, ...humanCheck() } }).finally(resetHumanCheck)
+  const r = await api<{ me: Me }>('/auth/verify', { method: 'POST', json: { message, signature, ...(guest ? { guest: true } : {}), ...humanCheck() } }).finally(resetHumanCheck)
   // a wallet sign-in wins: drop any Privy (X/email) session left in this browser, so a reload can't swap accounts
   await privyBridge.logout().catch(() => {})
   return r.me
@@ -74,7 +80,7 @@ const linkPrivy = async (t: PrivyTokens) => (await api<{ me: Me }>('/auth/link/p
 
 export function SessionProvider({ children }: { children: ReactNode }) {
   const qc = useQueryClient()
-  const q = useQuery({ queryKey: ['me'], queryFn: () => api<{ me: Me | null; unread?: number; login?: ServerLogin | null }>('/me'), refetchInterval: 30_000, retry: false })
+  const q = useQuery({ queryKey: ['me'], queryFn: () => api<{ me: Me | null; unread?: number; login?: ServerLogin | null; admin?: boolean }>('/me'), refetchInterval: 30_000, retry: false })
   const [override, setOverride] = useState<Me | null | undefined>(undefined)
   const me = override !== undefined ? override : q.data?.me ?? null
   useEffect(() => { if (q.data?.me) setOverride(undefined) }, [q.data])
@@ -91,7 +97,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     let pk = localStorage.getItem(GUEST) as Hex | null
     if (!pk) { pk = generatePrivateKey(); localStorage.setItem(GUEST, pk) }
     const acct = privateKeyToAccount(pk)
-    const m = await siwe(acct.address, x => acct.signMessage({ message: x })); via.current = 'wallet'; return after(m)
+    const m = await siwe(acct.address, x => acct.signMessage({ message: x }), true); via.current = 'wallet'; return after(m)
   }, [after])
   // the address comes in from the caller right after connecting: the hook's own value is still the old render's
   const signInWallet = useCallback(async (addr?: `0x${string}`) => {
@@ -170,6 +176,22 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       throw new Error(linkErrorText(e, 'x'))
     } finally { privyLogin.current = false }
   }, [after])
+  const linkEmail = useCallback(async () => {
+    if (!privyEnabled) throw new Error('email sign-in isn’t set up here yet')
+    privyLogin.current = true
+    try {
+      intent.set()
+      await privyBridge.login(['email'])
+      intent.take()
+      after(await linkPrivy(await privyBridge.tokens())); via.current = 'privy'; return true
+    } catch (e) {
+      intent.take()
+      if (/closed|exited/i.test(String((e as Error)?.message))) return false
+      console.error('[link] email:', e)
+      if (via.current !== 'privy') void privyBridge.logout()
+      throw new Error(linkErrorText(e, 'email'))
+    } finally { privyLogin.current = false }
+  }, [after])
   const linkWallet = useCallback(async (addr: `0x${string}`) => {
     const message = await siweMessage(addr, 'link this wallet to your wifly account. this is a signature, not a transaction: nothing is sent.')
     const signature = await signMessageAsync({ message, account: addr })
@@ -189,10 +211,10 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   const login: Login | null = !me || !sl ? null
     : sl.method === 'wallet' && sl.address && sl.address.toLowerCase() === guestAddress() ? { method: 'guest', address: sl.address } : sl
   const value = useMemo<Session>(() => ({
-    me, login, ready: !q.isLoading, expectMe: q.isLoading && wasSignedIn, unread: me ? q.data?.unread ?? 0 : 0,
-    signInGuest, signInWallet, signInPrivy, signOut, linkX, linkWallet, refresh: () => { q.refetch() }, setMe: m => setOverride(m),
+    me, login, admin: !!me && !!q.data?.admin, ready: !q.isLoading, expectMe: q.isLoading && wasSignedIn, unread: me ? q.data?.unread ?? 0 : 0,
+    guest: !!me?.guest, signInGuest, signInWallet, signInPrivy, signOut, linkX, linkEmail, linkWallet, refresh: () => { q.refetch() }, setMe: m => setOverride(m),
     clearUnread: () => qc.setQueryData(['me'], (d: { me: Me | null; unread?: number } | undefined) => d ? { ...d, unread: 0 } : d),
-  }), [me, login, q, signInGuest, signInWallet, signInPrivy, signOut, linkX, linkWallet, qc])
+  }), [me, login, q, signInGuest, signInWallet, signInPrivy, signOut, linkX, linkEmail, linkWallet, qc])
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>
 }
 

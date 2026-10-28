@@ -2,7 +2,7 @@
  * The Wifly companion: the animated ω-face as a persistent helper.
  * - Dock: bottom-right on every app page, above the mobile tab bar. Tucks to the edge while you scroll down so it
  *   never sits on a post, hides while a sheet (with its primary button) is open, and can be collapsed.
- * - Panel: chat commands ("tip marv.wif 50", "renew my Plus", "subscribe to @lena") -> confirm card -> executed by the
+ * - Panel: chat commands ("tip alice.wif 50", "renew my Plus", "subscribe to @lena") -> confirm card -> executed by the
  *   server through the agent path (tipFor / subscribeFor / subscribeForPlan / takeTopSpotFor), inside the daily cap,
  *   spending only the deposited Wifly balance. Top up, cap sheet (set / raise / revoke) and the activity log live here.
  */

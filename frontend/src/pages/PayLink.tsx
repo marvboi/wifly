@@ -20,7 +20,7 @@ export function PayLink() {
   return <PayLinkFixed id={id} />
 }
 
-/** /pay/marv.wif?amount=50 — pay any name.wif (resolved onchain to the holder's wallet) or address. */
+/** /pay/alice.wif?amount=50 — pay any name.wif (resolved onchain to the holder's wallet) or address. */
 function PayName({ to }: { to: string }) {
   const [sp] = useSearchParams()
   const [amount, setAmount] = useState(Math.max(1, Math.min(1_000_000, Number(sp.get('amount')) || 100)))

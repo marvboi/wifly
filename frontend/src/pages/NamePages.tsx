@@ -1,6 +1,6 @@
 import { profilePath } from '../lib/paths'
 import { useAnyAccount } from '../auth/privyBridge'
-/** Manage a .wif name's records (setAddr + setText via one multicall) and the public name page (marv.wif). */
+/** Manage a .wif name's records (setAddr + setText via one multicall) and the public name page (alice.wif). */
 import { at } from '../lib/format'
 import { useEffect, useMemo, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
@@ -11,13 +11,15 @@ import { useSession } from '../api/session'
 import { MAX_TEXT_BYTES, bytesOf, namePlans, normalizeName, recordErrors, type TextKey } from '../lib/names'
 import { useStore } from '../state/store'
 import { PageHead } from '../components/Shell'
-import { Amount, Avatar } from '../components/Bits'
+import { Avatar } from '../components/Bits'
 import { Icon } from '../components/Icon'
 import { NameCard, ThemePicker, WifName, defaultThemeOf } from '../components/WifName'
 import { Empty } from '../companion/Companion'
 import { NameCardSkel } from '../components/Delight'
 import { companion } from '../lib/companion'
 import { RESET_WARNING, useNameTx } from './Names'
+import { BuyCard, ListNameSheet } from '../components/ListName'
+import { AnimatePresence } from 'motion/react'
 
 type Records = { address: string | null; avatar: string | null; x: string | null; url: string | null; bio: string | null; updatedAt: number | null }
 type NameView =
@@ -98,6 +100,7 @@ export function PublicName() {
   const q = useQuery({ queryKey: ['names', 'view', label], queryFn: () => api<NameView>(`/names/${label}`) })
   const { me } = useSession()
   const { openSheet } = useStore()
+  const [selling, setSelling] = useState(false)
   const d = q.data
   if (q.isLoading) return <NameCardSkel />
   if (!d) return <Empty title="couldn’t load that name" mood="oops" />
@@ -132,10 +135,11 @@ export function PublicName() {
         <div className="names-row__actions">
           {!d.mine && <button className="btn btn--dark" disabled={!d.address} onClick={() => me ? openSheet({ type: 'tip', to: `${label}.wif` }) : openSheet({ type: 'signin' })}><Icon name="tip" size={16} /> send WIF to {label}.wif</button>}
           {d.mine && <Link className="btn btn--dark" to={`/names/${label}/manage`}>manage records</Link>}
-          {d.listing && !d.mine && <Link className="btn btn--ghost" to={`/names?tab=market`}>for sale · <Amount value={d.listing.price} size={14} /></Link>}
         </div>
         {!d.address && <p className="tiny muted">this name resolves to no wallet yet, so it can’t receive WIF.</p>}
       </section>
+      {d.listing && <BuyCard name={label} price={d.listing.price} mine={d.mine} onManage={() => setSelling(true)} />}
+      <AnimatePresence>{selling && <ListNameSheet name={label} onClose={() => setSelling(false)} />}</AnimatePresence>
     </div>
   )
 }
