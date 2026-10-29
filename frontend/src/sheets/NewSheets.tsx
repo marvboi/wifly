@@ -46,22 +46,22 @@ export function BurnSheet({ amount: initial }: { amount?: number }) {
 
   const confirm = async () => {
     setPhase('burning')
-    const celebrate = async () => { setPhase('done'); companion.celebrate('burn', `${amount.toLocaleString()} WIF burned`); await new Promise(r => setTimeout(r, reduced ? 400 : 1800)) }
+    const celebrate = async () => { setPhase('done'); companion.celebrate('burn', `${amount.toLocaleString()} wif burned`); await new Promise(r => setTimeout(r, reduced ? 400 : 1800)) }
     // record the confirmed burn with its tx hash; the api checks the BurnedForBadges event before it counts
     const onConfirmed = (txHash: string) => { api('/badges/burns', { method: 'POST', json: { amount, txHash } }).then(() => qc.invalidateQueries({ queryKey: ['badges'] })).catch(() => toast('burn confirmed', 'your badges update in a minute')) }
-    const r = await run(plans.burn(amount), `burned ${amount.toLocaleString()} WIF`, () => { qc.invalidateQueries({ queryKey: ['badges'] }) }, { celebrate, onConfirmed })
+    const r = await run(plans.burn(amount), `burned ${amount.toLocaleString()} wif`, () => { qc.invalidateQueries({ queryKey: ['badges'] }) }, { celebrate, onConfirmed })
     if (!r) setPhase('idle')
   }
 
   if (step === 'confirm' || phase !== 'idle') return (
     <Sheet title="confirm burn" onClose={closeSheet}
       footer={<>
-        <TxSteps pull={amount} action={`burn ${amount.toLocaleString()} WIF`} />
-        <label className="check"><input type="checkbox" checked={ok} onChange={e => setOk(e.target.checked)} /> burned WIF is gone for good</label>
+        <TxSteps pull={amount} action={`burn ${amount.toLocaleString()} wif`} />
+        <label className="check"><input type="checkbox" checked={ok} onChange={e => setOk(e.target.checked)} /> burned wif is gone for good</label>
         <div className="row-gap">
           <button className="btn btn--ghost" disabled={phase !== 'idle'} onClick={() => setStep('pick')}>back</button>
           <button className="btn btn--dark btn--block btn--lg" disabled={!amount || !ok || busy || phase !== 'idle'} onClick={confirm}>
-            {phase === 'burning' ? 'waiting for confirmation…' : phase === 'done' ? 'done' : `burn ${amount.toLocaleString()} WIF`}
+            {phase === 'burning' ? 'waiting for confirmation…' : phase === 'done' ? 'done' : `burn ${amount.toLocaleString()} wif`}
           </button>
         </div>
       </>}>
@@ -73,7 +73,7 @@ export function BurnSheet({ amount: initial }: { amount?: number }) {
         <div className="burnconfirm__amt"><WifAmount value={amount} /><span className="muted small"><WifUsd wif={amount} /></span></div>
         <dl className="names-fee">
           <div><dt>you get</dt><dd>{unlocks.length ? unlocks.map(u => u.name).join(' + ') : 'progress toward ' + target.name}</dd></div>
-          <div><dt>total burned after</dt><dd className="num">{after.toLocaleString()} WIF</dd></div>
+          <div><dt>total burned after</dt><dd className="num">{after.toLocaleString()} wif</dd></div>
           <div><dt>badge</dt><dd>stays with your wallet</dd></div>
         </dl>
       </div>
@@ -85,7 +85,7 @@ export function BurnSheet({ amount: initial }: { amount?: number }) {
       footer={<button className="btn btn--dark btn--block btn--lg" disabled={!amount} onClick={() => setStep('confirm')}>continue</button>}>
       <div className="burn-hero">
         <BadgeArt id={target.id} size={96} earned={unlocks.length > 0} />
-        <b className="burn-hero__name">{unlocks.length ? `unlocks ${target.name}` : `${(target.min - after).toLocaleString()} WIF more for ${target.name}`}</b>
+        <b className="burn-hero__name">{unlocks.length ? `unlocks ${target.name}` : `${(target.min - after).toLocaleString()} wif more for ${target.name}`}</b>
       </div>
       <AmountPicker value={amount} onChange={setAmount} presets={[1_000, 10_000, 100_000, 1_000_000]} />
       <LowBalance need={amount} what="this burn" />
@@ -95,13 +95,13 @@ export function BurnSheet({ amount: initial }: { amount?: number }) {
           return (
             <div key={l.id} className={`burn-level ${have ? 'is-have' : will ? 'is-will' : ''}`}>
               <BadgeArt id={l.id} size={44} earned={have || will} tilt={false} />
-              <div><b>{l.name}</b><div className="muted small num">{l.min.toLocaleString()} WIF</div></div>
+              <div><b>{l.name}</b><div className="muted small num">{l.min.toLocaleString()} wif</div></div>
               <span className="small">{have ? 'earned' : will ? 'unlocks' : `${(l.min - burned).toLocaleString()} to go`}</span>
             </div>
           )
         })}
       </div>
-      <p className="muted small">burned so far: <b className="num">{burned.toLocaleString()} WIF</b> (<WifUsd wif={burned} />)</p>
+      <p className="muted small">burned so far: <b className="num">{burned.toLocaleString()} wif</b> (<WifUsd wif={burned} />)</p>
     </Sheet>
   )
 }
@@ -119,11 +119,11 @@ export function BadgeSheet({ id, handle }: { id: string; handle?: string }) {
   const pct = Math.min(100, (burned / t.min) * 100)
   return (
     <Sheet title={t.name} onClose={closeSheet}
-      footer={mine && !earned ? <button className="btn btn--dark btn--block btn--lg" onClick={() => openSheet({ type: 'burn', amount: t.min - burned })}>burn {(t.min - burned).toLocaleString()} WIF to earn it</button> : undefined}>
+      footer={mine && !earned ? <button className="btn btn--dark btn--block btn--lg" onClick={() => openSheet({ type: 'burn', amount: t.min - burned })}>burn {(t.min - burned).toLocaleString()} wif to earn it</button> : undefined}>
       <div className="badgesheet">
         <BadgeArt id={t.id} size={168} earned={earned} />
-        <div className="badgesheet__amt num">{t.min.toLocaleString()} WIF burned</div>
-        <p className="muted small">{earned ? (mine ? 'you earned this one.' : `@${who} earned this one.`) : mine ? `${(t.min - burned).toLocaleString()} WIF to go.` : 'not earned yet.'}</p>
+        <div className="badgesheet__amt num">{t.min.toLocaleString()} wif burned</div>
+        <p className="muted small">{earned ? (mine ? 'you earned this one.' : `@${who} earned this one.`) : mine ? `${(t.min - burned).toLocaleString()} wif to go.` : 'not earned yet.'}</p>
         {!earned && <div className="bar" aria-hidden="true"><span style={{ width: `${pct}%` }} /></div>}
         <dl className="names-fee">
           <div><dt>material</dt><dd>{METALS[t.id]?.material}</dd></div>
@@ -172,15 +172,15 @@ export function TiersSheet() {
         <TxSteps pull={0} action={`set ${tiers.length} tier price${tiers.length > 1 ? 's' : ''}`} />
         <button className="btn btn--dark btn--block btn--lg" disabled={bad || busy} onClick={save}>{busy ? 'saving…' : 'save tiers'}</button>
       </>}>
-      <p className="muted small">fans pay monthly in $WIF. each tier costs more than the one before; supporters-only drops can be locked to any tier.</p>
+      <p className="muted small">fans pay monthly in $wif. each tier costs more than the one before; supporters-only drops can be locked to any tier.</p>
       {tiers.map((t, i) => (
         <div key={i} className="tier-edit">
           <div className="tier-edit__head"><b>tier {i + 1}</b>{tiers.length > 1 && <button className="icon-btn" aria-label="remove tier" onClick={() => setTiers(ts => ts.filter((_, j) => j !== i))}><Icon name="close" size={16} /></button>}</div>
           <label className="field"><span className="field__label">name</span><span className="field__input"><input value={t.name} maxLength={24} onChange={e => set(i, 'name', e.target.value)} /></span></label>
           <label className="field"><span className="field__label">monthly price</span>
-            <span className="field__input"><input inputMode="decimal" value={t.price || ''} onChange={e => set(i, 'price', Number(e.target.value.replace(/[^0-9.]/g, '')) || 0)} /><span className="muted">WIF</span></span>
+            <span className="field__input"><input inputMode="decimal" value={t.price || ''} onChange={e => set(i, 'price', Number(e.target.value.replace(/[^0-9.]/g, '')) || 0)} /><span className="muted">wif</span></span>
           </label>
-          <div className="tier-edit__price"><WifAmount value={t.price} />{yearly && <span className="muted small">· yearly {(t.price * 10).toLocaleString()} WIF (2 months free)</span>}</div>
+          <div className="tier-edit__price"><WifAmount value={t.price} />{yearly && <span className="muted small">· yearly {(t.price * 10).toLocaleString()} wif (2 months free)</span>}</div>
           <label className="field"><span className="field__label">perks <span className="muted">· one per line</span></span><textarea className="field__area" rows={2} value={t.perks} onChange={e => set(i, 'perks', e.target.value)} /></label>
         </div>
       ))}

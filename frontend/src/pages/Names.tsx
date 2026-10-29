@@ -12,7 +12,7 @@ import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { api, type ApiUser } from '../api/client'
 import { useSession } from '../api/session'
 import { CLAIM_SPLIT, FEE_SPLIT, NAMES_ADDRESS, NAME_FEE_BPS, claimFeeOf } from '../config'
-import { failTitle, plans, useSendPlan, type Plan } from '../lib/wifly'
+import { failArgs, plans, useSendPlan, type Plan } from '../lib/wifly'
 import { namePlans, normalizeName, useNameCheck } from '../lib/names'
 import { companion } from '../lib/companion'
 import { useWifBalance } from '../lib/chain'
@@ -23,6 +23,7 @@ import { usdText, useWifPrice } from '../lib/price'
 import { Icon, type IconName } from '../components/Icon'
 import { LowBalance } from '../components/Swap'
 import { TxSteps } from '../components/TxSteps'
+import { PayingFrom } from '../components/Payer'
 import { Mascot, type Mood } from '../components/Mascot'
 import { NameCard, ThemePicker, WifName, defaultThemeOf, nameArtUrl } from '../components/WifName'
 import { Empty } from '../companion/Companion'
@@ -42,7 +43,7 @@ export type Mine = {
 }
 const LIVE = !!NAMES_ADDRESS
 const fmt = (n: number) => n.toLocaleString('en-US', { maximumFractionDigits: 2 })
-export const RESET_WARNING = 'records reset on every sale or transfer: the address, avatar, X, link and bio are cleared.'
+export const RESET_WARNING = 'records reset on every sale or transfer: the address, avatar, x, link and bio are cleared.'
 
 export function Names() {
   const [sp, setSp] = useSearchParams()
@@ -66,11 +67,11 @@ export function Names() {
 /** "how .wif works": five short facts, two columns on desktop, stacked on mobile. Numbers come from config. */
 export function WifHow() {
   const items: { icon: IconName; label: string; body: string }[] = [
-    { icon: 'wallet', label: 'your name, your wallet', body: 'pick 3–20 characters (a–z, 0–9 and _). it ends in .wif, lives in your wallet as a transferable NFT, and points to whichever wallet holds it.' },
-    { icon: 'tip', label: 'price', body: `${fmt(claimFeeOf('abcde'))} WIF to claim, or ${fmt(claimFeeOf('abc'))} WIF for short 3–4 character names. the claim fee goes ${CLAIM_SPLIT.treasury}% to the treasury and ${CLAIM_SPLIT.pot}% to the weekly community pot.` },
+    { icon: 'wallet', label: 'your name, your wallet', body: 'pick 3–20 characters (a–z, 0–9 and _). it ends in .wif, lives in your wallet as a transferable nft, and points to whichever wallet holds it.' },
+    { icon: 'tip', label: 'price', body: `${fmt(claimFeeOf('abcde'))} wif to claim, or ${fmt(claimFeeOf('abc'))} wif for short 3–4 character names. the claim fee goes ${CLAIM_SPLIT.treasury}% to the treasury and ${CLAIM_SPLIT.pot}% to the weekly community pot.` },
     { icon: 'at', label: 'separate from your @username', body: 'your @name is free and always yours. a .wif is an optional upgrade you can trade.' },
     { icon: 'swap', label: 'selling', body: `sales carry a ${NAME_FEE_BPS / 100}% fee: ${FEE_SPLIT.pot}% goes to the weekly community pot and ${FEE_SPLIT.burn}% is burned.` },
-    { icon: 'sparkle', label: 'fresh start on transfer', body: 'when a name is sold or sent, its address, avatar, X, link and bio are cleared for the new owner.' },
+    { icon: 'sparkle', label: 'fresh start on transfer', body: 'when a name is sold or sent, its address, avatar, x, link and bio are cleared for the new owner.' },
   ]
   return (
     <section className="wifhow" aria-labelledby="wifhow-title">
@@ -105,7 +106,7 @@ export function useNameTx() {
       let hash: string | undefined
       if (LIVE && plan) {
         const r = await send(plan)
-        if (!r.sent) { toast(failTitle(r), r.reason); return false }
+        if (!r.sent) { toast(...failArgs(r)); return false }
         hash = r.hash
       }
       await mirror(hash)
@@ -180,23 +181,24 @@ export function ClaimBox({ initial = '', onClaimed, onState, compact, andPrimary
             : state === 'yours' ? <span className="ok"><Icon name="check" size={14} /> you own {name}.wif</span>
             : check?.available ? <span className="ok"><Icon name="check" size={14} /> {name}.wif is available</span>
             : check?.reason === 'invalid' ? <span className="bad">{check.message}</span>
-            : check ? <span className="calm">{check.reason === 'reserved' ? `${name}.wif is reserved.` : check.reason === 'listed' ? `${name}.wif is for sale for ${fmt(check.price ?? 0)} WIF.` : `${name}.wif belongs to another wallet.`}</span> : null}
+            : check ? <span className="calm">{check.reason === 'reserved' ? `${name}.wif is reserved.` : check.reason === 'listed' ? `${name}.wif is for sale for ${fmt(check.price ?? 0)} wif.` : `${name}.wif belongs to another wallet.`}</span> : null}
         </div>
         {!!check?.suggestions.length && !check.available && state !== 'yours' && <div className="names-sugg">{check.suggestions.slice(0, 3).map(s => <button key={s} className="chip chip--sm names-sugg__chip" onClick={() => setRaw(s)}>{s}<span className="muted">.wif</span></button>)}</div>}
         {check?.reason === 'listed' && <Link className="btn btn--ghost btn--sm" to={`/n/${name}`}>see the listing</Link>}
         {state === 'yours' && <div className="names-claim__look names-claim__look--yours"><NameCard size={compact ? 'sm' : 'md'} label={name} theme={look} state="yours" owner={address ? `${address.slice(0, 6)}…${address.slice(-4)}` : null} /></div>}
         {state !== 'yours' && state !== 'taken' && state !== 'reserved' && <>
-          <p className="names-claim__price" data-testid="claim-price"><b>{fmt(name ? claimFee : claimFeeOf('abcde'))} WIF</b><WifUsdNote wif={name ? claimFee : claimFeeOf('abcde')} />
-            <InfoTip label="about the claim fee">one-time. 3–4 letters {fmt(claimFeeOf('abc'))} WIF, 5+ letters {fmt(claimFeeOf('abcde'))} WIF. minted to your wallet.</InfoTip>
+          <p className="names-claim__price" data-testid="claim-price"><b>{fmt(name ? claimFee : claimFeeOf('abcde'))} wif</b><WifUsdNote wif={name ? claimFee : claimFeeOf('abcde')} />
+            <InfoTip label="about the claim fee">one-time. 3–4 letters {fmt(claimFeeOf('abc'))} wif, 5+ letters {fmt(claimFeeOf('abcde'))} wif. minted to your wallet.</InfoTip>
             <button type="button" className="linkbtn names-claim__more" aria-expanded={more} onClick={() => setMore(v => !v)}>details</button></p>
           {more && <div className="names-claim__details" data-testid="claim-details">
             <div className="fee fee--compact"><FeeParts fee={claimFee} showBar kind="claim" /></div>
-            <p className="tiny muted">two wallet steps: allow exactly {fmt(claimFee)} WIF, then claim.</p>
+            <p className="tiny muted">two wallet steps: allow exactly {fmt(claimFee)} wif, then claim.</p>
             <div className="names-claim__look">
               <NameCard size="sm" label={name} theme={look} state={state === 'soon' ? 'idle' : state} fee={name ? claimFee : undefined} />
               <div className="names-claim__theme"><span className="field__label">card style</span><ThemePicker label={name} value={look} onChange={setPick} /></div>
             </div>
           </div>}
+          {ok && <PayingFrom className="names-claim__payer" />}
           {ok && wif !== undefined && wif < claimFee && <LowBalance need={claimFee} what={`claim ${name}.wif`} />}
           <button className="btn btn--dark btn--lg btn--block" data-testid="claim-go" disabled={!ok || !!busy} onClick={claim}>{busy ? 'confirm in your wallet…' : ok ? `claim ${name}.wif` : 'claim'}</button>
         </>}
@@ -230,7 +232,7 @@ function MineTab() {
   const nav = useNavigate()
   const d = mine.data
   if (mine.isLoading) return <NameSkel n={3} />
-  if (!d?.names.length) return <Empty title="no .wif names yet" body="claim one and people can send you WIF at yourname.wif." mood="wow" action={<Link className="btn btn--dark btn--sm" to="/names">claim a name</Link>} />
+  if (!d?.names.length) return <Empty title="no .wif names yet" body="claim one and people can send you wif at yourname.wif." mood="wow" action={<Link className="btn btn--dark btn--sm" to="/names">claim a name</Link>} />
   const setPrimary = (n: string) => run(`pri:${n}`, namePlans.setPrimary(n), h => api(`/names/${n}/primary`, { method: 'POST', json: { txHash: h } }), `${n}.wif is your primary name`)
   return (
     <>
@@ -297,7 +299,7 @@ export function MarketTab() {
   const sendOffer = () => {
     if (!offer) return
     const p = Number(offer.price)
-    if (!(p > 0)) return toast('enter an offer in WIF')
+    if (!(p > 0)) return toast('enter an offer in wif')
     run(`offer:${offer.name}`, null, () => api(`/names/${offer.name}/offers`, { method: 'POST', json: { price: p, days: 7 } }), `offer sent for ${offer.name}.wif`).then(() => setOffer(null))
   }
 
@@ -309,7 +311,7 @@ export function MarketTab() {
           <option value="new">newest</option><option value="low">price: low to high</option><option value="high">price: high to low</option><option value="short">shortest</option>
         </select>
       </div>
-      {!!m.data?.recentSales.length && <div className="names-sales small muted">recent sales: {m.data.recentSales.slice(0, 4).map(s => `${s.name}.wif ${fmt(s.price)} WIF`).join(' · ')}</div>}
+      {!!m.data?.recentSales.length && <div className="names-sales small muted">recent sales: {m.data.recentSales.slice(0, 4).map(s => `${s.name}.wif ${fmt(s.price)} wif`).join(' · ')}</div>}
       {m.isLoading && <NameSkel n={5} />}
       {m.data?.listings.length === 0 && <Empty title="nothing for sale right now" body={q ? `no listings matching “${q}”.` : 'list one of your names and it shows up here.'} />}
       <ul className="names-list">
@@ -324,26 +326,27 @@ export function MarketTab() {
               <div className="names-row__more">
                 <img className="names-row__card" src={nameArtUrl(l.name)} alt={`${l.name}.wif name card, rendered onchain`} />
                 <dl className="names-fee">
-                  <div><dt>price</dt><dd>{fmt(l.price)} WIF</dd></div>
-                  <div><dt>fee ({m.data!.feeBps / 100}%)</dt><dd>{fmt(l.fee.total)} WIF · {l.fee.treasury > 0 ? `${fmt(l.fee.treasury)} treasury, ` : ''}{fmt(l.fee.pot)} weekly community pot, {fmt(l.fee.burn)} burned</dd></div>
-                  <div><dt>seller gets</dt><dd>{fmt(l.fee.sellerGets)} WIF</dd></div>
-                  {l.offers > 0 && <div><dt>offers</dt><dd>{l.offers} · top {fmt(l.topOffer ?? 0)} WIF</dd></div>}
+                  <div><dt>price</dt><dd>{fmt(l.price)} wif</dd></div>
+                  <div><dt>fee ({m.data!.feeBps / 100}%)</dt><dd>{fmt(l.fee.total)} wif · {l.fee.treasury > 0 ? `${fmt(l.fee.treasury)} treasury, ` : ''}{fmt(l.fee.pot)} weekly community pot, {fmt(l.fee.burn)} burned</dd></div>
+                  <div><dt>seller gets</dt><dd>{fmt(l.fee.sellerGets)} wif</dd></div>
+                  {l.offers > 0 && <div><dt>offers</dt><dd>{l.offers} · top {fmt(l.topOffer ?? 0)} wif</dd></div>}
                 </dl>
-                <p className="names-warn small"><Icon name="shield" size={14} /> {l.mine ? 'when it sells, the records reset: your address, avatar, X, link and bio are cleared.' : 'records reset when you buy: the seller’s address, avatar, X, link and bio are cleared. set your own after.'}</p>
+                <p className="names-warn small"><Icon name="shield" size={14} /> {l.mine ? 'when it sells, the records reset: your address, avatar, x, link and bio are cleared.' : 'records reset when you buy: the seller’s address, avatar, x, link and bio are cleared. set your own after.'}</p>
                 {l.mine ? <Link className="btn btn--ghost btn--sm" to="/names?tab=mine">manage your listing</Link> : <>
+                  {/* 11.8.8: paying-from + steps above the buy button, like every sheet */}
+                  <TxSteps pull={l.price} action={`buy ${l.name}.wif`} />
                   {wif !== undefined && wif < l.price && <LowBalance need={l.price} what={`buy ${l.name}.wif`} />}
                   <div className="names-row__actions">
-                    <button className="btn btn--dark" disabled={!!busy} onClick={() => buy(l)}>{busy === `buy:${l.name}` ? 'waiting for confirmation…' : `buy for ${fmt(l.price)} WIF`}</button>
+                    <button className="btn btn--dark" disabled={!!busy} onClick={() => buy(l)}>{busy === `buy:${l.name}` ? 'waiting for confirmation…' : `buy for ${fmt(l.price)} wif`}</button>
                     <button className="btn btn--ghost" onClick={() => me ? setOffer({ name: l.name, price: String(Math.round(l.price * 0.8)) }) : openSheet({ type: 'signin' })}>make an offer</button>
                   </div>
                   {offer?.name === l.name && (
                     <div className="names-offer">
-                      <label className="field__input"><input inputMode="decimal" value={offer.price} onChange={e => setOffer({ ...offer, price: e.target.value.replace(/[^0-9.]/g, '') })} aria-label="offer in WIF" /><span className="muted">WIF</span></label>
+                      <label className="field__input"><input inputMode="decimal" value={offer.price} onChange={e => setOffer({ ...offer, price: e.target.value.replace(/[^0-9.]/g, '') })} aria-label="offer in wif" /><span className="muted">wif</span></label>
                       <button className="btn btn--dark btn--sm" disabled={!!busy} onClick={sendOffer}>send offer</button>
                       <button className="linkbtn" onClick={() => setOffer(null)}>cancel</button>
                     </div>
                   )}
-                  <TxSteps pull={l.price} action={`buy ${l.name}.wif`} />
                 </>}
               </div>
             )}

@@ -163,15 +163,15 @@ export function interpret(raw: string): Interpreted {
   if (/\b(buy|stack|dca)\b/.test(t) && /\$\d|\d eth\b/.test(t) && /\b(every|each|daily|weekly|monthly|hourly)\b/.test(t) && !/\bwif\b/.test(t)) t += ' of wif'
   const dca = parseDca(t)
   if (dca) {
-    const amt = dca.perBuy.usd !== undefined ? `$${fmt(dca.perBuy.usd)}` : `${fmt(dca.perBuy.eth!)} ETH`
+    const amt = dca.perBuy.usd !== undefined ? `$${fmt(dca.perBuy.usd)}` : `${fmt(dca.perBuy.eth!)} eth`
     const when = dca.every === 'hour' ? 'every hour' : dca.every === 'week' ? `every ${dca.weekday !== null ? DAYS[dca.weekday] : 'week'} at ${hm(dca.hour, dca.minute)}` : `every ${dca.every} at ${hm(dca.hour, dca.minute)}`
-    return res('dca', `buy ${amt} of WIF ${when}`)
+    return res('dca', `buy ${amt} of wif ${when}`)
   }
   const swapT = t.replace(/\b(to|for|into) (eth|wif)\b/, '$1 $2').replace(/^(ape|buy) (\d+(?:\.\d+)?) eth (?:into|in|on) wif$/, 'swap $2 eth to wif')
   const swap = parseSwap(swapT) ?? parseSwap(swapT.replace(/^(swap|sell|convert|trade|buy|get) (\d+(?:\.\d+)?) (eth|wif) .*$/, '$1 $2 $3'))
-  if (swap) return res('swap', swap.dir === 'eth2wif' ? `swap ${fmt(swap.amount)} ETH to WIF` : `swap ${fmt(swap.amount)} WIF to ETH`)
+  if (swap) return res('swap', swap.dir === 'eth2wif' ? `swap ${fmt(swap.amount)} eth to wif` : `swap ${fmt(swap.amount)} wif to eth`)
   const manage = parseDcaManage(t)
-  if (manage) return res('manage', manage.action === 'withdraw' ? 'cancel my DCA' : `${manage.action} my DCA`)
+  if (manage) return res('manage', manage.action === 'withdraw' ? 'cancel my scheduled buys' : `${manage.action} my scheduled buys`)
   const cmdT = t.replace(/^(tip|send|give) (\S+) (\d+(?:\.\d+)?) wif$/, '$1 $2 $3').replace(/^(tip|send|give) (\d+(?:\.\d+)?) wif (\S+)$/, '$1 $2 to $3')
   const cmd = parseCommand(cmdT) as { kind: string; to?: string; amount?: number; tier?: number; plan?: string | null }
   if (cmd.kind === 'tip') { const to = cmd.to!.startsWith('@') || cmd.to!.endsWith('.wif') || cmd.to!.startsWith('0x') ? cmd.to! : `@${cmd.to}`; return res('tip', `tip ${to} ${fmt(cmd.amount!)}`) }
@@ -195,15 +195,15 @@ export function suggestionsFor(it: Interpreted): string[] {
   const num = t.match(/\$(\d+(?:\.\d+)?)/)?.[1] ?? t.match(/\b(\d+(?:\.\d+)?)\b/)?.[1]
   const day = DAYS.find(d => t.includes(d))
   const byIntent: Record<Intent, string[]> = {
-    dca: [`buy $${num ?? 5} of WIF every ${day ? day : 'monday'} at 9:00`, `buy $${num ?? 5} of WIF every day at 9:00`, 'pause my DCA'],
-    swap: [`swap ${num && Number(num) < 10 ? num : '0.01'} ETH to WIF`, `swap ${num && Number(num) >= 10 ? num : '5000'} WIF to ETH`, 'buy $5 of WIF every monday at 9:00'],
+    dca: [`buy $${num ?? 5} of wif every ${day ? day : 'monday'} at 9:00`, `buy $${num ?? 5} of wif every day at 9:00`, 'pause my scheduled buys'],
+    swap: [`swap ${num && Number(num) < 10 ? num : '0.01'} eth to wif`, `swap ${num && Number(num) >= 10 ? num : '5000'} wif to eth`, 'buy $5 of wif every monday at 9:00'],
     tip: [`tip ${handle} ${num ?? 50}`, `subscribe ${handle}`, 'what’s my balance'],
     subscribe: [`subscribe ${handle}`, `tip ${handle} ${num ?? 50}`, 'renew my plus'],
     plus: ['renew my plus', 'renew my plus yearly', 'what’s my balance'],
     promote: [`promote my latest drop for ${num ?? 100}`, 'what’s my balance', 'how big is the pot'],
-    manage: ['pause my DCA', 'resume my DCA', 'cancel my DCA'],
-    balance: ['what’s my balance', 'how big is the pot', 'swap 0.01 ETH to WIF'],
-    pot: ['how big is the pot', 'what’s my balance', 'buy $5 of WIF every monday at 9:00'],
+    manage: ['pause my scheduled buys', 'resume my scheduled buys', 'cancel my scheduled buys'],
+    balance: ['what’s my balance', 'how big is the pot', 'swap 0.01 eth to wif'],
+    pot: ['how big is the pot', 'what’s my balance', 'buy $5 of wif every monday at 9:00'],
   }
-  return (it.intent ? byIntent[it.intent] : ['swap 0.01 ETH to WIF', 'buy $5 of WIF every monday at 9:00', 'what’s my balance']).slice(0, 3)
+  return (it.intent ? byIntent[it.intent] : ['swap 0.01 eth to wif', 'buy $5 of wif every monday at 9:00', 'what’s my balance']).slice(0, 3)
 }

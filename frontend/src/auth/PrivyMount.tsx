@@ -4,7 +4,7 @@
  * It renders nothing itself; it only syncs Privy's state into privyBridge.
  */
 import { useEffect, useRef } from 'react'
-import { PrivyProvider, useIdentityToken, useLinkAccount, useLogin, useLoginWithOAuth, useLogout, usePrivy, useWallets, getIdentityToken, type WalletListEntry } from '@privy-io/react-auth'
+import { PrivyProvider, useIdentityToken, useLinkAccount, useLogin, useConnectWallet, useLoginWithOAuth, useLogout, usePrivy, useWallets, getIdentityToken, type WalletListEntry } from '@privy-io/react-auth'
 import { robinhoodChain } from '../config'
 import { PRIVY_APP_ID, privyBridge } from './privyBridge'
 
@@ -31,6 +31,13 @@ function Sync() {
   const { login } = useLogin({
     onComplete: () => { pending.current?.resolve(); pending.current = null },
     onError: err => { if (err !== 'exited_auth_flow') console.error('[sign-in] privy error:', err); pending.current?.reject(new Error(err === 'exited_auth_flow' ? 'sign-in closed' : `sign-in failed (${err})`)); pending.current = null },
+  })
+
+  // 11.8.5: connect (never link) an external wallet that's already on this account, so it can pay
+  const connecting = useRef<{ resolve: (a: string) => void; reject: (e: Error) => void } | null>(null)
+  const { connectWallet } = useConnectWallet({
+    onSuccess: ({ wallet }) => { connecting.current?.resolve(String(wallet.address).toLowerCase()); connecting.current = null },
+    onError: err => { connecting.current?.reject(new Error(String(err) === 'exited_auth_flow' || /exited|closed/i.test(String(err)) ? 'sign-in closed' : `couldn’t connect (${String(err)})`)); connecting.current = null },
   })
 
   const { initOAuth } = useLoginWithOAuth({
@@ -61,6 +68,11 @@ function Sync() {
         return await p.request({ method: 'personal_sign', params: [message, w.address] }) as `0x${string}`
       },
       exportWallet: address => exportWallet({ address }),
+      connectWallet: address => new Promise<string>((resolve, reject) => {
+        connecting.current?.reject(new Error('sign-in closed'))
+        connecting.current = { resolve, reject }
+        try { connectWallet({ suggestedAddress: address, description: `connect ${address.slice(0, 6)}…${address.slice(-4)}, the wallet already on your account` }) } catch (e) { connecting.current = null; reject(e as Error) }
+      }),
       sendTx: async (to, data, chainId, value) => {
         const w = activeRef.current
         if (!w) throw new Error('connect a wallet first')
@@ -69,7 +81,7 @@ function Sync() {
         return await p.request({ method: 'eth_sendTransaction', params: [{ from: w.address, to, data, ...(value ? { value: `0x${value.toString(16)}` } : {}) }] }) as `0x${string}`
       },
     })
-  }, [login, logout, initOAuth, linkTwitter, linkWallet, getAccessToken, exportWallet])
+  }, [login, logout, initOAuth, linkTwitter, linkWallet, getAccessToken, exportWallet, connectWallet])
 
   useEffect(() => {
     const smart = null // smart wallets are off in this app

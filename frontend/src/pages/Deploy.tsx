@@ -39,11 +39,11 @@ type Ctx = { owner: Address; treasury: Address; attester: Address; a: Saved['add
 
 /** One entry per upgradeable contract: the artifact and its initialize(...) args (same as DeployWifly.s.sol). */
 const CONTRACTS: Record<Upg, { art: ArtName; init: (c: Ctx) => unknown[]; note: string; needs: (i: { ownerOk: boolean; attesterOk: boolean; treasuryOk: boolean }) => boolean }> = {
-  wifly: { art: 'Wifly', init: c => [WIF_TOKEN, true, c.owner, c.attester, c.treasury, 100n * E18], note: 'initialize(WIF, burn = true, owner, attester, treasury, top spot floor 100 WIF)', needs: i => i.ownerOk && i.attesterOk && i.treasuryOk },
-  names: { art: 'WiflyNames', init: c => [WIF_TOKEN, true, c.owner, c.treasury, 100n * E18, 1000n * E18], note: 'initialize(WIF, burn = true, owner, treasury, claim fee 100 WIF, short fee 1,000 WIF)', needs: i => i.ownerOk && i.treasuryOk },
+  wifly: { art: 'Wifly', init: c => [WIF_TOKEN, true, c.owner, c.attester, c.treasury, 100n * E18], note: 'initialize(wif, burn = true, owner, attester, treasury, top spot floor 100 wif)', needs: i => i.ownerOk && i.attesterOk && i.treasuryOk },
+  names: { art: 'WiflyNames', init: c => [WIF_TOKEN, true, c.owner, c.treasury, 100n * E18, 1000n * E18], note: 'initialize(wif, burn = true, owner, treasury, claim fee 100 wif, short fee 1,000 wif)', needs: i => i.ownerOk && i.treasuryOk },
   glyphs: { art: 'WiflyGlyphs', init: c => [c.owner], note: 'initialize(owner). WIF Par outlines for the onchain name art', needs: i => i.ownerOk },
-  badges: { art: 'WiflyBadges', init: c => [WIF_TOKEN, true, c.owner, BADGE_URI, THRESHOLDS], note: `initialize(WIF, burn = true, owner, "${BADGE_URI}", [1k, 10k, 100k, 1M WIF])`, needs: i => i.ownerOk },
-  dca: { art: 'WiflyDCA', init: c => [c.owner, UNISWAP.universalRouter, UNISWAP.v4Quoter, WIF_TOKEN, UNISWAP.poolKey.hooks, UNISWAP.poolKey.fee, UNISWAP.poolKey.tickSpacing], note: 'initialize(owner, Universal Router, V4 Quoter, WIF, pool hooks, fee 0, tick spacing 200)', needs: i => i.ownerOk },
+  badges: { art: 'WiflyBadges', init: c => [WIF_TOKEN, true, c.owner, BADGE_URI, THRESHOLDS], note: `initialize(wif, burn = true, owner, "${BADGE_URI}", [1k, 10k, 100k, 1M wif])`, needs: i => i.ownerOk },
+  dca: { art: 'WiflyDCA', init: c => [c.owner, UNISWAP.universalRouter, UNISWAP.v4Quoter, WIF_TOKEN, UNISWAP.poolKey.hooks, UNISWAP.poolKey.fee, UNISWAP.poolKey.tickSpacing], note: 'initialize(owner, universal router, v4 quoter, wif, pool hooks, fee 0, tick spacing 200)', needs: i => i.ownerOk },
 }
 const LABEL: Record<Upg, string> = { wifly: 'Wifly', names: 'WiflyNames', glyphs: 'WiflyGlyphs', badges: 'WiflyBadges', dca: 'WiflyDCA' }
 
@@ -184,7 +184,7 @@ export default function Deploy() {
           : !admin ? <div className="card card--paper"><b>this wallet isn’t an admin</b><span className="muted">connected {address}. switch to {TREASURY} or set VITE_ADMIN_ADDRESSES.</span></div>
           : !onChain ? <div className="card card--paper"><b>switch to the right network</b><button className="btn btn--dark btn--sm" onClick={() => switchChain({ chainId: robinhoodChain.id })}>switch network</button></div>
           : null}
-        {checks && !checks.wif && <div className="card card--paper"><b>WIF has no code on this chain</b><span className="muted">check the network before deploying.</span></div>}
+        {checks && !checks.wif && <div className="card card--paper"><b>wif has no code on this chain</b><span className="muted">check the network before deploying.</span></div>}
         {checks && !checks.uni && <div className="card card--paper"><b>Uniswap v4 isn’t on this chain</b><span className="muted">WiflyDCA can’t deploy here.</span></div>}
 
         <div className="card">

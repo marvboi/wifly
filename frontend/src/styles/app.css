@@ -1067,6 +1067,7 @@ input.field__input { width: 100%; font-size: 16px; outline: none; background: va
 .welcome__people li { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 12px; padding: 10px 0; }
 .welcome__people li + li { border-top: 1px solid var(--line); }
 .welcome__who { display: flex; flex-direction: column; min-width: 0; }
+.welcome__follow { width: 96px; justify-content: center; padding: 0 8px; } /* follow ↔ following: same width, nothing jumps */
 .welcome__bio { color: var(--ink-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .welcome__tags { display: flex; flex-wrap: wrap; gap: 6px; }
 .welcome__tags .chip.is-on { background: var(--ink); color: var(--paper); border-color: var(--ink); }
@@ -2009,7 +2010,7 @@ a.wifname:hover .wifname__label { text-decoration: underline; text-underline-off
 .guestnudge__title { font-weight: 600; color: var(--ink); }
 .guestnudge__btn { flex-shrink: 0; }
 .welcome__already { text-align: center; margin-top: 10px; }
-.humancheck__retry { text-align: center; margin: 4px 0 0; }
+.humancheck__retry, .signin__retry { text-align: center; margin: 4px 0 0; }
 /* no photo yet: the lime wifly face, clipped to the avatar shape */
 .avatar--face { overflow: hidden; background: #CCFF00; }
 .avatar--face svg { display: block; width: 100%; height: 100%; }
@@ -2372,3 +2373,171 @@ html[data-themed][data-theme="dark"] .toolicon__feat { stroke: #110E08; }
 .agent-chat__copy { flex: 1; min-width: 0; }
 .agent-chat .btn { flex: none; }
 @media (max-width: 380px) { .agent-chat { flex-wrap: wrap; } .agent-chat .btn { width: 100%; } }
+
+/* 11.8.5: tx errors are one calm line, clamped, never a wall of red text */
+.txerr { display: flex; flex-direction: column; gap: 4px; min-width: 0; max-width: 100%; }
+.txerr__line, .cmp-err, .swap .error, .toast__body { overflow-wrap: anywhere; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+.txerr__line { margin: 0; color: var(--ink-2); }
+.gaswallet { display: inline-flex; align-items: center; gap: 6px; flex-wrap: wrap; min-width: 0; }
+.gaswallet code { font-size: 12px; }
+.gaswallet__copy { display: inline-flex; align-items: center; gap: 3px; }
+
+/* 11.8.5: the paying wallet (wallet menu + every tx spot) */
+.payer { display: flex; flex-direction: column; gap: 4px; min-width: 0; padding: 10px 12px; border-radius: 14px; background: var(--fill); }
+.payer--menu { background: none; padding: 0; gap: 6px; }
+.payer__row { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-width: 0; flex-wrap: wrap; }
+.payer__who { min-width: 0; overflow-wrap: anywhere; }
+.payer__who code, .payer__item code, .payer__gasaddr code, .cmp-how code { font-size: 12.5px; }
+.payer__bal { margin: 0; overflow-wrap: anywhere; }
+.payer__copy { display: inline-flex; align-items: center; gap: 3px; flex: none; padding: 2px 8px; border: 0; border-radius: 999px; background: var(--paper, transparent); color: var(--muted); font: inherit; font-size: 12px; cursor: pointer; }
+.payer--menu .payer__copy, .cmp-how .payer__copy { background: var(--fill); }
+.payer__copy:hover { color: var(--ink); }
+.payer__gas { display: flex; flex-direction: column; gap: 2px; padding-top: 4px; border-top: 1px solid var(--line); }
+.payer__gas p { margin: 0; overflow-wrap: anywhere; }
+.payer__gas .small { color: var(--ink-2); }
+.payer__gasaddr { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; }
+.payer__links { display: flex; flex-wrap: wrap; gap: 4px 14px; }
+.payer__links .linkbtn { padding: 2px 0; font-size: 12.5px; align-self: auto; text-align: left; overflow-wrap: anywhere; }
+.payer__connect { align-self: flex-start; }
+.payer__err { margin: 0; color: var(--ink-2); overflow-wrap: anywhere; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+.payer__big { margin: 2px 0; }
+.payer__big .muted.small { overflow-wrap: anywhere; }
+.payer__listhead { margin-top: 6px; }
+.payer__list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; max-height: 40vh; overflow-y: auto; }
+.payer__item { display: flex; flex-direction: column; gap: 2px; padding: 8px 10px; border-radius: 12px; background: var(--fill); min-width: 0; }
+.payer__itemtop, .payer__itembot { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; min-width: 0; }
+.payer__item .payer__copy { background: var(--paper, var(--bg)); }
+.payer__use { padding: 0; font-size: 12.5px; color: var(--ink); align-self: auto; }
+.swap__payer { margin-top: 4px; }
+.cmp-how { display: flex; flex-direction: column; gap: 2px; }
+.cmp-how p { margin: 0; }
+.cmp-how__agent { display: flex; flex-direction: column; gap: 4px; margin-top: 6px; min-width: 0; }
+.cmp-how__addr, .cmp-agentline { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; overflow-wrap: anywhere; }
+.wallet-pop__err { overflow-wrap: anywhere; }
+
+/* 11.8.5: swap "receive in" + "top up gas too", agent page payer row */
+.swap__recv { display: grid; gap: 8px; min-width: 0; }
+.swap__recv .seg { min-width: 0; }
+.swap__recv .seg__btn { min-width: 0; padding: 0 8px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 13px; }
+.swap__topup { display: flex; gap: 10px; align-items: flex-start; padding: 10px 12px; border-radius: 14px; background: var(--fill); min-width: 0; }
+.swap__topup input { margin-top: 3px; flex: none; accent-color: var(--ink); }
+.swap__topup > span { min-width: 0; overflow-wrap: anywhere; }
+.agent-payer { margin-top: 12px; }
+
+/* ───────────── 11.8.6: wallet menu redesign + paying-from row that reads on dark cards ───────────── */
+.wallet-pop { animation: none; } /* motion handles open/close now */
+html .wallet-pop.wallet-pop--pro { width: 340px; padding: 16px; gap: 0; border-color: transparent; border-radius: var(--r-md);
+  box-shadow: 0 1px 2px var(--shadow, rgba(17, 14, 8, .08)), 0 18px 48px var(--shadow-2, rgba(17, 14, 8, .16)); }
+html[data-theme="dark"] .wallet-pop.wallet-pop--pro { background: var(--raise-2, #1E1C18); border-color: transparent; }
+.payer--menu { gap: 0; }
+.wm-head { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.wm-id { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.wm-id__addr { font-size: 14px; font-weight: 500; color: var(--ink); white-space: nowrap; }
+.wm-id .payer__copy--icon { margin-left: auto; }
+.wm-bal { display: flex; align-items: baseline; gap: 6px; margin-top: 2px; min-width: 0; }
+.wm-bal__num { font-size: 34px; font-weight: 600; letter-spacing: -.02em; line-height: 1.05; color: var(--ink); overflow-wrap: anywhere; }
+.wm-bal__unit { font-size: 15px; font-weight: 500; color: var(--muted); }
+.wm-sub { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; min-height: 24px; }
+.wm-usd { font-size: 13px; color: var(--muted); }
+.wm-note { margin: 0; color: var(--muted); overflow-wrap: anywhere; }
+.wm-note.is-warn { color: #8A5A0C; }
+[data-theme="dark"] .wm-note.is-warn { color: var(--warn-ink, #E9BE78); }
+.wm-head .payer__connect { align-self: flex-start; }
+.wm-list, .wm-actions { border-top: 1px solid var(--line); margin-top: 14px; padding-top: 14px; }
+.wm-rows { list-style: none; margin: 6px -8px 0; padding: 0; display: flex; flex-direction: column; gap: 2px; max-height: 40vh; overflow-y: auto; }
+.wm-row { width: 100%; display: flex; align-items: center; gap: 10px; padding: 8px; border: 0; border-radius: var(--r-sm); background: transparent; color: inherit; font: inherit; text-align: left; cursor: pointer; transition: background .18s var(--ease); }
+.wm-row:hover:not(:disabled), .wm-row:focus-visible { background: var(--fill); }
+.wm-row.is-active { background: var(--fill); cursor: default; }
+.wm-row:disabled { opacity: .7; }
+.wm-row__main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.wm-row__top { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.wm-row__top code { font-size: 13px; color: var(--ink); white-space: nowrap; }
+.wm-row__bal { color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.wm-row__end { flex: none; display: grid; place-items: center; min-width: 22px; }
+.wm-check { width: 22px; height: 22px; border-radius: 50%; display: grid; place-items: center; background: var(--neon); color: #110E08; animation: wm-check .28s var(--ease); }
+@keyframes wm-check { from { transform: scale(.4); opacity: 0; } }
+.wm-ring { width: 18px; height: 18px; border-radius: 50%; box-shadow: inset 0 0 0 1.5px var(--line-strong); }
+.wm-connect { font-size: 12px; font-weight: 600; padding: 4px 10px; border-radius: 999px; background: var(--ink); color: var(--bg); }
+.wm-actions { display: flex; flex-direction: column; gap: 4px; }
+.wm-primary { height: 46px; font-size: 15px; }
+.wm-quiet { align-self: center; display: inline-flex; align-items: center; gap: 6px; padding: 8px 10px; border: 0; border-radius: 10px; background: none; color: var(--muted); font: inherit; font-size: 13px; font-weight: 500; cursor: pointer; transition: color .18s var(--ease); }
+.wm-quiet:hover { color: var(--ink); }
+.wallet-pop__actions .wm-quiet { justify-self: center; }
+
+/* avatar dot, type pill, gas pill */
+.wav { display: inline-block; flex: none; border-radius: 50%; box-shadow: inset 0 0 0 1px rgba(17, 14, 8, .08); }
+.kpill { display: inline-flex; align-items: center; flex: none; height: 20px; padding: 0 8px; border-radius: 999px; background: var(--fill-2); color: var(--ink-2); font-size: 11px; font-weight: 600; letter-spacing: .01em; line-height: 1; }
+.gaspill { display: inline-flex; align-items: center; gap: 6px; height: 24px; padding: 0 10px; margin-left: auto; border-radius: 999px; font-size: 12px; font-weight: 500; white-space: nowrap; background: var(--fill); color: var(--muted); }
+.gaspill__dot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+.gaspill--ok { background: rgba(47, 166, 94, .1); color: #237A46; }
+.gaspill--low, .gaspill--empty { background: rgba(211, 154, 42, .14); color: #8A5A0C; }
+[data-theme="dark"] .gaspill--ok { background: var(--ok-bg); color: var(--ok); }
+[data-theme="dark"] :is(.gaspill--low, .gaspill--empty) { background: var(--warn-bg); color: var(--warn-ink); }
+
+/* copy: icon-only variant with a "copied" state */
+.payer__copy--icon { width: 30px; height: 30px; padding: 0; justify-content: center; background: transparent !important; color: var(--muted); transition: background .18s var(--ease), color .18s var(--ease), width .18s var(--ease); }
+.payer__copy--icon:hover { background: var(--fill) !important; color: var(--ink); }
+.payer__copy--icon.is-done { width: auto; padding: 0 10px; color: #237A46; }
+[data-theme="dark"] .payer__copy--icon.is-done { color: var(--ok); }
+
+/* the paying-from row: one line (label, address, pill · copy · switch), balances below */
+.payer__who { display: inline-flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.payer__lbl { color: var(--muted); }
+.payer__addr { color: var(--ink); font-weight: 500; white-space: nowrap; }
+.payer__acts { display: inline-flex; align-items: center; gap: 4px; flex: none; }
+.payer__switch { padding: 2px 9px; border: 0; border-radius: 999px; background: var(--fill-2); color: var(--ink); font: inherit; font-size: 12px; font-weight: 600; cursor: pointer; }
+.payer__switch:hover { background: var(--line-strong); }
+.payer__bal { color: var(--muted); }
+/* on the dark agent card: "working" in both themes, and "off" too in dark theme (the hero stays dark there): blend in, light text, a divider instead of a box */
+:is(.agent-hero:not(.is-off), [data-theme="dark"] .agent-hero, .on-dark) .payer {
+  --ink: #F4F2EC; --ink-2: rgba(244, 242, 236, .86); --muted: rgba(244, 242, 236, .6); --line: rgba(244, 242, 236, .12); --line-strong: rgba(244, 242, 236, .22);
+  --fill: rgba(244, 242, 236, .07); --fill-2: rgba(244, 242, 236, .1); --paper: rgba(244, 242, 236, .08); --bg: transparent;
+  color: var(--ink); background: transparent; border-radius: 0; padding: 14px 0 0; border-top: 1px solid var(--line);
+}
+:is(.agent-hero:not(.is-off), [data-theme="dark"] .agent-hero, .on-dark) .agent-payer { margin-top: 0; }
+
+@media (max-width: 480px) {
+  html .wallet-pop.wallet-pop--pro { width: min(380px, calc(100vw - 32px)); }
+}
+
+/* 11.8.6: paying-from stays one row: label, address, pill, copy icon, switch */
+.payer .payer__row { display: flex; align-items: center; flex-wrap: nowrap; gap: 6px; }
+.payer .payer__who { flex-wrap: nowrap; white-space: nowrap; min-width: 0; overflow: hidden; gap: 6px; font-size: 12.5px; }
+.payer .payer__who code { font-size: 12px; }
+.payer .payer__acts { margin-left: auto; gap: 2px; }
+.payer .payer__switch { background: transparent; padding: 3px 6px; color: var(--ink); text-decoration: none; }
+.payer .payer__switch:hover { background: var(--fill-2); }
+.payer .payer__row { gap: 3px; }
+.payer .payer__acts { gap: 0; }
+.payer .payer__who { gap: 5px; }
+.payer .payer__who .kpill { padding-inline: 6px; }
+.payer .payer__switch { padding: 3px 5px; }
+/* narrow cards (360px phones): "from 0x…  [pill]" keeps the row on one line */
+.payer { container-type: inline-size; }
+@container (max-width: 300px) { .payer__lbl-pre { display: none; } }
+
+/* 11.8.7: the paying-from row can't collapse. container-type: inline-size gives .payer no intrinsic width, so in any
+   shrink-to-fit or flex-row parent it fell to its padding and the text broke one letter per line. full width always. */
+.payer { width: 100%; max-width: 100%; box-sizing: border-box; min-width: 0; flex-shrink: 0; align-self: stretch; }
+.payer .payer__row { width: 100%; min-width: 0; }
+.payer .payer__who { flex: 1 1 auto; min-width: 0; }
+.payer .payer__lbl, .payer .payer__who .kpill { flex: none; }
+.payer .payer__addr { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.payer .payer__acts, .payer .payer__copy, .payer .payer__switch { flex-shrink: 0; }
+.payer .payer__bal { min-width: 0; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; overflow-wrap: normal; word-break: normal; }
+/* 11.8.8: the short address is a fixed 6+4 ("0x7a11…c3d2") and never truncates again. on the narrowest cards the
+   "from" label goes first, then the wallet pill gives way; the address itself always reads whole. */
+.payer .payer__addr { flex: none; overflow: visible; text-overflow: clip; letter-spacing: 0; }
+.payer .payer__who .kpill { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+@container (max-width: 262px) { .payer .payer__lbl { display: none; } }
+.txblock { display: flex; flex-direction: column; gap: 8px; width: 100%; min-width: 0; }
+.txblock > .txsteps { width: 100%; }
+.settings > .txblock { padding-bottom: 8px; }
+.tipfind__near { display: grid; gap: 4px; min-width: 0; }
+.tipfind__head { padding: 2px 8px 0; }
+
+/* 11.8.8: the agent hero while the chain read is in flight: a calm "checking…" pill instead of a wrong "off". */
+.power--reading { cursor: default; opacity: .85; }
+.spin-dot { width: 8px; height: 8px; border-radius: 50%; background: currentColor; animation: spin-dot 1s var(--ease, ease) infinite alternate; }
+@keyframes spin-dot { from { opacity: .25; transform: scale(.8); } to { opacity: 1; transform: scale(1); } }
+@media (prefers-reduced-motion: reduce) { .spin-dot { animation: none; opacity: .6; } }

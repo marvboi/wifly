@@ -7,6 +7,7 @@ import { Names } from './pages/Names'
 import { ManageName, PublicName } from './pages/NamePages'
 import { AppShell } from './components/Shell'
 import { Toasts } from './components/Toasts'
+import { PayerSync } from './components/Payer'
 import { Sheets } from './sheets/Sheets'
 import { Landing } from './pages/Landing'
 import { Home } from './pages/Home'
@@ -78,6 +79,7 @@ export function App() {
         </Routes>
         <Sheets />
         <Toasts />
+        <PayerSync />
       </>
     )
   }
@@ -120,6 +122,7 @@ export function App() {
       </Routes>
       <Sheets />
       <Toasts />
+      <PayerSync />
     </>
   )
 }

@@ -35,7 +35,7 @@ export function medalSvg(t: MedalTier, o: { earned?: boolean; uid?: string; titl
   const g = (k: string) => `${k}-${u}`
   const label = fmtBurn(t.min)
   const teeth = { 'first-light': 12, 'flat-earther': 16, 'edge-walker': 20, 'the-disc': 24 }[t.id] ?? 16
-  const title = o.title === false ? '' : `<title>${t.name}: ${t.min.toLocaleString('en-US')} WIF burned${earned ? '' : ' (not earned yet)'}</title>`
+  const title = o.title === false ? '' : `<title>${t.name}: ${t.min.toLocaleString('en-US')} wif burned${earned ? '' : ' (not earned yet)'}</title>`
   if (!earned) {
     return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img">${title}
 <polygon points="${rim(32, 32, 30.5, 28.2, teeth)}" fill="#FFFFFF" stroke="#D9D5CC" stroke-width="1"/>

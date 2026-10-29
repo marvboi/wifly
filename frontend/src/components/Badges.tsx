@@ -13,7 +13,7 @@ export function BadgeArt({ id, size = 48, earned = true, tilt = true }: { id: st
   const t = BADGE_LEVELS.find(l => l.id === id) ?? BADGE_LEVELS[0]
   const html = useMemo(() => medalSvg(t, { earned, uid: `${id}${uid}` }), [t, earned, uid, id])
   return <span className={`medal ${earned ? 'is-earned' : 'is-locked'} ${tilt ? 'medal--tilt' : ''}`} style={{ width: size, height: size }}
-    role="img" aria-label={`${t.name} badge, ${t.min.toLocaleString('en-US')} WIF burned${earned ? '' : ', not earned yet'}`}
+    role="img" aria-label={`${t.name} badge, ${t.min.toLocaleString('en-US')} wif burned${earned ? '' : ', not earned yet'}`}
     dangerouslySetInnerHTML={{ __html: html }} />
 }
 
@@ -29,7 +29,7 @@ export function BadgeShelf({ handle, mine }: { handle: string; mine?: boolean })
   return (
     <section className="badgeshelf" aria-label="burn badges">
       <div className="badgeshelf__head">
-        <div><b>badges</b><InfoTip label="about burn badges">soulbound badges for WIF you burn: 1k, 10k, 100k, 1m.</InfoTip> <span className="muted small">· {burned.toLocaleString()} WIF burned <WifUsd wif={burned} /></span></div>
+        <div><b>badges</b><InfoTip label="about burn badges">soulbound badges for wif you burn: 1k, 10k, 100k, 1m.</InfoTip> <span className="muted small">· {burned.toLocaleString()} wif burned <WifUsd wif={burned} /></span></div>
         {mine && <button className="btn btn--ghost btn--sm" onClick={() => openSheet({ type: 'burn' })}>burn to earn</button>}
       </div>
       <div className="badgeshelf__row">
@@ -46,7 +46,7 @@ export function BadgeShelf({ handle, mine }: { handle: string; mine?: boolean })
       </div>
       {next && <div className="badgeshelf__next">
         <div className="bar" aria-hidden="true"><span style={{ width: `${pct}%` }} /></div>
-        <span className="tiny muted">{(next.min - burned).toLocaleString()} WIF to {next.name}{b?.pending ? ` · ${b.pending.toLocaleString()} pending` : ''}</span>
+        <span className="tiny muted">{(next.min - burned).toLocaleString()} wif to {next.name}{b?.pending ? ` · ${b.pending.toLocaleString()} pending` : ''}</span>
       </div>}
     </section>
   )

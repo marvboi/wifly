@@ -18,6 +18,7 @@ import { NAME_MIN } from '../config'
 import { useStore } from '../state/store'
 import { ClaimBox, ClaimSoon, NAMES_LIVE, type ClaimState } from './Names'
 import { UseMyWif } from '../components/WalletProofs'
+import { followLabel, followPayload, seedFollow, toggleFollow } from './onboardFollow'
 
 type Onb = { suggestedHandle: string | null; ownedWif?: string | null; notice?: string | null; x: { username: string } | null; wallet: string | null; email: boolean; users: ApiUser[]; tags: string[] }
 const STEPS = ['you', 'wif', 'follow', 'link'] as const
@@ -58,7 +59,10 @@ export function Welcome() {
     prefilled.current = true
     if (!sp.get('name') && !name && me.name && !/^(0x|~)/i.test(me.name) && !isPlaceholderName(me.name) && me.name !== me.handle) setName(me.name)
   }, [me, name, sp])
-  useEffect(() => { if (onb.data && !follow.size) setFollow(new Set(onb.data.users.slice(0, 3).map(u => u.handle))) }, [onb.data, follow.size])
+  // 11.8.4: nobody is pre-picked. only people you truly follow already start as "following" (once each), and
+  // unticking everyone stays unticked, so continue with nobody picked follows nobody.
+  const seenPeople = useRef(new Set<string>())
+  useEffect(() => { if (onb.data) setFollow(f => seedFollow(f, seenPeople.current, onb.data!.users)) }, [onb.data])
   // Reactions: a happy hop when the @name (or .wif) comes back available, a small "hmm" shake when it's taken.
   const [shake, setShake] = useState(0)
   const settledBad = step === 0 && !!handle && !checking && !!check && !check.available && !(check.reason === 'invalid' && handle.length < NAME_MIN)
@@ -112,7 +116,7 @@ export function Welcome() {
     }
     if (step === 1) {
       if (!NAMES_LIVE) return { mood: 'calm', line: `@${handle} is yours. .wif names open soon.` }
-      if (claimed) return { mood: 'wow', line: `${claimed}.wif is yours and it’s your main name. people can send WIF straight to it.` }
+      if (claimed) return { mood: 'wow', line: `${claimed}.wif is yours and it’s your main name. people can send wif straight to it.` }
       const l = wifState.label
       if (wifState.s === 'available') return { mood: 'wow', line: `${l}.wif is open. want it too? or maybe later, it’s up to you.` }
       if (wifState.s === 'taken') return { mood: 'calm', line: `${l}.wif belongs to another wallet. your @${handle} stays yours. pick a close one, or maybe later.` }
@@ -133,7 +137,7 @@ export function Welcome() {
   const finish = async () => {
     setBusy(true)
     try {
-      const r = await api<{ me?: ApiUser }>('/onboarding', { method: 'POST', json: { handle: claimed || handle, name: name.trim() || undefined, avatar, follow: [...follow], tags: [...tags] } })
+      const r = await api<{ me?: ApiUser }>('/onboarding', { method: 'POST', json: { handle: claimed || handle, name: name.trim() || undefined, avatar, follow: followPayload(follow), tags: [...tags] } })
       if (r.me) setMe({ ...r.me, onboarded: true })
       refresh()
       nav(FEED_PATH, { replace: true })
@@ -211,7 +215,7 @@ export function Welcome() {
                   <li key={u.handle}>
                     <Avatar handle={u.handle} size={40} />
                     <div className="welcome__who"><b>{u.name}</b><span className="muted small">{at(u.handle)}</span></div>
-                    <button className={`btn btn--sm ${follow.has(u.handle) ? 'btn--ghost' : 'btn--dark'}`} aria-pressed={follow.has(u.handle)} onClick={() => toggle(follow, u.handle, setFollow)}>{follow.has(u.handle) ? 'following' : 'follow'}</button>
+                    <button type="button" data-testid="onb-follow" className={`btn btn--sm welcome__follow ${follow.has(u.handle) ? 'btn--ghost' : 'btn--dark'}`} aria-pressed={follow.has(u.handle)} onClick={() => setFollow(f => toggleFollow(f, u.handle))}>{followLabel(follow.has(u.handle))}</button>
                   </li>
                 ))}
               </ul>

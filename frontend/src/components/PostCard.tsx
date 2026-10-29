@@ -180,7 +180,7 @@ export function DropTotals({ post }: { post: Post }) {
   const myVotes = votes[`post:${post.id}`] ?? 0
   return (
     <div className="totals">
-      <span className="total total--tip" title="WIF tipped"><Token size={14} /> <Tick value={post.tipped} /></span>
+      <span className="total total--tip" title="wif tipped"><Token size={14} /> <Tick value={post.tipped} /></span>
       <span className={`total ${myVotes ? 'is-on' : ''}`} title="votes"><Icon name="vote" size={13} fill={!!myVotes} /> <Tick value={post.votes + myVotes} /></span>
     </div>
   )

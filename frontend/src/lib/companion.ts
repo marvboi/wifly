@@ -20,7 +20,7 @@ const CHEERS: Record<Celebration, string> = {
   tip: 'tip landed. that made their day',
   vote: 'votes counted. the crowd decides',
   name: 'your .wif name is yours',
-  plus: 'welcome to Plus ✓',
+  plus: 'welcome to plus ✓',
   burn: 'burned for good. badge earned',
   agent: 'done. logged in your activity',
 }

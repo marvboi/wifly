@@ -153,7 +153,7 @@ export function WalletsSection() {
 
   return (
     <div className="wl" data-testid="wallets">
-      {!main ? <p className="muted small">no wallet yet. link one to hold WIF and get tips.</p> : (() => {
+      {!main ? <p className="muted small">no wallet yet. link one to hold wif and get tips.</p> : (() => {
         const b = bal.data?.[main.address]
         return (
           <section className="wlm" data-testid="wallet-main">
@@ -162,8 +162,8 @@ export function WalletsSection() {
               <span className="wlm__who"><b className="clamp-1">{who}</b><span className="wlm__addr"><span className="mono" title={main.address}>{shortAddr(main.address)}</span><CopyBtn text={main.address} label={`copy ${shortAddr(main.address)}`} /><a className="wl__ext" href={explorerAddress(main.address)} target="_blank" rel="noreferrer" aria-label="open in explorer"><Icon name="external" size={13} /></a></span>{tags(main)}</span>
             </div>
             <div className="wlm__bals" data-testid="wallet-balance">
-              <div className="wlm__bal"><span className="wlm__label">WIF</span><b className="num">{fmt(b?.wif, 2)}</b></div>
-              <div className="wlm__bal"><span className="wlm__label">ETH</span><b className="num">{fmt(b?.eth, 6)}</b></div>
+              <div className="wlm__bal"><span className="wlm__label">wif</span><b className="num">{fmt(b?.wif, 2)}</b></div>
+              <div className="wlm__bal"><span className="wlm__label">eth</span><b className="num">{fmt(b?.eth, 6)}</b></div>
             </div>
             {actions(main)}
           </section>
@@ -182,8 +182,8 @@ export function WalletsSection() {
                   {tags(w)}
                 </div>
                 <div className="wl__bal" data-testid="wallet-balance">
-                  <span><b className="num">{fmt(b?.wif, 2)}</b> WIF</span>
-                  <span><b className="num">{fmt(b?.eth, 6)}</b> ETH</span>
+                  <span><b className="num">{fmt(b?.wif, 2)}</b> wif</span>
+                  <span><b className="num">{fmt(b?.eth, 6)}</b> eth</span>
                 </div>
                 {actions(w)}
               </li>
@@ -218,7 +218,7 @@ export function DepositSheet({ address, onClose }: { address: string; onClose: (
         <Qr text={address} label={`qr code for ${shortAddr(address)}`} />
         <p className="mono dep__addr">{address}</p>
         <CopyBtn text={address} label="copy address" />
-        <p className="small muted">send WIF or ETH on chain {robinhoodChain.id} only. anything sent on another network won’t arrive.</p>
+        <p className="small muted">send wif or eth on chain {robinhoodChain.id} only. anything sent on another network won’t arrive.</p>
       </div>
     </Sheet>
   )
@@ -282,7 +282,7 @@ export function WithdrawSheet({ from, bal, onClose, onSent, initial }: { from: s
   const ethLeft = bal ? bal.eth - (asset === 'ETH' ? value ?? 0n : 0n) : undefined
   const noGas = fee !== undefined && ethLeft !== undefined && ethLeft < fee
   const formErr = to.trim() && !toOk ? (to.trim().toLowerCase() === from.toLowerCase() ? 'that’s this same wallet' : 'that isn’t a wallet address')
-    : tooMuch ? `more than this wallet holds` : value !== null && noGas ? 'not enough ETH left for the network fee' : null
+    : tooMuch ? `more than this wallet holds` : value !== null && noGas ? 'not enough eth left for the network fee' : null
   const canReview = toOk && !!value && !tooMuch && !noGas
 
   const send = async () => {
@@ -309,34 +309,34 @@ export function WithdrawSheet({ from, bal, onClose, onSent, initial }: { from: s
         {step === 'form' && <>
           <p className="small muted wd__from">from embedded <span className="mono">{shortAddr(from)}</span></p>
           <div className="seg wd__seg" role="tablist" aria-label="what to send">
-            {(['WIF', 'ETH'] as Asset[]).map(a => <button key={a} type="button" role="tab" aria-selected={asset === a} className={asset === a ? 'is-on' : ''} onClick={() => { setAsset(a); setAmount('') }}>{a}</button>)}
+            {(['WIF', 'ETH'] as Asset[]).map(a => <button key={a} type="button" role="tab" aria-selected={asset === a} className={asset === a ? 'is-on' : ''} onClick={() => { setAsset(a); setAmount('') }}>{a.toLowerCase()}</button>)}
           </div>
           <label className="field">
             <span className="field__label">to</span>
             <input className="field__input mono wd__to" value={to} onChange={e => setTo(e.target.value)} placeholder="0x… wallet address" spellCheck={false} autoComplete="off" inputMode="text" data-testid="withdraw-to" />
           </label>
           <label className="field">
-            <span className="field__label wd__amtlabel"><span>amount</span><span className="tiny muted">you have {fmt(have, asset === 'WIF' ? 2 : 6)} {asset}</span></span>
+            <span className="field__label wd__amtlabel"><span>amount</span><span className="tiny muted">you have {fmt(have, asset === 'WIF' ? 2 : 6)} {asset.toLowerCase()}</span></span>
             <span className="wd__amt">
               <input className="field__input" value={amount} onChange={e => setAmount(e.target.value.replace(/[^0-9.]/g, ''))} placeholder="0" inputMode="decimal" data-testid="withdraw-amount" />
               <button type="button" className="btn btn--ghost btn--sm" onClick={() => { void max() }} disabled={have === undefined || maxBusy} data-testid="withdraw-max">{maxBusy ? '…' : 'max'}</button>
             </span>
           </label>
-          {asset === 'ETH' && <p className="tiny muted">max keeps a little ETH back for the network fee.</p>}
+          {asset === 'ETH' && <p className="tiny muted">max keeps a little eth back for the network fee.</p>}
           {(formErr || err) && <p className="tiny bad" role="alert">{formErr ?? err}</p>}
           <button type="button" className="btn btn--dark wd__go" disabled={!canReview} onClick={() => setStep('confirm')}>review</button>
         </>}
         {step === 'confirm' && tx && value !== null && <>
           <dl className="wd__sum">
-            <div><dt>send</dt><dd><b>{Number(formatUnits(value, asset === 'WIF' ? WIF_DECIMALS : 18)).toLocaleString('en-US', { maximumFractionDigits: 6 })} {asset}</b></dd></div>
+            <div><dt>send</dt><dd><b>{Number(formatUnits(value, asset === 'WIF' ? WIF_DECIMALS : 18)).toLocaleString('en-US', { maximumFractionDigits: 6 })} {asset.toLowerCase()}</b></dd></div>
             <div><dt>to</dt><dd className="mono wd__full">{to.trim().toLowerCase()}</dd></div>
             <div><dt>from</dt><dd className="mono">{shortAddr(from)} <span className="muted">embedded</span></dd></div>
-            <div><dt>est. network fee</dt><dd data-testid="withdraw-fee">{fee !== undefined ? `~${Number(formatUnits(fee, 18)).toLocaleString('en-US', { maximumSignificantDigits: 3 })} ETH` : est.isError ? 'couldn’t estimate' : '…'}{est.isFetching && est.data === undefined && fee !== undefined ? <span className="muted"> (checking…)</span> : null}</dd></div>
+            <div><dt>est. network fee</dt><dd data-testid="withdraw-fee">{fee !== undefined ? `~${Number(formatUnits(fee, 18)).toLocaleString('en-US', { maximumSignificantDigits: 3 })} eth` : est.isError ? 'couldn’t estimate' : '…'}{est.isFetching && est.data === undefined && fee !== undefined ? <span className="muted"> (checking…)</span> : null}</dd></div>
             {fee !== undefined && <div className="wd__total" data-testid="withdraw-total"><dt>total</dt><dd>{asset === 'ETH'
-              ? <b>~{Number(formatUnits(value + fee, 18)).toLocaleString('en-US', { maximumFractionDigits: 6 })} ETH</b>
-              : <><b>{Number(formatUnits(value, WIF_DECIMALS)).toLocaleString('en-US', { maximumFractionDigits: 6 })} WIF</b> <span className="muted">+ ~{Number(formatUnits(fee, 18)).toLocaleString('en-US', { maximumSignificantDigits: 3 })} ETH fee</span></>}</dd></div>}
+              ? <b>~{Number(formatUnits(value + fee, 18)).toLocaleString('en-US', { maximumFractionDigits: 6 })} eth</b>
+              : <><b>{Number(formatUnits(value, WIF_DECIMALS)).toLocaleString('en-US', { maximumFractionDigits: 6 })} wif</b> <span className="muted">+ ~{Number(formatUnits(fee, 18)).toLocaleString('en-US', { maximumSignificantDigits: 3 })} eth fee</span></>}</dd></div>}
           </dl>
-          {noGas && <p className="tiny bad" role="alert">not enough ETH left for the network fee</p>}
+          {noGas && <p className="tiny bad" role="alert">not enough eth left for the network fee</p>}
           <p className="tiny muted"><Icon name="shield" size={12} /> sends can’t be undone. check the address.</p>
           {!TX_ENABLED && <p className="tiny muted">sending opens when payments go live.</p>}
           {err && <p className="tiny bad" role="alert">{err}</p>}

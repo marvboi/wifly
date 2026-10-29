@@ -125,8 +125,8 @@ async function getPot(): Promise<PotRead> {
 export function potLine(p: PotRead): string {
   if (p.potWif === undefined) return `${p.note}.`
   const usd = (v?: number | null) => (v ? ` (about $${n(v)})` : '')
-  const close = p.paidAtCloseWif !== undefined ? ` paid at week close: ${n(p.paidAtCloseWif)} WIF${usd(p.paidAtCloseUsd)}.` : ''
-  return `in the jar now: ${n(p.potWif)} WIF${usd(p.potUsd)}.${close} the week closes ${new Date(p.endsAt!).toUTCString().slice(0, 22)} UTC.`
+  const close = p.paidAtCloseWif !== undefined ? ` paid at week close: ${n(p.paidAtCloseWif)} wif${usd(p.paidAtCloseUsd)}.` : ''
+  return `in the jar now: ${n(p.potWif)} wif${usd(p.potUsd)}.${close} the week closes ${new Date(p.endsAt!).toUTCString().slice(0, 16).toLowerCase()}.`
 }
 
 async function myPosts(uid: number) {
@@ -196,7 +196,7 @@ export async function runTool(ctx: Ctx, name: string, rawArgs: string): Promise<
       const dir = a.direction === 'wif2eth' ? 'wif2eth' : a.direction === 'eth2wif' ? 'eth2wif' : null
       const amt = num(a.amount)
       if (!dir) return bad('direction must be eth2wif or wif2eth')
-      if (!(amt > 0) || (dir === 'eth2wif' ? amt > 10 : amt > 10_000_000)) return bad(dir === 'eth2wif' ? 'swap between 0 and 10 ETH' : 'swap between 0 and 10,000,000 WIF')
+      if (!(amt > 0) || (dir === 'eth2wif' ? amt > 10 : amt > 10_000_000)) return bad(dir === 'eth2wif' ? 'swap between 0 and 10 eth' : 'swap between 0 and 10,000,000 wif')
       let out: number | null = null, usd: number | null = null
       try { const q = await quote(dir, dir === 'eth2wif' ? parseEther(String(amt)) : parseUnits(String(amt), 18)); out = Number(formatUnits(BigInt(q.amountOut), 18)); usd = q.usdIn } catch { /* no quote: the swap screen quotes again */ }
       if (name === 'prepare_swap') ctx.cards.push({ type: 'swap', dir, amount: amt, out, usd })
@@ -208,11 +208,11 @@ export async function runTool(ctx: Ctx, name: string, rawArgs: string): Promise<
       const usd = num(a.usd_per_buy), eth = num(a.eth_per_buy), dep = a.deposit_eth === undefined ? null : num(a.deposit_eth)
       if (!(usd > 0) && !(eth > 0)) return bad('give usd_per_buy or eth_per_buy')
       if (usd > 0 && (usd < 1 || usd > 10_000)) return bad('per buy is between $1 and $10,000')
-      if (eth > 0 && (eth < 0.0001 || eth > 10)) return bad('per buy is between 0.0001 and 10 ETH')
+      if (eth > 0 && (eth < 0.0001 || eth > 10)) return bad('per buy is between 0.0001 and 10 eth')
       const hour = Number.isInteger(a.hour) ? Number(a.hour) : 9, minute = Number.isInteger(a.minute) ? Number(a.minute) : 0
       const weekday = every === 'week' ? (Number.isInteger(a.weekday) ? Number(a.weekday) : 1) : null
       if (hour < 0 || hour > 23 || minute < 0 || minute > 59 || (weekday !== null && (weekday < 0 || weekday > 6))) return bad('time out of range')
-      if (dep !== null && (!(dep > 0) || dep > 1000)) return bad('deposit between 0 and 1,000 ETH')
+      if (dep !== null && (!(dep > 0) || dep > 1000)) return bad('deposit between 0 and 1,000 eth')
       const text = `buy ${usd > 0 ? `$${usd}` : `${eth} eth`} of wif every ${every === 'week' ? ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'][weekday!] : every} at ${hour}:${String(minute).padStart(2, '0')}`
       const d = parseDca(text)
       if (!d) return bad('couldn’t build that plan')
@@ -234,7 +234,7 @@ export async function runTool(ctx: Ctx, name: string, rawArgs: string): Promise<
       let cmd: string
       if (name === 'prepare_tip') {
         const amt = num(a.amount)
-        if (!(amt > 0) || amt > 1_000_000) return bad('tips are between 0 and 1,000,000 WIF')
+        if (!(amt > 0) || amt > 1_000_000) return bad('tips are between 0 and 1,000,000 wif')
         cmd = `tip ${to} ${amt}`
       } else {
         const tier = a.tier === undefined ? 1 : num(a.tier)
@@ -295,7 +295,7 @@ async function quickAnswer(ctx: Ctx, t: string): Promise<string | null> {
   if (/\b(balance|how much (wif|eth)|my wif|my eth)\b/.test(s)) {
     const b = await getBalance(ctx.uid)
     if (!b.hasWallet) return 'there’s no wallet on your account yet. connect one and i can read it.'
-    return `wallet: ${b.walletWif === null ? 'couldn’t read' : `${n(b.walletWif)} WIF`}${b.walletEth !== null ? ` and ${n(b.walletEth, 4)} ETH` : ''}. deposited in Wifly: ${n(b.depositedWif)} WIF.${b.wifUsd && b.walletWif ? ` that’s about $${n(b.walletWif * b.wifUsd)} of WIF.` : ''}`
+    return `wallet: ${b.walletWif === null ? 'couldn’t read' : `${n(b.walletWif)} wif`}${b.walletEth !== null ? ` and ${n(b.walletEth, 4)} eth` : ''}. deposited in Wifly: ${n(b.depositedWif)} wif.${b.wifUsd && b.walletWif ? ` that’s about $${n(b.walletWif * b.wifUsd)} of wif.` : ''}`
   }
   if (/\b(pot|this week|weekly)\b/.test(s)) {
     return potLine(await getPot())
@@ -303,7 +303,7 @@ async function quickAnswer(ctx: Ctx, t: string): Promise<string | null> {
   if (/\b(my (posts?|drops?))\b/.test(s)) {
     const ps = await myPosts(ctx.uid)
     if (!ps.length) return 'you haven’t posted yet. your first drop is one tap away.'
-    return ps.map(p => `“${p.text.slice(0, 50)}${p.text.length > 50 ? '…' : ''}”: ${p.likes} likes, ${p.replies} replies, ${n(p.tipsWif)} WIF in tips`).join('\n')
+    return ps.map(p => `“${p.text.slice(0, 50)}${p.text.length > 50 ? '…' : ''}”: ${p.likes} likes, ${p.replies} replies, ${n(p.tipsWif)} wif in tips`).join('\n')
   }
   const m = s.match(/\b(?:find|show|suggest|recommend)(?: me)?(?: some)? (?:creators|people|accounts)(?: (?:who|that))?(?: (?:post|posts|posting|make|makes))?(?: (?:about|on|into))? (.+)$/) ?? s.match(/\bwho (?:posts?|makes?) (?:about )?(.+)$/)
   if (m) {
@@ -312,9 +312,9 @@ async function quickAnswer(ctx: Ctx, t: string): Promise<string | null> {
     ctx.cards.push({ type: 'creators', users })
     return 'here are a few you might like:'
   }
-  if (/\b(what is|what’s|whats|how does|explain)\b.*\b(plus|wifly plus)\b/.test(s)) return 'Plus is 1,500 WIF a month or 15,000 a year. it adds the AI agent (tips, swaps, DCA by chat), bigger agent caps and more. 5-day grace if a renewal is late.'
-  if (/\b(what is|what’s|whats|how does|explain)\b.*\b(dca)\b/.test(s)) return 'DCA buys a little WIF on a schedule, like $5 every monday. you deposit ETH, pick the amount and time, and set a price guard. you can pause or withdraw any time.'
-  if (/\b(what is|what’s|whats)\b.*\bwifly\b|^help$/.test(s)) return 'Wifly is a social app where people earn WIF from fans: tips, paid drops, subscriptions and the weekly pot. ask me about your balance, the pot or creators to follow.'
+  if (/\b(what is|what’s|whats|how does|explain)\b.*\b(plus|wifly plus)\b/.test(s)) return 'plus is 1,500 wif a month or 15,000 a year. it adds the ai agent (tips, swaps, scheduled buys by chat), bigger agent caps and more. 5-day grace if a renewal is late.'
+  if (/\b(what is|what’s|whats|how does|explain)\b.*\b(dca)\b/.test(s)) return 'scheduled buys get a little wif on a schedule, like $5 every monday. you deposit eth, pick the amount and time, and set a price guard. you can pause or withdraw any time.'
+  if (/\b(what is|what’s|whats)\b.*\bwifly\b|^help$/.test(s)) return 'wifly is a social app where people earn wif from fans: tips, paid drops, subscriptions and the weekly pot. ask me about your balance, the pot or creators to follow.'
   return null
 }
 
@@ -356,7 +356,7 @@ export async function companionChat(uid: number, text: string, history: Hist[] =
   const isCommand = cmd.kind !== 'refuse' || !!dca || !!swap || !!manage
   if (isCommand || (ACTION_WORDS.test(it.norm.text) && !/\?$/.test(t) && !/\b(balance|pot)\b/i.test(it.norm.text))) {
     if (!plus.ok) { pushUnlock(ctx); return out(plus.state === 'unknown' ? `${plus.reason ?? 'couldn’t check Plus'}. try again in a moment.` : 'that’s something i can do for you with wifly plus. you can still swap and set up DCA yourself from the screens.') }
-    if (dca) { ctx.cards.push({ type: 'dca', draft: { ...dca, depositEth: null } }); return out(`got it: ${dca.summary}. pick how much ETH to deposit, check the price guard, then sign.`) }
+    if (dca) { ctx.cards.push({ type: 'dca', draft: { ...dca, depositEth: null } }); return out(`got it: ${dca.summary}. pick how much eth to deposit, check the price guard, then sign.`) }
     if (swap) {
       const r = await runTool(ctx, 'prepare_swap', JSON.stringify({ direction: swap.dir, amount: swap.amount }))
       return out(r.ok ? 'here’s the swap. check the quote, then sign it in your wallet.' : String(r.error))
@@ -367,7 +367,7 @@ export async function companionChat(uid: number, text: string, history: Hist[] =
       const plans = st.plans.filter(p => want.includes(p.status))
       if (!plans.length) return out(manage.action === 'resume' ? 'no paused plans to resume.' : 'you don’t have a DCA plan running.')
       for (const p of plans.slice(0, 3)) ctx.cards.push({ type: 'dca_manage', action: manage.action, plan: p })
-      return out(plans.length > 1 ? `you have ${plans.length} plans. pick the one to ${manage.action}.` : `here’s your plan. confirm to ${manage.action === 'withdraw' ? 'cancel it and withdraw the ETH left' : manage.action} it.`)
+      return out(plans.length > 1 ? `you have ${plans.length} plans. pick the one to ${manage.action}.` : `here’s your plan. confirm to ${manage.action === 'withdraw' ? 'cancel it and withdraw the eth left' : manage.action} it.`)
     }
     if (cmd.kind !== 'refuse') {
       const plan = await planCommand(uid, pt)
@@ -436,9 +436,11 @@ export async function companionChat(uid: number, text: string, history: Hist[] =
 export const faqSafe = (a: string) => !/(https?:\/\/|www\.|\b[a-z0-9-]+\.(com|xyz|io|app|net|org|gg|co|fun|link|me|ai|finance|money|site|online)\b|0x[0-9a-f]{3,}|\[[^\]]*\]\()/i.test(a)
 const IP_DAY_MSG = 'the agent has answered a lot from this network today. it opens again tomorrow. commands like “tip @name 50”, balance and pot still work.'
 const RESTING = 'the agent is resting, try again in a bit. commands like “tip @name 50”, “swap 0.01 eth to wif”, balance and pot still work.'
-/** the app is lowercase and calm: free models still like Capitals, so "Sure! I Can" becomes "sure! i can". ALLCAPS tickers,
- * mixed-case ids/addresses, @handles and anything in a link or path stay exactly as written; wifly and plus go lowercase like the app. */
-export const calm = (s: string) => s.split(/(\s+)/).map(w => /[/@]|https?:|0x/i.test(w) ? w : w.replace(/(^|[^A-Za-z0-9’'])([A-Z])(?=[a-z’']*(?:[^A-Za-z0-9’']|$))/g, (_m, a, b) => a + b.toLowerCase()).replace(/^I$|^I(?=[’'])/, 'i')).join('')
+/** the app is lowercase and calm: free models still like Capitals, so "Sure! I Can" becomes "sure! i can". 11.8.8: tickers and
+ * the app's own acronyms go lowercase too (WIF/$WIF/ETH/USD/UTC/DCA/AI/NFT → wif/$wif/eth/…). other ALLCAPS, mixed-case
+ * ids/addresses, @handles and anything in a link or path stay exactly as written; wifly and plus go lowercase like the app. */
+const CALM_CAPS = /(^|[^A-Za-z0-9])(\$?)(WIF|ETH|USD|UTC|DCA|AI|NFTs?|NFTS)(?![A-Za-z0-9])/g
+export const calm = (s: string) => s.split(/(\s+)/).map(w => /[/@]|https?:|0x/i.test(w) ? w : w.replace(/(^|[^A-Za-z0-9’'])([A-Z])(?=[a-z’']*(?:[^A-Za-z0-9’']|$))/g, (_m, a, b) => a + b.toLowerCase()).replace(/^I$|^I(?=[’'])/, 'i').replace(CALM_CAPS, (_m, a, d, t) => a + d + t.toLowerCase())).join('')
 const clip = (s: string) => calm(s.replace(/<\/?data>/g, '').trim().slice(0, 700))
 
 /** Agent chat limits, env-tunable: per user per 10 minutes and per day, and per ip per 10 minutes. */

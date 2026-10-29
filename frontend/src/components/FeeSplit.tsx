@@ -37,8 +37,8 @@ export function FeeSplit({ amount, recipientLabel = 'creator receives' }: { amou
   return (
     <div className="fee">
       <div className="fee__rows">
-        <div className="fee__row"><span>{recipientLabel}</span><span className="num strong">{f(s.receives)} WIF</span></div>
-        <div className="fee__row"><span>fee · {FEE_PERCENT_LABEL}<InfoTip label="where the fee goes">{splitLabel('fee')}. {f(s.pot)} WIF to the weekly pot, {f(s.burn)} WIF burned.</InfoTip></span><span className="num">{f(s.fee)} WIF</span></div>
+        <div className="fee__row"><span>{recipientLabel}</span><span className="num strong">{f(s.receives)} wif</span></div>
+        <div className="fee__row"><span>fee · {FEE_PERCENT_LABEL}<InfoTip label="where the fee goes">{splitLabel('fee')}. {f(s.pot)} wif to the weekly pot, {f(s.burn)} wif burned.</InfoTip></span><span className="num">{f(s.fee)} wif</span></div>
       </div>
     </div>
   )

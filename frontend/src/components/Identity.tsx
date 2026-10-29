@@ -21,7 +21,7 @@ export function useIdentity() {
   return useQuery({ queryKey: ['identity', me?.handle], queryFn: () => api<Identity>('/me/identity'), enabled: !!me && !!me.onboarded, staleTime: 30_000 })
 }
 
-const day = (t: number) => new Date(t).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+const day = (t: number) => new Date(t).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }).toLowerCase()
 const claimUrl = (n: string) => `/names?n=${encodeURIComponent(n)}&primary=1`
 
 /** Own profile / settings, free @name only. Claims name.wif and sets it primary in one multicall. */

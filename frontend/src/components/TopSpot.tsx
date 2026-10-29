@@ -62,7 +62,7 @@ export function WorldStrip() {
           <div><div className="strong">weekly community pot is open</div><div className="muted small">vote for a creator you like. the week’s pick shares the weekly community pot.</div></div>
         </Link>
         <div className="world__foot">
-          <span className="small muted">weekly community pot <b className="world__ink"><AnimatedNumber value={potNow} /></b> WIF</span>
+          <span className="small muted">weekly community pot <b className="world__ink"><AnimatedNumber value={potNow} /></b> wif</span>
           <Link to="/vote" className="chip chip--ink"><Icon name="vote" size={14} /> vote</Link>
         </div>
       </article>}
@@ -86,16 +86,16 @@ export function WorldStrip() {
           </AnimatePresence>
         </div>
         <div className="world__foot">
-          <span className="small muted">{topSpot.paid > 0 ? <>next bid <b className="world__ink"><AnimatedNumber value={topSpotMinBid(topSpot.paid)} /></b> WIF</> : 'empty right now'}</span>
+          <span className="small muted">{topSpot.paid > 0 ? <>next bid <b className="world__ink"><AnimatedNumber value={topSpotMinBid(topSpot.paid)} /></b> wif</> : 'empty right now'}</span>
           <motion.button whileTap={{ scale: 0.9 }} className="chip chip--ink" onClick={() => openSheet({ type: 'bid' })}><Icon name="pin" size={14} /> {post ? 'take it' : 'promote'}</motion.button>
         </div>
       </article>}
 
       {showBurn && <article className="world__tile world__tile--burn">
         <div className="world__head"><span className="world__k">burned forever</span>{burn.value !== undefined && <span className="world__meta"><span className="live-dot" aria-hidden="true" /> onchain</span>}</div>
-        <div className="world__big">{burn.value !== undefined ? <Odometer value={burn.value} label="WIF burned forever" /> : '…'}</div>
+        <div className="world__big">{burn.value !== undefined ? <Odometer value={burn.value} label="wif burned forever" /> : '…'}</div>
         <div className="world__foot">
-          {burnedViaWifly !== undefined && burnedViaWifly > 0 ? <span className="small muted">via wifly <b className="world__ink"><AnimatedNumber value={Math.round(burnedViaWifly)} /></b></span> : <span className="small muted">WIF sent to the burn address</span>}
+          {burnedViaWifly !== undefined && burnedViaWifly > 0 ? <span className="small muted">via wifly <b className="world__ink"><AnimatedNumber value={Math.round(burnedViaWifly)} /></b></span> : <span className="small muted">wif sent to the burn address</span>}
           <span className="small muted" title={`every fee: ${FEE_SPLIT_LABEL}`}>fees: {FEE_SPLIT.burn}% burned</span>
         </div>
       </article>}

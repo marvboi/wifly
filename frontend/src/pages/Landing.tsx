@@ -213,7 +213,7 @@ function TipStage({ post }: { post: Featured | null }) {
           <span className="lp-dropcard__text">{post.text}</span>
           <span className="lp-dropcard__stats">
             <span><Icon name="heart" size={13} /> <b className="num">{compact(post.likes)}</b> {post.likes === 1 ? 'like' : 'likes'}</span>
-            <span><Token size={13} /> <b className="num">{compact(post.tipped)}</b> WIF tipped</span>
+            <span><Token size={13} /> <b className="num">{compact(post.tipped)}</b> wif tipped</span>
           </span>
         </AppLink>
         <div className="lp-dropcard__tips" role="group" aria-label="tip amount">
@@ -233,7 +233,7 @@ function TipStage({ post }: { post: Featured | null }) {
         <span className="lp-wallet__icon"><Icon name="wallet" size={22} /></span>
         <span className="lp-wallet__label">{post ? `@${post.author.handle}'s wallet` : 'their wallet'}</span>
         <span className="lp-wallet__state" aria-live="polite">
-          {got ? <><Icon name="check" size={14} /> {TIPS[pick].toLocaleString()} WIF would land here</> : 'tips land here'}
+          {got ? <><Icon name="check" size={14} /> {TIPS[pick].toLocaleString()} wif would land here</> : 'tips land here'}
         </span>
         <div className="lp-wallet__split" aria-hidden="true"><span style={{ flex: 100 - FEE_BPS / 100 }} /><span style={{ flex: FEE_BPS / 100 }} /></div>
         <span className="lp-wallet__row"><span>they keep <b>{KEEP}</b></span><span>fee <b>{FEE}</b></span></span>
@@ -268,7 +268,7 @@ function FeeFlow() {
   )
 }
 
-const CAPTION = 'my full $WIF chart notes for the week are in this drop. levels, the world is flat thesis, what i\'m watching next. unlock once for 50 WIF and it stays yours.'
+const CAPTION = 'my full $wif chart notes for the week are in this drop. levels, the world is flat thesis, what i\'m watching next. unlock once for 50 wif and it stays yours.'
 /** Chapter 01: a composer typing a real-sounding paid drop. Author is the same live featured user; without one it reads as "you". */
 function ComposeMock({ author }: { author: Featured['author'] | null }) {
   const reduced = useReducedMotion()
@@ -293,7 +293,7 @@ function ComposeMock({ author }: { author: Featured['author'] | null }) {
       <div className="lp-compose__media"><img src="/brand/wif-asset-256.png" alt="" width={72} height={72} loading="lazy" /></div>
       <div className="lp-compose__row">
         <span className="lp-switch is-on"><i /></span><span>paid drop</span>
-        <span className="lp-compose__price"><Icon name="lock" size={13} /> <Token size={13} /> <b className="num">50</b> WIF</span>
+        <span className="lp-compose__price"><Icon name="lock" size={13} /> <Token size={13} /> <b className="num">50</b> wif</span>
         <span className="lp-compose__post">post</span>
       </div>
     </div>
@@ -333,12 +333,12 @@ function Chapter({ n, title, children, art, id }: { n: string; title: string; ch
 const TIER_EXAMPLES = [{ name: 'supporter', price: 100 }, { name: 'inner circle', price: 500 }, { name: 'front row', price: 1000 }]
 
 const BENTO: { icon: Parameters<typeof Icon>[0]['name']; title: string; body: string; cls?: string }[] = [
-  { icon: 'pot', title: 'weekly community pot', body: `vote for the creators you like, ${VOTE_PRICE} WIF a vote. each week the pot goes to the creator voted up most and to the people who voted for them.`, cls: 'lp-b--wide' },
+  { icon: 'pot', title: 'weekly community pot', body: `vote for the creators you like, ${VOTE_PRICE} wif a vote. each week the pot goes to the creator voted up most and to the people who voted for them.`, cls: 'lp-b--wide' },
   { icon: 'pin', title: 'top spot', body: `pin a drop above every feed. outbid by ${pct(TOPSPOT_MIN_RAISE)} or more and the last holder gets ${pct(TOPSPOT_HOLDER_SHARE)} of your offer.` },
   { icon: 'lock', title: 'paid drops', body: 'set a price. a drop unlocks once and stays unlocked.' },
-  { icon: 'link', title: 'pay links', body: 'one link anyone can pay in $WIF.' },
-  { icon: 'flame', title: 'burn badges', body: 'burn WIF for badges on your profile. all of it goes to the burn address.', cls: 'lp-b--badges' },
-  { icon: 'repost', title: 'get $WIF', body: 'swap into $WIF without leaving the app.' },
+  { icon: 'link', title: 'pay links', body: 'one link anyone can pay in $wif.' },
+  { icon: 'flame', title: 'burn badges', body: 'burn wif for badges on your profile. all of it goes to the burn address.', cls: 'lp-b--badges' },
+  { icon: 'repost', title: 'get $wif', body: 'swap into $wif without leaving the app.' },
   { icon: 'agent', title: 'the agent', body: AGENT_READY ? 'an agent that tips and buys on your say, within the cap you set.' : 'a free ai helper for your feed, tips and names. it never spends.', cls: 'lp-b--wide' },
 ]
 
@@ -375,13 +375,13 @@ export function Landing() {
         <section className="lp-hero">
           <div className="lp-wrap lp-hero__grid">
             <div className="lp-hero__copy">
-              <span className="lp-eyebrow"><Token size={16} /> runs on $WIF</span>
+              <span className="lp-eyebrow"><Token size={16} /> runs on $wif</span>
               <h1 className="lp-title" aria-label="post. get tipped. keep it.">
                 <span className="lp-title__l" aria-hidden="true"><span>post.</span></span>
                 <span className="lp-title__l" aria-hidden="true"><span>get <em>tipped.</em></span></span>
                 <span className="lp-title__l" aria-hidden="true"><span>keep it.</span></span>
               </h1>
-              <p className="lp-hero__lede">tips, subscriptions and paid drops in $WIF, straight to your wallet. start with a free @name.</p>
+              <p className="lp-hero__lede">tips, subscriptions and paid drops in $wif, straight to your wallet. start with a free @name.</p>
               <div className="lp-hero__ctas">
                 <AppLink to="/home" className="btn btn--dark btn--lg lp-magnet">open wifly <Icon name="chevron" size={18} /></AppLink>
                 <a href="#how" className="btn btn--ghost btn--lg">how it works</a>
@@ -419,10 +419,10 @@ export function Landing() {
               </Chapter>
 
               <Chapter id="names" n="03" title="own your .wif name." art={<NameCards />}>
-                <p>your @name is free. a .wif name is an NFT you hold: keep it, send it or sell it. the card is drawn onchain, fits any length, in white or green.</p>
+                <p>your @name is free. a .wif name is an nft you hold: keep it, send it or sell it. the card is drawn onchain, fits any length, in white or green.</p>
                 <ul className="lp-facts">
-                  <li><b className="num">{NAME_CLAIM_FEE.toLocaleString()} WIF</b> to claim</li>
-                  <li><b className="num">{NAME_SHORT_CLAIM_FEE.toLocaleString()} WIF</b> for short names</li>
+                  <li><b className="num">{NAME_CLAIM_FEE.toLocaleString()} wif</b> to claim</li>
+                  <li><b className="num">{NAME_SHORT_CLAIM_FEE.toLocaleString()} wif</b> for short names</li>
                   <li><b className="num">{SALE_FEE}</b> on sales</li>
                 </ul>
                 <a className="lp-opensea" href="https://opensea.io/collection/wif-names" target="_blank" rel="noopener noreferrer" data-testid="opensea-link">
@@ -435,12 +435,12 @@ export function Landing() {
                 <div className="lp-art lp-plusart" aria-hidden="true">
                   <div className="lp-tiers">
                     {TIER_EXAMPLES.map((t, i) => (
-                      <div key={t.name} className="lp-tier"><span className="lp-tier__n">{i + 1}</span><span className="lp-tier__name">{t.name}</span><span className="lp-tier__price"><b className="num">{t.price.toLocaleString()}</b> WIF / mo</span><Icon name="lock" size={14} /></div>
+                      <div key={t.name} className="lp-tier"><span className="lp-tier__n">{i + 1}</span><span className="lp-tier__name">{t.name}</span><span className="lp-tier__price"><b className="num">{t.price.toLocaleString()}</b> wif / mo</span><Icon name="lock" size={14} /></div>
                     ))}
                   </div>
                   <div className="lp-pluscard">
                     <span className="lp-pluscard__mark"><PlusMark size={22} /></span>
-                    <span className="lp-pluscard__price"><span className="num">{PLUS_PRICE_FALLBACK.toLocaleString()}</span> WIF / month</span>
+                    <span className="lp-pluscard__price"><span className="num">{PLUS_PRICE_FALLBACK.toLocaleString()}</span> wif / month</span>
                     <span className="lp-pluscard__soon">{AGENT_READY ? 'agent included' : 'agent chat included'}</span>
                   </div>
                 </div>
@@ -466,7 +466,7 @@ export function Landing() {
                   <span>badges burn 100%.</span>
                 </div>
                 <p className="lp-live">{burned !== undefined
-                  ? <><span className="live-dot" aria-hidden="true" /> <Odometer value={burned} label="WIF burned" /> WIF burned so far</>
+                  ? <><span className="live-dot" aria-hidden="true" /> <Odometer value={burned} label="wif burned" /> wif burned so far</>
                   : <Link to="/docs#fees">all fees <Icon name="chevron" size={14} /></Link>}</p>
               </Chapter>
             </div>
@@ -503,7 +503,7 @@ export function Landing() {
             <Reveal delay={0.1}><p className="lp-cta__lede">sign in, pick a name, post your first drop.</p></Reveal>
             <Reveal delay={0.15} className="lp-cta__btns">
               <AppLink to="/home" className="btn btn--neon btn--lg lp-magnet">open wifly <Icon name="chevron" size={18} /></AppLink>
-              <AppLink to="/swap" className="btn btn--ghost-inv btn--lg">get $WIF</AppLink>
+              <AppLink to="/swap" className="btn btn--ghost-inv btn--lg">get $wif</AppLink>
             </Reveal>
           </div>
         </section>
@@ -518,11 +518,11 @@ export function Landing() {
             </div>
             <nav className="lp-foot__cols" aria-label="footer">
               <div><span>product</span><AppLink to="/home">app</AppLink><Link to="/docs">docs</Link><a href="#fees">fees</a></div>
-              <div><span>$WIF</span><AppLink to="/swap">get $WIF</AppLink><a href={LINKS.wifX} target="_blank" rel="noreferrer">$WIF on x</a><a href={LINKS.wifSite} target="_blank" rel="noreferrer">world is flat</a></div>
+              <div><span>$wif</span><AppLink to="/swap">get $wif</AppLink><a href={LINKS.wifX} target="_blank" rel="noreferrer">$wif on x</a><a href={LINKS.wifSite} target="_blank" rel="noreferrer">world is flat</a></div>
             </nav>
           </div>
           <div className="lp-foot__bot">
-            <span className="lp-foot__runs"><Token size={14} /> runs on $WIF</span>
+            <span className="lp-foot__runs"><Token size={14} /> runs on $wif</span>
             <ThemeToggle />
           </div>
         </div>

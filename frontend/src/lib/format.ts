@@ -2,7 +2,7 @@ export function wif(n: number, opts: { decimals?: number; unit?: boolean } = {})
   const { decimals, unit = true } = opts
   const d = decimals ?? (Math.abs(n) >= 100 || Number.isInteger(n) ? 0 : 2)
   const s = n.toLocaleString('en-US', { minimumFractionDigits: d, maximumFractionDigits: d })
-  return unit ? `${s} WIF` : s
+  return unit ? `${s} wif` : s
 }
 
 export function compact(n: number) {

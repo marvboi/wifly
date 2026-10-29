@@ -23,13 +23,13 @@ test('keeper only needs payablePot, not the jar', () => {
 
 test('pot line labels both numbers', () => {
   const s = potLine({ live: true, potWif: 1500, potUsd: null, paidAtCloseWif: 900, paidAtCloseUsd: null, endsAt: ENDS })
-  assert.match(s, /^in the jar now: 1,500 WIF\. paid at week close: 900 WIF\./)
-  assert.match(s, /the week closes Mon, 02 Nov 2026/)
+  assert.match(s, /^in the jar now: 1,500 wif\. paid at week close: 900 wif\./)
+  assert.match(s, /the week closes mon, 02 nov 2026\.$/)
 })
 
 test('pot line adds usd when there is a price', () => {
   const s = potLine({ live: true, potWif: 10, potUsd: 2.5, paidAtCloseWif: 4, paidAtCloseUsd: 1, endsAt: ENDS })
-  assert.match(s, /in the jar now: 10 WIF \(about \$2\.5\)\. paid at week close: 4 WIF \(about \$1\)\./)
+  assert.match(s, /in the jar now: 10 wif \(about \$2\.5\)\. paid at week close: 4 wif \(about \$1\)\./)
 })
 
 test('pot line falls back to the note when not live', () => {

@@ -20,12 +20,12 @@ import { ThemeQuickRow } from './ThemeToggle'
 export type ToolId = 'swap' | 'tip' | 'names' | 'plus' | 'jar' | 'dca' | 'messages' | 'agent'
 type Tool = { id: ToolId; label: string; line: string; to?: string }
 export const TOOLS: Record<ToolId, Tool> = {
-  swap: { id: 'swap', label: 'swap', line: 'swap ETH for $WIF', to: '/swap' },
-  tip: { id: 'tip', label: 'tip', line: 'send $WIF to a member, a name.wif or a wallet' },
+  swap: { id: 'swap', label: 'swap', line: 'swap eth for $wif', to: '/swap' },
+  tip: { id: 'tip', label: 'tip', line: 'send $wif to a member, a name.wif or a wallet' },
   names: { id: 'names', label: 'names', line: 'claim or manage your name.wif', to: '/names' },
-  plus: { id: 'plus', label: 'plus', line: 'the plus check and more, paid in $WIF', to: '/plus' },
+  plus: { id: 'plus', label: 'plus', line: 'the plus check and more, paid in $wif', to: '/plus' },
   jar: { id: 'jar', label: 'jar', line: 'the weekly community pot', to: '/vote#pot' },
-  dca: { id: 'dca', label: 'scheduled buys', line: 'buy $WIF every day, week or month. pause any time', to: '/dca' },
+  dca: { id: 'dca', label: 'scheduled buys', line: 'buy $wif every day, week or month. pause any time', to: '/dca' },
   messages: { id: 'messages', label: 'messages', line: 'chat with people on wifly', to: '/messages' },
   agent: { id: 'agent', label: 'agent', line: 'chat with your free ai helper. it never spends', to: '/agent' },
 }
@@ -157,12 +157,12 @@ function useToolState(): Partial<Record<ToolId, string>> {
   const pot = useCommunityPot()
   const wif = useWifBalance(on && me?.address ? (me.address as Address) : undefined).value
   const s: Partial<Record<ToolId, string>> = {}
-  if (wif !== undefined) s.swap = `${fmt(wif)} WIF`
+  if (wif !== undefined) s.swap = `${fmt(wif)} wif`
   const n = names.data?.names?.length
   if (n !== undefined) s.names = n === 0 ? 'none yet' : `${n} ${n === 1 ? 'name' : 'names'}`
   const p = plus.data && !plus.data.signedOut ? plus.data.state : undefined
   if (p) s.plus = p === 'active' ? 'plus active' : p === 'grace' ? 'in grace' : p === 'expired' ? 'expired' : 'not active'
-  if (pot !== undefined) s.jar = `${fmt(pot)} WIF`
+  if (pot !== undefined) s.jar = `${fmt(pot)} wif`
   if (dca.data?.plans) { const a = dca.data.plans.filter(x => x.status === 'active').length; s.dca = a ? `${a} active` : 'none yet' }
   return s
 }

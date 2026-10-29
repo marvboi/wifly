@@ -70,7 +70,7 @@ export function ManageName() {
 
         <Field k="address" label="address" hint={`where ${label}.wif sends. empty = the wallet that holds it${d.address ? ` (${short(d.address)})` : ''}.`} f={f} setF={setF} errs={errs} placeholder="0x…" action={address ? <button className="linkbtn" onClick={() => setF({ ...f, address })}>use my wallet</button> : null} />
         <Field k="avatar" label="avatar" hint="an upload, https:// or ipfs:// link" f={f} setF={setF} errs={errs} placeholder="https://…" />
-        <Field k="x" label="X" hint="your X handle" f={f} setF={setF} errs={errs} placeholder="@handle" />
+        <Field k="x" label="x" hint="your x handle" f={f} setF={setF} errs={errs} placeholder="@handle" />
         <Field k="url" label="link" hint="https:// only" f={f} setF={setF} errs={errs} placeholder="https://…" />
         <label className="field">
           <span className="field__label">bio <span className={`tiny ${bioBytes > MAX_TEXT_BYTES ? 'error' : 'muted'}`}>{bioBytes}/{MAX_TEXT_BYTES} bytes</span></span>
@@ -126,17 +126,17 @@ export function PublicName() {
         </div>
         {r.bio && <p className="pubname__bio">{r.bio}</p>}
         <dl className="names-fee">
-          <div><dt>resolves to</dt><dd className="mono">{d.address ? short(d.address) : 'no wallet'}{d.address && <button className="linkbtn" onClick={() => navigator.clipboard?.writeText(d.address!)}>copy</button>}</dd></div>
-          <div><dt>resolved by</dt><dd>{d.source === 'chain' ? 'resolve() onchain' : 'Wifly mirror (contract not live yet)'}</dd></div>
-          {r.x && <div><dt>X</dt><dd><a href={`https://x.com/${r.x}`} target="_blank" rel="noreferrer">@{r.x}</a></dd></div>}
+          <div><dt>resolves to</dt><dd className="mono">{d.address ? short(d.address) : 'no wallet'}{d.address && <> <button className="linkbtn" onClick={() => navigator.clipboard?.writeText(d.address!)}>copy</button></>}</dd></div>
+          <div><dt>resolved by</dt><dd>{d.source === 'chain' ? 'resolve() onchain' : 'wifly mirror (contract not live yet)'}</dd></div>
+          {r.x && <div><dt>x</dt><dd><a href={`https://x.com/${r.x}`} target="_blank" rel="noreferrer">@{r.x}</a></dd></div>}
           {r.url && <div><dt>link</dt><dd><a href={r.url} target="_blank" rel="noreferrer noopener">{r.url.replace(/^https:\/\//, '')}</a></dd></div>}
-          <div><dt>held since</dt><dd>{new Date(d.since).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}{d.minted ? '' : ' · not minted yet'}</dd></div>
+          <div><dt>held since</dt><dd>{new Date(d.since).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }).toLowerCase()}{d.minted ? '' : ' · not minted yet'}</dd></div>
         </dl>
         <div className="names-row__actions">
-          {!d.mine && <button className="btn btn--dark" disabled={!d.address} onClick={() => me ? openSheet({ type: 'tip', to: `${label}.wif` }) : openSheet({ type: 'signin' })}><Icon name="tip" size={16} /> send WIF to {label}.wif</button>}
+          {!d.mine && <button className="btn btn--dark" disabled={!d.address} onClick={() => me ? openSheet({ type: 'tip', to: `${label}.wif` }) : openSheet({ type: 'signin' })}><Icon name="tip" size={16} /> send wif to {label}.wif</button>}
           {d.mine && <Link className="btn btn--dark" to={`/names/${label}/manage`}>manage records</Link>}
         </div>
-        {!d.address && <p className="tiny muted">this name resolves to no wallet yet, so it can’t receive WIF.</p>}
+        {!d.address && <p className="tiny muted">this name resolves to no wallet yet, so it can’t receive wif.</p>}
       </section>
       {d.listing && <BuyCard name={label} price={d.listing.price} mine={d.mine} onManage={() => setSelling(true)} />}
       <AnimatePresence>{selling && <ListNameSheet name={label} onClose={() => setSelling(false)} />}</AnimatePresence>

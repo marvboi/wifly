@@ -66,14 +66,13 @@ export function parseDca(raw: string): DcaDraft | null {
     if (tm[3] === 'am' && hour === 12) hour = 0
     if (minute > 59) return null
   } else if (/\bnight\b/.test(t)) hour = 21
-  const amount = perBuy.usd !== undefined ? `$${perBuy.usd}` : `${perBuy.eth} ETH`
+  const amount = perBuy.usd !== undefined ? `$${perBuy.usd}` : `${perBuy.eth} eth`
   const when = every === 'hour' ? 'every hour' : every === 'day' ? `every day at ${hh(hour, minute)}`
-    : every === 'month' ? `every month at ${hh(hour, minute)}` : `every ${weekday !== null ? cap(DAYS[weekday]) : 'week'} at ${hh(hour, minute)}`
+    : every === 'month' ? `every month at ${hh(hour, minute)}` : `every ${weekday !== null ? DAYS[weekday] : 'week'} at ${hh(hour, minute)}`
   if (!((perBuy.usd ?? perBuy.eth ?? 0) > 0)) return null
-  return { perBuy, every, weekday, hour, minute, summary: `buy ${amount} of WIF ${when}` }
+  return { perBuy, every, weekday, hour, minute, summary: `buy ${amount} of wif ${when}` }
 }
 const hh = (h: number, m: number) => `${((h + 11) % 12) + 1}${m ? `:${String(m).padStart(2, '0')}` : ''}${h < 12 ? 'am' : 'pm'}`
-const cap = (s: string) => s[0].toUpperCase() + s.slice(1)
 
 export function nextBuyAt(firstAt: number, intervalS: number, at = now()) {
   if (at <= firstAt) return firstAt
@@ -203,7 +202,7 @@ export function registerDca(app: Hono<Env>) {
     await rateLimit(`dp:${uid}`, 60, 60_000)
     const { text } = await c.req.json<{ text?: string }>().catch(() => ({ text: '' }))
     const d = parseDca(String(text ?? '').slice(0, 200))
-    return c.json(d ? { ok: true, draft: d } : { ok: false, reason: 'try “buy $5 of WIF every monday at 9am”' })
+    return c.json(d ? { ok: true, draft: d } : { ok: false, reason: 'try “buy $5 of wif every monday at 9am”' })
   })
 
   /** Live: index the plan from the mined createPlan receipt (owner must be one of the user's wallets). Preview: save the plan. */
@@ -225,7 +224,7 @@ export function registerDca(app: Hono<Env>) {
     }
     const dep = Number(b.depositEth), per = Number(b.perBuyEth), iv = Math.round(Number(b.intervalS)), first = Math.round(Number(b.firstAt))
     const slip = Math.round(Number(b.slippageBps ?? 100)), maxBuys = Math.max(0, Math.round(Number(b.maxBuys ?? 0)))
-    if (!(dep > 0) || dep > 1000) fail(400, 'deposit between 0 and 1,000 ETH')
+    if (!(dep > 0) || dep > 1000) fail(400, 'deposit between 0 and 1,000 eth')
     if (!(per > 0) || per > dep) fail(400, 'the amount per buy has to fit in the deposit')
     if (!(iv >= MIN_INTERVAL) || iv > 366 * 86400) fail(400, 'buy at most once an hour')
     if (!(first > now() - 60_000) || first > now() + 366 * 86400_000) fail(400, 'pick a first buy time in the next year')
@@ -252,7 +251,7 @@ export function registerDca(app: Hono<Env>) {
     const b = await c.req.json<ActionBody>().catch(() => ({} as ActionBody))
     const live = !!row!.chain_plan_id
     if (live && !HASH.test(b.txHash ?? '')) fail(400, `send ${action} from your wallet first`)
-    if (action === 'resume' && row!.pause_reason === 'plus_expired' && !(await plusAccess(uid, true)).ok) fail(403, 'scheduled buys need wifly plus. renew plus to resume, or withdraw your ETH any time.')
+    if (action === 'resume' && row!.pause_reason === 'plus_expired' && !(await plusAccess(uid, true)).ok) fail(403, 'scheduled buys need wifly plus. renew plus to resume, or withdraw your eth any time.')
     if (live) {
       if (action === 'resume' || action === 'cancel') await run('UPDATE dca_plans SET pause_reason = NULL, updated_at = ? WHERE id = ?', [now(), id])
     } else {
@@ -262,8 +261,8 @@ export function registerDca(app: Hono<Env>) {
       if (action === 'pause') await set(`status = 'paused', pause_reason = 'user'`, [])
       if (action === 'resume') await set(`status = 'active', pause_reason = NULL`, [])
       if (action === 'cancel') await set(`status = 'cancelled', deposit_eth = spent_eth`, [])
-      if (action === 'topup') { const a = Number(b.amountEth); if (!(a > 0) || a > 1000) fail(400, 'top up between 0 and 1,000 ETH'); await set('deposit_eth = deposit_eth + ?', [a]) }
-      if (action === 'withdraw') { const a = b.amountEth === undefined ? left : Number(b.amountEth); if (!(a > 0) || a > left + 1e-12) fail(400, `you can withdraw up to ${left} ETH`); await set('deposit_eth = deposit_eth - ?', [a]) }
+      if (action === 'topup') { const a = Number(b.amountEth); if (!(a > 0) || a > 1000) fail(400, 'top up between 0 and 1,000 eth'); await set('deposit_eth = deposit_eth + ?', [a]) }
+      if (action === 'withdraw') { const a = b.amountEth === undefined ? left : Number(b.amountEth); if (!(a > 0) || a > left + 1e-12) fail(400, `you can withdraw up to ${left} eth`); await set('deposit_eth = deposit_eth - ?', [a]) }
       if (action === 'edit') {
         const per = Number(b.perBuyEth ?? row!.per_buy_eth), iv = Math.round(Number(b.intervalS ?? row!.interval_s)), slip = Math.round(Number(b.slippageBps ?? row!.slippage_bps))
         if (!(per > 0)) fail(400, 'enter an amount per buy')
@@ -338,7 +337,7 @@ export async function runDcaKeeperOnce(chain: DcaChain, ownerPlus: OwnerPlus = a
       if (plus.state !== 'unknown') {
         await run(`UPDATE dca_plans SET pause_reason = 'plus_expired', updated_at = ? WHERE chain_plan_id = ? AND (pause_reason IS NULL OR pause_reason != 'plus_expired')`, [at, id.toString()])
         out.push({ planId: id.toString(), action: 'plus_expired', detail: 'paused, plus expired' })
-      } else out.push({ planId: id.toString(), action: 'skipped', detail: 'couldn’t read Plus onchain' })
+      } else out.push({ planId: id.toString(), action: 'skipped', detail: 'couldn’t read plus onchain' })
       continue
     }
     await run(`UPDATE dca_plans SET pause_reason = NULL, updated_at = ? WHERE chain_plan_id = ? AND pause_reason = 'plus_expired'`, [at, id.toString()])
@@ -358,7 +357,7 @@ export async function runDcaKeeperOnce(chain: DcaChain, ownerPlus: OwnerPlus = a
   const need = GAS_PER_BUY * gp * BigInt(ready.length)
   const low = bal < need * 2n
   lastKeeper = { at, balanceEth: e(bal), neededEth: e(need), low, address: keeperAddress }
-  if (low) console.warn(`[dca-keeper] LOW BALANCE: keeper has ${formatEther(bal)} ETH, this pass needs about ${formatEther(need)} ETH (${ready.length} buys x ~300k gas). top up the keeper wallet.`)
+  if (low) console.warn(`[dca-keeper] LOW BALANCE: keeper has ${formatEther(bal)} eth, this pass needs about ${formatEther(need)} eth (${ready.length} buys x ~300k gas). top up the keeper wallet.`)
   if (bal < GAS_PER_BUY * gp) { for (const r of ready) out.push({ planId: r.id.toString(), action: 'low_balance', detail: 'keeper is out of gas' }); return log(out, at) }
   for (let i = 0; i < ready.length; i += BATCH) {
     const chunk = ready.slice(i, i + BATCH)

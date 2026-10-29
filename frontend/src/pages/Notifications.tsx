@@ -60,7 +60,7 @@ function Row({ n }: { n: Notif }) {
           {showText && <p className="notif__reply">{drop.text}</p>}
         </div>
         {(n.kind === 'name_offer' || n.kind === 'name_offer_accepted') && typeof n.meta.price === 'number' && <span className="notif__amt">@{String(n.meta.name)} · <Amount value={n.meta.price} size={14} /></span>}
-        {n.kind === 'handle_bump' && <span className="notif__amt small">@{String(n.meta.handle)} moves to them {typeof n.meta.renameBy === 'number' ? new Date(n.meta.renameBy).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : 'soon'}. your posts, followers and badges stay. pick a new @name</span>}
+        {n.kind === 'handle_bump' && <span className="notif__amt small">@{String(n.meta.handle)} moves to them {typeof n.meta.renameBy === 'number' ? new Date(n.meta.renameBy).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }).toLowerCase() : 'soon'}. your posts, followers and badges stay. pick a new @name</span>}
         {n.kind === 'tip' && typeof n.meta.amount === 'number' && <span className="notif__amt">+<Amount value={n.meta.amount} size={14} /></span>}
       </Link>
     </li>
@@ -99,7 +99,7 @@ export function Notifications() {
     <>
       <PageHead title="notifications" />
       <div className="tabs" role="tablist">
-        {([['all', 'all'], ['mentions', 'replies & mentions'], ['wif', 'WIF in']] as [Filter, string][]).map(([id, label]) => (
+        {([['all', 'all'], ['mentions', 'replies & mentions'], ['wif', 'wif in']] as [Filter, string][]).map(([id, label]) => (
           <button key={id} role="tab" aria-selected={filter === id} className={`tab ${filter === id ? 'is-on' : ''}`} onClick={() => setFilter(id)}>{label}</button>
         ))}
       </div>

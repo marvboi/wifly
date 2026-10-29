@@ -19,9 +19,9 @@ import { HEAD_D, INK, NEON, bodyTransform, eyeBox, mouthD, restState } from '../
 export function Wordmark({ to = '/', size = 'md', tone = 'ink' }: { to?: string; size?: 'sm' | 'md' | 'lg'; tone?: 'ink' | 'paper' }) {
   const h = { sm: 24, md: 28, lg: 40 }[size]
   return (
-    <Link to={to} className={`wordmark wordmark--${size} wordmark--${tone}`} aria-label={`${APP_NAME} home`} data-logo-slot>
+    <Link to={to} className={`wordmark wordmark--${size} wordmark--${tone}`} aria-label={`${APP_NAME.toLowerCase()} home`} data-logo-slot>
       {WORDMARK_SRC
-        ? <img src={WORDMARK_SRC} alt={APP_NAME} height={h} width={Math.round(h * WORDMARK_RATIO)} />
+        ? <img src={WORDMARK_SRC} alt={APP_NAME.toLowerCase()} height={h} width={Math.round(h * WORDMARK_RATIO)} />
         : <span className="wordmark__name">{APP_NAME.toLowerCase()}</span>}
     </Link>
   )
@@ -29,7 +29,7 @@ export function Wordmark({ to = '/', size = 'md', tone = 'ink' }: { to?: string;
 
 /** The World is Flat / World is Fair grid mark, the site's own favicon file (not redrawn). */
 export function WifGridMark({ size = 24 }: { size?: number }) {
-  return <img className="gridmark" src="/brand/wif-grid-mark-192.png" width={size} height={size} alt="World is Flat" />
+  return <img className="gridmark" src="/brand/wif-grid-mark-192.png" width={size} height={size} alt="world is flat" />
 }
 
 /** A contract address with copy and explorer buttons. */
@@ -43,7 +43,7 @@ export function CopyAddress({ address, label, full = false }: { address: string;
     <div className="addr">
       {label && <span className="addr__label">{label}</span>}
       <code className="addr__value mono" title={address}>{full ? address : shortAddr(address)}</code>
-      <button className="addr__btn" onClick={copy} aria-label={`Copy ${label ?? 'address'}`}>
+      <button className="addr__btn" onClick={copy} aria-label={`copy ${label ?? 'address'}`}>
         <Icon name={copied ? 'check' : 'copy'} size={16} /><span>{copied ? 'copied' : 'copy'}</span>
       </button>
       <a className="addr__btn" href={explorerAddress(address)} target="_blank" rel="noreferrer" aria-label="open in explorer">
@@ -70,7 +70,7 @@ export function Amount({ value, size = 14, decimals, usd = true, align }: { valu
       <span className="amount">
         <Token size={size} />
         <span className="num">{value.toLocaleString('en-US', { minimumFractionDigits: d, maximumFractionDigits: d })}</span>
-        <span className="amount__unit">WIF</span>
+        <span className="amount__unit">wif</span>
       </span>
       {usd && <WifUsd wif={value} />}
     </span>

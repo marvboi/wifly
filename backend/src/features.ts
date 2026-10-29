@@ -37,7 +37,7 @@ export const RESERVED = new Set([
 ])
 const TX_RE = /^0x[0-9a-f]{64}$/i
 const isTx = (s: unknown): s is string => typeof s === 'string' && TX_RE.test(s)
-const money = (v: unknown, max = 1e9) => { const n = Number(v); if (!Number.isFinite(n) || n <= 0 || n > max) fail(400, 'enter a price in WIF'); return Math.round(n * 100) / 100 }
+const money = (v: unknown, max = 1e9) => { const n = Number(v); if (!Number.isFinite(n) || n <= 0 || n > max) fail(400, 'enter a price in wif'); return Math.round(n * 100) / 100 }
 const parse = (s: string | null | undefined) => { try { return JSON.parse(s || '{}') } catch { return {} } }
 
 /** WiflyNames token id for a name: uint256(keccak256(lowercase name)). */
@@ -763,7 +763,7 @@ export function registerFeatures(app: Hono<Env>, h: Helpers) {
     if (v.state === 'none') fail(409, 'get plus first, then turn on auto-renew')
     const plan: PlusPlan = b.plan === 'year' ? 'year' : b.plan === 'month' ? 'month' : v.plan
     const agreed = money(b.agreedPrice, 1e8)
-    if (agreed < plans[plan].price) fail(400, `the ${plan === 'year' ? 'yearly' : 'monthly'} price is ${plans[plan].price.toLocaleString('en-US')} WIF. agree to at least that`)
+    if (agreed < plans[plan].price) fail(400, `the ${plan === 'year' ? 'yearly' : 'monthly'} price is ${plans[plan].price.toLocaleString('en-US')} wif. agree to at least that`)
     await run(`INSERT INTO plus_subs (user_id, plan, auto_renew, agreed_price, updated_at) VALUES (?, ?, 1, ?, ?)
       ON CONFLICT(user_id) DO UPDATE SET plan = excluded.plan, auto_renew = 1, agreed_price = excluded.agreed_price, updated_at = excluded.updated_at`, [uid, plan, agreed, now()])
     return c.json(await plusView(uid))
@@ -772,7 +772,7 @@ export function registerFeatures(app: Hono<Env>, h: Helpers) {
   app.post('/api/plus/payments', async c => {
     const uid = needUser(c)
     const b = await c.req.json<{ plan?: PlusPlan; txHash?: string; kind?: 'buy' | 'renew' }>()
-    if (!wiflyContract()) fail(503, 'the Wifly contract isn’t live yet, so nothing was paid')
+    if (!wiflyContract()) fail(503, 'the wifly contract isn’t live yet, so nothing was paid')
     if (!isTx(b.txHash)) fail(400, 'send the payment onchain first, then share its tx hash')
     const plan: PlusPlan = b.plan === 'year' ? 'year' : 'month'
     const hash = b.txHash!.toLowerCase()

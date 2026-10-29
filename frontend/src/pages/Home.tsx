@@ -48,7 +48,7 @@ export function Home() {
       <div className="home-grid">
         <div className="column">
           <header className="home-head">
-            <h1 className="home-head__title">post anything. get tipped in $WIF.</h1>
+            <h1 className="home-head__title">post anything. get tipped in $wif.</h1>
           </header>
           <div className="home-compose home-compose--first"><Composer compact /></div>
           <ShortcutRow />
@@ -70,7 +70,7 @@ export function Home() {
           {tab === 'crowd' && (
             <div className="crowd-note">
               <Icon name="vote" size={18} />
-              <p><b>the crowd decides what rises, not an algorithm.</b> every vote costs WIF: {FEE_SPLIT.pot}% to the weekly community pot, {FEE_SPLIT.burn}% burned.</p>
+              <p><b>the crowd decides what rises, not an algorithm.</b> every vote costs wif: {FEE_SPLIT.pot}% to the weekly community pot, {FEE_SPLIT.burn}% burned.</p>
             </div>
           )}
 

@@ -34,7 +34,7 @@ const INK = '#110E08';
 const NEON = '#CCFF00';
 
 export function TipJar({
-  size = 240, animate = false, count = 0, showCounter, unit = '$WIF', assetBase = '/brand',
+  size = 240, animate = false, count = 0, showCounter, unit = '$wif', assetBase = '/brand',
   onTick, title = 'tip jar', className, style,
 }: TipJarProps) {
   const uid = useId().replace(/[^a-zA-Z0-9_-]/g, '');

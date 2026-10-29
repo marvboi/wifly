@@ -26,7 +26,7 @@ type Section = { id: string; title: string; body: ReactNode }
 
 /** Contract rows: $WIF and the public treasury and burn addresses always; the wifly contracts only once their address is set. */
 const contracts: Array<{ label: string; address?: string }> = [
-  { label: '$WIF token', address: WIF_TOKEN },
+  { label: '$wif token', address: WIF_TOKEN },
   { label: 'wifly', address: WIFLY_ADDRESS },
   { label: '.wif names', address: NAMES_ADDRESS },
   { label: 'burn badges', address: BADGES_ADDRESS },
@@ -52,7 +52,7 @@ const sections: Section[] = [
   {
     id: 'what', title: 'what is wifly',
     body: <>
-      <p>wifly is a social app where people pay creators directly in $WIF. post drops, get tipped, run subscriptions and sell paid drops.</p>
+      <p>wifly is a social app where people pay creators directly in $wif. post drops, get tipped, run subscriptions and sell paid drops.</p>
       <p>payments go straight to the creator’s wallet, minus a small fee. you sign every payment in your own wallet.</p>
       <p>wifly also has a free assistant that answers questions about the app and helps you find your way around.</p>
     </>,
@@ -61,10 +61,10 @@ const sections: Section[] = [
     id: 'start', title: 'getting started',
     body: <>
       <ol className="dx-steps">
-        <li>open <AppLink to="/home">app.wifly.fun</AppLink> and sign in with X, email or a wallet.</li>
+        <li>open <AppLink to="/home">app.wifly.fun</AppLink> and sign in with x, email or a wallet.</li>
         <li>pick your @name. it’s free and it’s yours.</li>
         <li>add a photo and follow a few people. both are optional.</li>
-        <li>to send tips or pay for things, hold some $WIF and a little ETH for network fees. see <a href="#wif">get $WIF</a>.</li>
+        <li>to send tips or pay for things, hold some $wif and a little eth for network fees. see <a href="#wif">get $wif</a>.</li>
       </ol>
     </>,
   },
@@ -72,12 +72,12 @@ const sections: Section[] = [
     id: 'names', title: '@names and .wif names',
     body: <>
       <p><b>@name</b> is your free username. you get one when you sign up.</p>
-      <p><b>.wif name</b> is an optional name like <code>you.wif</code>. it’s a transferable NFT that lives in your wallet: it points to whichever wallet holds it, and you can keep it, send it or sell it.</p>
+      <p><b>.wif name</b> is an optional name like <code>you.wif</code>. it’s a transferable nft that lives in your wallet: it points to whichever wallet holds it, and you can keep it, send it or sell it.</p>
       <ul className="dx-list">
         <li>{NAME_MIN}–{NAME_MAX} characters: a–z, 0–9 and _.</li>
-        <li>{n(NAME_CLAIM_FEE)} WIF to claim, or {n(NAME_SHORT_CLAIM_FEE)} WIF for short names of {NAME_MIN}–{NAME_SHORT_LEN} characters. the claim fee goes {CLAIM_SPLIT.treasury}% to the treasury and {CLAIM_SPLIT.pot}% to the weekly community pot.</li>
+        <li>{n(NAME_CLAIM_FEE)} wif to claim, or {n(NAME_SHORT_CLAIM_FEE)} wif for short names of {NAME_MIN}–{NAME_SHORT_LEN} characters. the claim fee goes {CLAIM_SPLIT.treasury}% to the treasury and {CLAIM_SPLIT.pot}% to the weekly community pot.</li>
         <li>sales carry a {SALE_FEE} fee: {SPLIT}.</li>
-        <li>when a name is sold or sent, its records reset: address, avatar, X, link and bio are cleared for the new owner.</li>
+        <li>when a name is sold or sent, its records reset: address, avatar, x, link and bio are cleared for the new owner.</li>
       </ul>
     </>,
   },
@@ -91,7 +91,7 @@ const sections: Section[] = [
   {
     id: 'subs', title: 'subscriptions',
     body: <>
-      <p>creators set up to three tiers, each with its own monthly price in WIF and the perks they choose. a subscription runs 30 days at a time.</p>
+      <p>creators set up to three tiers, each with its own monthly price in wif and the perks they choose. a subscription runs 30 days at a time.</p>
       <p>subscribers pay the creator directly, minus the {FEE} fee.</p>
     </>,
   },
@@ -105,20 +105,20 @@ const sections: Section[] = [
   {
     id: 'plus', title: 'wifly plus',
     body: <>
-      <p><b>{n(PLUS_PRICE_FALLBACK)} WIF a month</b> or <b>{n(PLUS_PRICE_YEAR_FALLBACK)} WIF a year</b>.</p>
+      <p><b>{n(PLUS_PRICE_FALLBACK)} wif a month</b> or <b>{n(PLUS_PRICE_YEAR_FALLBACK)} wif a year</b>.</p>
       <ul className="dx-list">
         <li>the plus check next to your name.</li>
         <li>unlimited questions to the free assistant. without plus you get {FREE_AI_MSGS_PER_DAY_FALLBACK} a day.</li>
         {AGENT_READY
           ? <>
               <li>rent an ai agent that tips and buys for you. nothing happens until you confirm.</li>
-              <li>a higher daily cap for your agent: up to {n(AGENT_CAP_PLUS)} WIF instead of {n(AGENT_CAP_FREE)}. you still set it.</li>
+              <li>a higher daily cap for your agent: up to {n(AGENT_CAP_PLUS)} wif instead of {n(AGENT_CAP_FREE)}. you still set it.</li>
             </>
           : <>
               <li>unlimited chat with the wifly agent, a free ai helper that never spends.</li>
               <li>rent an ai agent that tips and buys for you, with a higher daily cap. <span className="dx-soon">coming soon</span></li>
             </>}
-        <li>scheduled WIF buys, like a set amount every friday.</li>
+        <li>scheduled wif buys, like a set amount every friday.</li>
       </ul>
     </>,
   },
@@ -130,19 +130,19 @@ const sections: Section[] = [
     </>,
   },
   {
-    id: 'wif', title: 'get $WIF',
+    id: 'wif', title: 'get $wif',
     body: <>
-      <p>swap ETH for WIF on the <AppLink to="/swap">swap page</AppLink>. the quote is live and already includes the pool’s {POOL_FEE} fee.</p>
-      <p>you can also trade on <a href={LINKS.buy} target="_blank" rel="noreferrer">pons</a>. keep a little ETH for network fees.</p>
+      <p>swap eth for wif on the <AppLink to="/swap">swap page</AppLink>. the quote is live and already includes the pool’s {POOL_FEE} fee.</p>
+      <p>you can also trade on <a href={LINKS.buy} target="_blank" rel="noreferrer">pons</a>. keep a little eth for network fees.</p>
     </>,
   },
   {
     id: 'burn', title: 'burn badges',
     body: <>
-      <p>burn WIF to earn badges that stay on your profile. every coin you burn goes to the burn address, all of it. there’s no fee.</p>
+      <p>burn wif to earn badges that stay on your profile. every coin you burn goes to the burn address, all of it. there’s no fee.</p>
       <ul className="dx-badges">
         {BADGE_LEVELS.map(b => (
-          <li key={b.id}><img src={`/badges/${b.id}.svg`} alt="" width={36} height={36} loading="lazy" /><span>{b.name}</span><span className="num">{n(b.min)} WIF</span></li>
+          <li key={b.id}><img src={`/badges/${b.id}.svg`} alt="" width={36} height={36} loading="lazy" /><span>{b.name}</span><span className="num">{n(b.min)} wif</span></li>
         ))}
       </ul>
       <p className="dx-note">badges count your total burned and can’t be moved.</p>
@@ -157,13 +157,13 @@ const sections: Section[] = [
           ['subscriptions', FEE],
           ['paid drops', FEE],
           ['pay links', FEE],
-          ['.wif name claim', `${n(NAME_CLAIM_FEE)} WIF (${n(NAME_SHORT_CLAIM_FEE)} for ${NAME_MIN}–${NAME_SHORT_LEN} characters), split ${CLAIM}`],
+          ['.wif name claim', `${n(NAME_CLAIM_FEE)} wif (${n(NAME_SHORT_CLAIM_FEE)} for ${NAME_MIN}–${NAME_SHORT_LEN} characters), split ${CLAIM}`],
           ['.wif name sales', SALE_FEE],
           ['top spot', `${pct(TOPSPOT_FEE_SHARE)} of each new offer`],
-          ['crowd votes', `${VOTE_PRICE} WIF per vote, all of it a fee`],
-          ['wifly plus', `${n(PLUS_PRICE_FALLBACK)} WIF / month, ${n(PLUS_PRICE_YEAR_FALLBACK)} WIF / year, ${FEE} of it the fee`],
+          ['crowd votes', `${VOTE_PRICE} wif per vote, all of it a fee`],
+          ['wifly plus', `${n(PLUS_PRICE_FALLBACK)} wif / month, ${n(PLUS_PRICE_YEAR_FALLBACK)} wif / year, ${FEE} of it the fee`],
           ['burn badges', 'no fee, 100% burned'],
-          ['scheduled WIF buys', 'no wifly fee'],
+          ['scheduled wif buys', 'no wifly fee'],
           ['swap', `${POOL_FEE} pool fee, included in the quote`],
         ].map(([k, v]) => <div role="row" key={k}><span role="cell">{k}</span><span role="cell">{v}</span></div>)}
       </div>

@@ -115,7 +115,7 @@ function NamesTab({ handle, mine }: { handle: string; mine: boolean }) {
           <Link to={`/n/${n.name}`} className="pro-names__row">
             <img className="pro-names__art" src={nameArtUrl(n.name, n.theme)} alt="" loading="lazy" width={56} height={56} />
             <span className="pro-names__txt"><b>{n.name}<span className="wifsfx">.wif</span></b>
-              <span className="muted tiny">{n.current ? 'current name' : n.listing ? `for sale · ${n.listing.price} WIF` : 'held'}</span></span>
+              <span className="muted tiny">{n.current ? 'current name' : n.listing ? `for sale · ${n.listing.price} wif` : 'held'}</span></span>
             <Icon name="chevron" size={16} />
           </Link>
         </li>
@@ -241,7 +241,7 @@ function ProfileOf({ handle }: { handle: string }) {
           <div className="sub-cta">
             <div>
               <div className="strong">{subTier ? `you’re a ${subTier.name.toLowerCase()}` : `support ${u.name.split(' ')[0]}`}</div>
-              <div className="muted small">{subTier ? 'renews monthly. your agent can handle it.' : `from ${u.tiers[0].price} WIF a month. supporter posts, a badge and the supporter chat.`}</div>
+              <div className="muted small">{subTier ? 'renews monthly. your agent can handle it.' : `from ${u.tiers[0].price} wif a month. supporter posts, a badge and the supporter chat.`}</div>
             </div>
             <button className="btn btn--dark" onClick={() => openSheet({ type: 'subscribe', handle: u.handle })}>{subTier ? 'manage' : 'subscribe'}</button>
           </div>

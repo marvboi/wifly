@@ -5,11 +5,12 @@ import { useAnyAccount } from '../auth/privyBridge'
  * pendingVoterReward(epoch, voter). Claim sends claimVoterReward(epoch) per closed week, credited to the Wifly balance.
  * Weeks are closed by anyone calling finalizeEpoch(epoch, leader); our backend keeper does it when WEEK_KEEPER_ENABLED=true.
  */
+import { PayingFrom } from './Payer'
 import { InfoTip } from './InfoTip'
 import { useEffect, useState } from 'react'
 import { AnimatePresence, motion } from 'motion/react'
 import { LIVE, TX_ENABLED } from '../config'
-import { failTitle, plans, useClaimableRewards, useEpochState, useSendPlan } from '../lib/wifly'
+import { failArgs, plans, useClaimableRewards, useEpochState, useSendPlan } from '../lib/wifly'
 import { useStore } from '../state/store'
 import { Amount } from './Bits'
 import { Icon } from './Icon'
@@ -20,7 +21,7 @@ import { useSession } from '../api/session'
 const WEEK = 604_800
 const nowS = () => Math.floor(Date.now() / 1000)
 const weekEnd = (epoch: bigint) => new Date(Number(epoch + 1n) * WEEK * 1000)
-const weekLabel = (epoch: bigint) => `week ending ${weekEnd(epoch).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`
+const weekLabel = (epoch: bigint) => `week ending ${weekEnd(epoch).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }).toLowerCase()}`
 
 function useCountdown(endsAt: number) {
   const [t, setT] = useState(nowS())
@@ -78,11 +79,11 @@ export function ClaimRewards() {
     for (const [i, it] of items.entries()) {
       setBusy(`claiming ${weekLabel(it.epoch)} (${i + 1}/${items.length})…`)
       const r = await send(plans.claimVoterReward(it.epoch))
-      if (!r.sent) { toast(failTitle(r), r.reason); break }
+      if (!r.sent) { toast(...failArgs(r)); break }
       got += it.amount
     }
     setBusy(null); setConfirm(false)
-    if (got > 0) toast(`${got.toLocaleString('en-US', { maximumFractionDigits: 2 })} WIF added to your balance`, 'it’s in your wifly balance. withdraw any time from your wallet page')
+    if (got > 0) toast(`${got.toLocaleString('en-US', { maximumFractionDigits: 2 })} wif added to your balance`, 'it’s in your wifly balance. withdraw any time from your wallet page')
     live.refetch()
   }
 
@@ -100,7 +101,7 @@ export function ClaimRewards() {
   return (
     <section className="claimbox card" aria-label="your weekly rewards">
       <div className="claimbox__head">
-        <div><span className="eyebrow">your rewards</span><div className="claimbox__total">{items.length ? <Amount value={total} size={20} /> : <span className="muted">0 WIF</span>}</div></div>
+        <div><span className="eyebrow">your rewards</span><div className="claimbox__total">{items.length ? <Amount value={total} size={20} /> : <span className="muted">0 wif</span>}</div></div>
         <motion.button whileTap={{ scale: 0.96 }} className="btn btn--dark" disabled={!items.length || !!busy} onClick={() => setConfirm(true)}>
           <Icon name="trophy" size={16} /> {items.length ? 'claim' : 'nothing to claim'}
         </motion.button>
@@ -109,7 +110,7 @@ export function ClaimRewards() {
       <AnimatePresence>
         {confirm && items.length > 0 && (
           <motion.div className="claimbox__confirm" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 8 }} role="dialog" aria-label="confirm claim">
-            <div className="strong">claim {total.toLocaleString('en-US', { maximumFractionDigits: 2 })} WIF</div>
+            <div className="strong">claim {total.toLocaleString('en-US', { maximumFractionDigits: 2 })} wif</div>
             <dl className="names-fee">
               <div><dt>weeks</dt><dd>{items.length}</dd></div>
               <div><dt>goes to</dt><dd>your wifly balance</dd></div>
@@ -117,6 +118,7 @@ export function ClaimRewards() {
             </dl>
             <p className="tiny muted">{items.length > 1 ? `${items.length} quick confirmations, one per week.` : 'one confirmation.'} you can withdraw your balance any time.</p>
             {!TX_ENABLED && <p className="tiny muted"><Icon name="shield" size={12} /> claiming opens when payments go live.</p>}
+            <PayingFrom />
             <div className="row-gap">
               <button className="btn btn--ghost btn--sm" onClick={() => setConfirm(false)} disabled={!!busy}>not now</button>
               <button className="btn btn--dark btn--sm" onClick={claim} disabled={!TX_ENABLED || !!busy}>{busy ?? 'confirm claim'}</button>

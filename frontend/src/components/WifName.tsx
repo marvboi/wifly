@@ -71,7 +71,7 @@ export function NameCard({ label, state = 'idle', fee, owner, size = 'md', theme
       </div>
       <div className="namecard__foot">
         <span className="namecard__state">{state === 'yours' ? 'yours' : state === 'available' ? 'available' : state === 'taken' ? 'taken by another wallet' : state === 'reserved' ? 'reserved' : 'type a name'}</span>
-        {fee !== undefined && state !== 'yours' && <span className="num">{fee.toLocaleString('en-US')} WIF claim fee</span>}
+        {fee !== undefined && state !== 'yours' && <span className="num">{fee.toLocaleString('en-US')} wif claim fee</span>}
         {owner && state === 'yours' && !/^0x0{4}/.test(owner) && <span className="mono">{owner}</span>}
       </div>
     </div>

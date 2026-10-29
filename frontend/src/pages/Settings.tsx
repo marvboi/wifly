@@ -146,7 +146,7 @@ export function Settings() {
             </div>
             <div className="set__danger" data-testid="settings-delete">
               <button className="set__del" onClick={() => setDel(true)}>delete my account</button>
-              <p className="tiny muted">your .wif names and WIF stay in your wallet.</p>
+              <p className="tiny muted">your .wif names and wif stay in your wallet.</p>
             </div>
           </div>
         </section>

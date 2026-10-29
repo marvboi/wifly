@@ -41,7 +41,7 @@ export function ListNameSheet({ name, onClose }: { name: string; onClose: () => 
   const { run, busy } = useNameTx()
   const same = current !== null && p === current
   const list = async () => {
-    if (await run(`list:${name}`, plans.nameList(name, p), () => api(`/names/${name}/list`, { method: 'POST', json: { price: p } }), current ? `${name}.wif now ${fmt(p)} WIF` : `${name}.wif listed for ${fmt(p)} WIF`)) onClose()
+    if (await run(`list:${name}`, plans.nameList(name, p), () => api(`/names/${name}/list`, { method: 'POST', json: { price: p } }), current ? `${name}.wif now ${fmt(p)} wif` : `${name}.wif listed for ${fmt(p)} wif`)) onClose()
   }
   const cancel = async () => {
     if (await run(`del:${name}`, plans.nameCancel(name), () => api(`/names/${name}/list`, { method: 'DELETE' }), `${name}.wif is off the market`)) onClose()
@@ -58,14 +58,14 @@ export function ListNameSheet({ name, onClose }: { name: string; onClose: () => 
         <label className="field">
           <span className="field__label">price</span>
           <span className="field__input field__input--lg">
-            <input inputMode="decimal" autoFocus placeholder="0" value={value} aria-label={`price for ${name}.wif in WIF`} onChange={e => setRaw(e.target.value.replace(/[^0-9.]/g, ''))} />
-            <span className="field__suffix">WIF</span>
+            <input inputMode="decimal" autoFocus placeholder="0" value={value} aria-label={`price for ${name}.wif in wif`} onChange={e => setRaw(e.target.value.replace(/[^0-9.]/g, ''))} />
+            <span className="field__suffix">wif</span>
           </span>
         </label>
         <dl className="listsheet__sum">
           <div><dt>usd</dt><dd><UsdOf wif={p} />{!(p > 0) && <span className="muted">—</span>}</dd></div>
-          <div><dt>fee {NAME_FEE_BPS / 100}%<FeeTip /></dt><dd>{p > 0 ? `${fmt(fee)} WIF` : '—'}</dd></div>
-          <div className="listsheet__get"><dt>you receive</dt><dd>{p > 0 ? `${fmt(p - fee)} WIF` : '—'}</dd></div>
+          <div><dt>fee {NAME_FEE_BPS / 100}%<FeeTip /></dt><dd>{p > 0 ? `${fmt(fee)} wif` : '—'}</dd></div>
+          <div className="listsheet__get"><dt>you receive</dt><dd>{p > 0 ? `${fmt(p - fee)} wif` : '—'}</dd></div>
         </dl>
         <p className="tiny muted listsheet__note">one wallet confirmation, no approval needed. if it sells, the name’s records reset.
           <InfoTip label="what happens when it sells">the buyer gets the name and its @. you go back to picking a free @name.</InfoTip></p>
@@ -90,13 +90,14 @@ export function BuyCard({ name, price, mine, onManage }: { name: string; price: 
     <section className="card buycard" data-testid="buy-card">
       <div className="buycard__row">
         <span className="buycard__label">for sale</span>
-        <span className="buycard__price"><b>{fmt(price)} WIF</b> <UsdOf wif={price} /></span>
+        <span className="buycard__price"><b>{fmt(price)} wif</b> <UsdOf wif={price} /></span>
       </div>
       {mine ? <button className="btn btn--ghost btn--block" onClick={onManage}>change price or cancel</button> : <>
+        {/* 11.8.8: paying-from + steps above the buy button, like every sheet */}
+        <TxSteps pull={price} action={`buy ${name}.wif`} />
         {wif !== undefined && wif < price && <LowBalance need={price} what={`buy ${name}.wif`} />}
         <button className="btn btn--dark btn--block" data-testid="buy-name" disabled={!!busy} onClick={buy}>{busy === `buy:${name}` ? 'confirm in your wallet…' : `buy ${name}.wif`}</button>
         <p className="tiny muted buycard__note">includes the {NAME_FEE_BPS / 100}% fee<FeeTip /></p>
-        <TxSteps pull={price} action={`buy ${name}.wif`} />
       </>}
     </section>
   )

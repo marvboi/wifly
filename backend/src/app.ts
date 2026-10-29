@@ -610,7 +610,7 @@ app.post('/api/drops', async c => {
   }
   if (b.locked) {
     const price = Number(b.locked.price), teaser = String(b.locked.teaser ?? '').trim()
-    if (!Number.isFinite(price) || price < 1 || price > 1e7) fail(400, 'unlock prices are 1 to 10,000,000 WIF')
+    if (!Number.isFinite(price) || price < 1 || price > 1e7) fail(400, 'unlock prices are 1 to 10,000,000 wif')
     if (!teaser || charCount(teaser) > 140) fail(400, 'add a teaser, up to 140 characters')
     locked = JSON.stringify({ price: Math.round(price * 100) / 100, teaser, unlocks: 0 })
   }

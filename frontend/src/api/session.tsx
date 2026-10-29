@@ -13,8 +13,9 @@ import { generatePrivateKey, privateKeyToAccount } from 'viem/accounts'
 import type { Hex } from 'viem'
 import { useAccount, useDisconnect, useSignMessage } from 'wagmi'
 import { robinhoodChain } from '../config'
+import { AFTER_SIGNIN_MS, SIWE_STEP_MS, calmTimeout, deadlineSignal, withDeadline } from '../lib/deadline'
 import { privyBridge, privyEnabled, privyUsable, wantPrivy, type PrivyTokens } from '../auth/privyBridge'
-import { humanCheck, resetHumanCheck } from '../components/HumanCheck'
+import { humanCheck, resetHumanCheck, waitForHumanCheck } from '../components/HumanCheck'
 import { adoptUser, api, endSessionEpoch, getVersion, getDrop, subscribe, type ApiUser } from './client'
 import { users, type Post, type User } from '../state/registry'
 
@@ -100,15 +101,18 @@ function guestAddress(): string | null {
 const wasSignedIn = (() => { try { return localStorage.getItem(SIGNED) === '1' } catch { return false } })()
 
 async function siweMessage(address: `0x${string}`, statement: string) {
-  const { nonce } = await api<{ nonce: string }>('/auth/nonce')
+  const { nonce } = await api<{ nonce: string }>('/auth/nonce', { signal: deadlineSignal(SIWE_STEP_MS) }).catch(e => { throw calmTimeout(e) })
   return createSiweMessage({ address, chainId: robinhoodChain.id, domain: location.host, uri: location.origin, nonce, version: '1', statement })
 }
 async function siwe(address: `0x${string}`, sign: (m: string) => Promise<Hex>, guest = false): Promise<Me> {
   const message = await siweMessage(address, 'sign in to wifly. this is a signature, not a transaction: nothing is sent.')
   const signature = await sign(message)
-  const r = await api<{ me: Me }>('/auth/verify', { method: 'POST', json: { message, signature, ...(guest ? { guest: true } : {}), ...humanCheck() } }).finally(resetHumanCheck)
-  // a wallet sign-in wins: drop any Privy (X/email) session left in this browser, so a reload can't swap accounts
-  await privyBridge.logout().catch(() => {})
+  await waitForHumanCheck() // at most ~3.5s, then on without a token: the check never blocks sign-in
+  const r = await api<{ me: Me }>('/auth/verify', { method: 'POST', signal: deadlineSignal(SIWE_STEP_MS), json: { message, signature, ...(guest ? { guest: true } : {}), ...humanCheck() } })
+    .catch(e => { throw calmTimeout(e) }).finally(resetHumanCheck)
+  // a wallet sign-in wins: drop any Privy (X/email) session left in this browser, so a reload can't swap accounts.
+  // 11.8.4: that can wait on the privy sdk (up to 8s+), so it gets ~2s here and finishes in the background; you're already signed in.
+  await withDeadline(privyBridge.logout(), AFTER_SIGNIN_MS).catch(() => {})
   return r.me
 }
 const linkPrivy = async (t: PrivyTokens) => (await api<{ me: Me }>('/auth/link/privy', { method: 'POST', json: t })).me
@@ -140,8 +144,10 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     if (!a) throw new Error('connect a wallet first')
     const m = await siwe(a, x => signMessageAsync({ message: x, account: a })); via.current = 'wallet'; return after(m)
   }, [address, signMessageAsync, after])
-  const exchange = useCallback(async (t: PrivyTokens) =>
-    (await api<{ me: Me }>('/auth/privy', { method: 'POST', json: { ...t, ...humanCheck() } }).finally(resetHumanCheck)).me, [])
+  const exchange = useCallback(async (t: PrivyTokens) => {
+    await waitForHumanCheck() // at most ~3.5s; no widget on the page = no wait
+    return (await api<{ me: Me }>('/auth/privy', { method: 'POST', json: { ...t, ...humanCheck() } }).finally(resetHumanCheck)).me
+  }, [])
   const signInPrivy = useCallback(async () => {
     privyLogin.current = true
     try { const m = await exchange(await privyBridge.login()); via.current = 'privy'; return after(m) } finally { privyLogin.current = false }

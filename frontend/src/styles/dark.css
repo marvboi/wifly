@@ -87,3 +87,11 @@ html[data-themed][data-theme="dark"] ::selection { background: var(--neon); colo
 html[data-themed][data-theme="dark"] :is(.tier__current, .toast__icon, .toast--ok .toast__icon, .floatup, .btn--neon, .plusx-pill, .tools__state--on, .moresheet__badge, .dx-search__clear) { color: #110E08; }
 html[data-themed][data-theme="dark"] .btn--neon { box-shadow: inset 0 0 0 1.5px rgba(17, 14, 8, .55); }
 html[data-themed][data-theme="dark"] .dx-search__clear:hover { background: var(--paper); color: #110E08; }
+
+/* 11.8.8: the agent power button in dark. the hero is the dark ink panel whether on or off, so "turn on" (var(--ink))
+   had no fill and read as bare text. "turn on" is the main action: a solid light pill. "turn off" is a quiet raised fill. */
+[data-theme="dark"] .agent-hero .power:not(.is-on) { background: #F4F2EC; color: #110E08; box-shadow: 0 1px 0 rgba(255, 255, 255, .2) inset, 0 6px 18px rgba(0, 0, 0, .35); }
+[data-theme="dark"] .agent-hero .power:not(.is-on):hover { background: #FFFFFF; }
+[data-theme="dark"] .agent-hero .power.is-on { background: rgba(244, 242, 236, .1); color: #F4F2EC; box-shadow: inset 0 0 0 1px rgba(244, 242, 236, .16); }
+[data-theme="dark"] .agent-hero .power.is-on:hover { background: rgba(244, 242, 236, .16); }
+[data-theme="dark"] .agent-hero .power:disabled { opacity: .7; }

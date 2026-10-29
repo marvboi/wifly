@@ -60,7 +60,7 @@ export type Parsed =
   | { kind: 'promote'; amount: number }
   | { kind: 'refuse'; reason: string }
 
-const HELP = 'i can tip (“tip marv.wif 50”), subscribe (“subscribe to @juno”), renew your Plus (“renew my Plus”) or promote your latest drop (“promote my latest drop for 200”). nothing else.'
+const HELP = 'i can tip (“tip marv.wif 50”), subscribe (“subscribe to @juno”), renew your plus (“renew my plus”) or promote your latest drop (“promote my latest drop for 200”). nothing else.'
 
 /** Deterministic whitelist parser. No free-form model output ever reaches the chain. */
 export function parseCommand(raw: string): Parsed {
@@ -118,6 +118,18 @@ export type AgentState = {
   whitelist: readonly string[]; functions: readonly string[]
 }
 
+/** 11.8.8: the chain wins. on every successful chain read the agent_caps mirror takes the onchain on/off and cap, so the
+ *  fallback path (rpc trouble) never resurrects a stale "off" or an old cap. best effort, only writes when it differs. */
+export async function syncAgentMirror(uid: number, enabled: boolean, cap: number): Promise<void> {
+  try {
+    const row = await one<{ daily_cap: number; enabled: number }>('SELECT daily_cap, enabled FROM agent_caps WHERE user_id = ?', [uid])
+    const c = enabled ? Math.round(cap * 1e6) / 1e6 : 0
+    if (row && !!Number(row.enabled) === enabled && Number(row.daily_cap) === c) return
+    await run(`INSERT INTO agent_caps (user_id, daily_cap, enabled, updated_at) VALUES (?, ?, ?, ?)
+      ON CONFLICT(user_id) DO UPDATE SET daily_cap = excluded.daily_cap, enabled = excluded.enabled, updated_at = excluded.updated_at`, [uid, c, enabled ? 1 : 0, now()])
+  } catch { /* a mirror write never breaks the read */ }
+}
+
 export async function agentState(uid: number): Promise<AgentState> {
   const plus = (await plusView(uid)).check
   const maxCap = plus ? PLUS_MAX_CAP : FREE_MAX_CAP
@@ -135,6 +147,7 @@ export async function agentState(uid: number): Promise<AgentState> {
       const [agent, dailyCap, spent, day] = a
       const cap = fromWei(dailyCap)
       const on = !/^0x0{40}$/i.test(agent)
+      await syncAgentMirror(uid, on, cap) // 11.8.8: keep the app mirror (the fallback when rpc is down) in step with the chain
       return { ...base, enabled: on, cap, spentToday: Number(day) === utcDay() ? fromWei(spent) : 0, remaining: fromWei(rem), deposited: fromWei(bal),
         source: 'chain', authorized: on && !!base.agentAddress && agent.toLowerCase() === base.agentAddress.toLowerCase() }
     } catch { /* rpc trouble: fall back to the app mirror below */ }
@@ -164,13 +177,13 @@ export async function planCommand(uid: number, text: string): Promise<PlannedAct
   const u = me ?? '(your wallet)'
   if (p.kind === 'tip') {
     amount = p.amount
-    if (!(amount > 0) || amount > 1_000_000) return refuse('tips are between 0 and 1,000,000 WIF')
+    if (!(amount > 0) || amount > 1_000_000) return refuse('tips are between 0 and 1,000,000 wif')
     recipient = await resolveRecipient(p.to, uid)
     if (!recipient) return refuse(`i couldn’t find ${p.to}. try name.wif, @handle or a 0x address.`)
-    if (!recipient.address) return refuse(`${recipient.label} doesn’t point to a wallet yet, so there’s nowhere to send WIF.`, { recipient })
+    if (!recipient.address) return refuse(`${recipient.label} doesn’t point to a wallet yet, so there’s nowhere to send wif.`, { recipient })
     if (me && recipient.address === me.toLowerCase()) return refuse('that’s your own wallet.', { recipient })
     call = { fn: 'tipFor', args: [u, recipient.address, toWei(amount).toString(), '0x0…0'] }
-    summary = `tip ${recipient.label} ${amount.toLocaleString('en-US')} WIF`
+    summary = `tip ${recipient.label} ${amount.toLocaleString('en-US')} wif`
   } else if (p.kind === 'subscribe') {
     recipient = await resolveRecipient(p.to, uid)
     if (!recipient) return refuse(`i couldn’t find ${p.to}.`)
@@ -196,14 +209,14 @@ export async function planCommand(uid: number, text: string): Promise<PlannedAct
     const d = await one<{ id: string }>(`SELECT id FROM drops WHERE author_id = ? AND reply_to IS NULL ORDER BY created_at DESC LIMIT 1`, [uid]).catch(() => null)
     if (!d) return refuse('you don’t have a drop to promote yet.')
     call = { fn: 'takeTopSpotFor', args: [u, d.id, toWei(amount).toString()] }
-    summary = `promote your latest drop for ${amount.toLocaleString('en-US')} WIF`
+    summary = `promote your latest drop for ${amount.toLocaleString('en-US')} wif`
   }
   const usd = await usdOf(amount)
   const base = { kind: p.kind, summary, recipient, amount, usd, plan, tier, call }
   if (!state.enabled) return refuse('turn the agent on and set a daily cap first.', base)
-  if (amount > state.remaining) return refuse(`that’s over your daily cap. ${state.remaining.toLocaleString('en-US')} WIF left today.`, base)
+  if (amount > state.remaining) return refuse(`that’s over your daily cap. ${state.remaining.toLocaleString('en-US')} wif left today.`, base)
   const shortfall = Math.max(0, amount - state.deposited)
-  return out({ ok: shortfall === 0, ...base, needsTopUp: shortfall > 0 ? { shortfall: Math.ceil(shortfall * 100) / 100 } : null, refuse: shortfall > 0 ? `your Wifly balance is ${state.deposited.toLocaleString('en-US')} WIF. top up ${shortfall.toLocaleString('en-US')} WIF first.` : undefined })
+  return out({ ok: shortfall === 0, ...base, needsTopUp: shortfall > 0 ? { shortfall: Math.ceil(shortfall * 100) / 100 } : null, refuse: shortfall > 0 ? `your wifly balance is ${state.deposited.toLocaleString('en-US')} wif. top up ${shortfall.toLocaleString('en-US')} wif first.` : undefined })
 }
 
 function calldata(uid: number, user: Address, a: PlannedAction): Hex {
@@ -220,7 +233,7 @@ function calldata(uid: number, user: Address, a: PlannedAction): Hex {
 /** The agent is a Wifly Plus perk: checked server-side, onchain when live (subStatus.hasAccess incl. grace). */
 async function needPlus(uid: number) {
   const p = await plusAccess(uid)
-  if (!p.ok) fail(403, p.state === 'unknown' ? (p.reason ?? 'couldn’t check Plus, try again') : 'the ai agent is part of wifly plus')
+  if (!p.ok) fail(403, p.state === 'unknown' ? (p.reason ?? 'couldn’t check plus, try again') : 'the ai agent is part of wifly plus')
 }
 
 export function registerAgent(app: Hono<Env>) {
@@ -232,9 +245,9 @@ export function registerAgent(app: Hono<Env>) {
     const b = await c.req.json<{ cap?: number; txHash?: string }>().catch(() => ({} as { cap?: number; txHash?: string }))
     const st = await agentState(uid)
     const cap = Number(b.cap ?? 0)
-    if (!Number.isFinite(cap) || cap < 0) fail(400, 'enter a daily cap in WIF')
+    if (!Number.isFinite(cap) || cap < 0) fail(400, 'enter a daily cap in wif')
     if (cap > 0) await needPlus(uid) // turning the agent off always works
-    if (cap > st.maxCap) fail(400, `the daily cap is up to ${st.maxCap.toLocaleString('en-US')} WIF${st.maxCap === FREE_MAX_CAP ? ' (5,000 with plus)' : ''}`)
+    if (cap > st.maxCap) fail(400, `the daily cap is up to ${st.maxCap.toLocaleString('en-US')} wif${st.maxCap === FREE_MAX_CAP ? ' (5,000 with plus)' : ''}`)
     // Before the contract is live there is nothing to deposit into: production never books a balance that isn't onchain.
     if (!st.live && !demoSeedAllowed()) fail(503, 'agent deposits open when payments go live')
     if (st.live && !/^0x[0-9a-fA-F]{64}$/.test(b.txHash ?? '')) fail(400, 'send setAgent from your wallet first')
@@ -249,7 +262,7 @@ export function registerAgent(app: Hono<Env>) {
     const uid = needUser(c)
     const b = await c.req.json<{ amount?: number; txHash?: string }>().catch(() => ({} as { amount?: number; txHash?: string }))
     const amount = Number(b.amount)
-    if (!(amount > 0) || amount > 10_000_000) fail(400, 'enter an amount in WIF')
+    if (!(amount > 0) || amount > 10_000_000) fail(400, 'enter an amount in wif')
     const st = await agentState(uid)
     if (st.live && !/^0x[0-9a-fA-F]{64}$/.test(b.txHash ?? '')) fail(400, 'send the deposit from your wallet first')
     if (!st.live) await run(`INSERT INTO agent_caps (user_id, deposited, updated_at) VALUES (?, ?, ?)

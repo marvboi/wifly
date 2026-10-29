@@ -12,7 +12,7 @@ import { InfoTip } from '../components/InfoTip'
 import { adoptUser, api, getDrop, type ApiUser, LINK_REQUIRED_EVENT, uploadAvatar } from '../api/client'
 import { AvatarPicker } from '../components/AvatarPicker'
 import { useSession } from '../api/session'
-import { privyEnabled, wantPrivy } from '../auth/privyBridge'
+import { privyBridge, privyEnabled, wantPrivy } from '../auth/privyBridge'
 import { Composer } from '../components/Composer'
 import { useNavigate } from 'react-router-dom'
 import { useAccount, useConnect } from 'wagmi'
@@ -21,7 +21,7 @@ import { FEE_SPLIT, LIVE, TOPSPOT_FEE_SHARE, TOPSPOT_HOLDER_SHARE, TOPSPOT_MIN_R
 import { posts, users } from '../state/registry'
 import { PREVIEW_NOTE, useStore, type SheetState } from '../state/store'
 import { FEE_SPLIT_LABEL, topSpotMinBid, topSpotSplit } from '../lib/fees'
-import { failTitle, plans, useQuoteFee, useHasUnlocked, useIsSubscribed, useSendPlan, useTopSpotRules, id32, type Plan } from '../lib/wifly'
+import { failArgs, plans, useQuoteFee, useHasUnlocked, useIsSubscribed, useSendPlan, useTopSpotRules, id32, type Plan } from '../lib/wifly'
 import { Amount, Avatar, DisplayName, Name, Token, WifUsd } from '../components/Bits'
 import { BurnSheet, BadgeSheet, TiersSheet } from './NewSheets'
 import { HumanCheck } from '../components/HumanCheck'
@@ -32,6 +32,7 @@ import { LowBalance, SwapPanel } from '../components/Swap'
 import { TxSteps } from '../components/TxSteps'
 import { isWifName, useResolve } from '../lib/names'
 import { useDebounced } from '../api/hooks'
+import { RECOVER_GRACE_MS, createSignInGate, stillPending, type SignInKind, type SignInView } from '../lib/attempt'
 
 // Top Spot shares as labels (TOP_SPOT_PREV_BPS 9000 onchain)
 const pct = (x: number) => `${Math.round(x * 100)}%`
@@ -55,7 +56,7 @@ export function Sheet({ title, onClose, children, footer, size, className }: { t
         <div className="sheet__grab" aria-hidden="true" />
         <header className="sheet__head">
           <h2 className="sheet__title">{title}</h2>
-          <button className="icon-btn" onClick={onClose} aria-label="Close"><Icon name="close" size={20} /></button>
+          <button className="icon-btn" onClick={onClose} aria-label="close"><Icon name="close" size={20} /></button>
         </header>
         <div className="sheet__body">{children}</div>
         {footer && <footer className="sheet__foot">{footer}</footer>}
@@ -70,8 +71,8 @@ export function AmountPicker({ value, onChange, presets }: { value: number; onCh
       <label className="picker__field">
         <Token size={28} />
         <input inputMode="decimal" value={value ? String(value) : ''} placeholder="0"
-          onChange={e => onChange(Number(e.target.value.replace(/[^0-9.]/g, '')) || 0)} aria-label="Amount in WIF" />
-        <span className="picker__unit">WIF</span>
+          onChange={e => onChange(Number(e.target.value.replace(/[^0-9.]/g, '')) || 0)} aria-label="amount in wif" />
+        <span className="picker__unit">wif</span>
       </label>
       <div className="picker__presets">
         {presets.map(p => (
@@ -116,7 +117,7 @@ export function useAction() {
       if (!LIVE) { closeSheet(); toast('not sent', PREVIEW_NOTE); return false }
       if (!plan) { toast('not sent', 'this person hasn’t connected a wallet yet'); return false }
       const r = await send(plan)
-      if (!r.sent) { toast(failTitle(r), r.reason); return false }
+      if (!r.sent) { toast(...failArgs(r)); return false }
       opts.onConfirmed?.(r.hash)
       await opts.celebrate?.()
       onLocal(); closeSheet(); toast(title, opts.doneNote ?? 'confirmed onchain')
@@ -156,8 +157,8 @@ function TipHero({ amount, phase, base }: { amount: number; phase: TipPhase; bas
         </AnimatePresence>
       </div>
       <div className="tip-hero__nums">
-        <span className="tip-hero__amt num"><AnimatedNumber value={amount} /> <small>WIF</small></span>
-        {base !== undefined && <span className="tip-hero__total small">this drop has earned <b className="num"><AnimatedNumber value={base + (landed ? amount : 0)} /></b> WIF</span>}
+        <span className="tip-hero__amt num"><AnimatedNumber value={amount} /> <small>wif</small></span>
+        {base !== undefined && <span className="tip-hero__total small">this drop has earned <b className="num"><AnimatedNumber value={base + (landed ? amount : 0)} /></b> wif</span>}
       </div>
     </div>
   )
@@ -203,7 +204,7 @@ function TipSheet({ to, postId, dm }: { to?: string; postId?: string; dm?: boole
       setPhase('drop')
       await wait(reduced ? 150 : 620)
       setPhase('done')
-      companion.celebrate('tip', `${amount.toLocaleString()} WIF to ${recipient}. lovely`)
+      companion.celebrate('tip', `${amount.toLocaleString()} wif to ${recipient}. lovely`)
       await wait(reduced ? 300 : 1100)
     }
     const onConfirmed = (hash: string) => {
@@ -217,7 +218,7 @@ function TipSheet({ to, postId, dm }: { to?: string; postId?: string; dm?: boole
       // from a profile or the tip sheet: no post, no chat
       else api(`/users/${encodeURIComponent(picked)}/tips`, { method: 'POST', json: { amount, txHash: hash } }).catch(missed)
     }
-    const title = `${recipient} got ${netLabel} WIF`
+    const title = `${recipient} got ${netLabel} wif`
     const doneNote = 'it’s in their wallet now'
     const ok = await run(plan, title, () => {}, { celebrate, onConfirmed, doneNote })
     if (!ok) setPhase('idle')
@@ -228,7 +229,7 @@ function TipSheet({ to, postId, dm }: { to?: string; postId?: string; dm?: boole
       footer={<>
         <TxSteps pull={amount} action="send tip" />
         <button className="btn btn--dark btn--block btn--lg" disabled={!amount || self || (mode === 'member' && !target) || (mode === 'name' && !resolved?.address) || phase !== 'idle' || busy} onClick={confirm}>
-          {phase === 'idle' ? `tip ${amount ? amount.toLocaleString() : ''} WIF` : phase === 'sending' ? 'sending…' : 'sent'}
+          {phase === 'idle' ? `tip ${amount ? amount.toLocaleString() : ''} wif` : phase === 'sending' ? 'sending…' : 'sent'}
         </button>
         <PreviewNote />
       </>}>
@@ -258,7 +259,7 @@ function TipSheet({ to, postId, dm }: { to?: string; postId?: string; dm?: boole
       )}
       {self && <SelfNote what="tip" />}
       <AmountPicker value={amount} onChange={setAmount} presets={[25, 100, 500, 1000]} />
-      {amount > 0 && <p className="tip-lands"><Icon name="check" size={14} /> <b>they get {netLabel} WIF</b> · lands in their wallet right away</p>}
+      {amount > 0 && <p className="tip-lands"><Icon name="check" size={14} /> <b>they get {netLabel} wif</b> · lands in their wallet right away</p>}
       <FeeSplit amount={amount} recipientLabel={`${recipient} gets`} />
       <LowBalance need={amount} />
     </Sheet>
@@ -293,23 +294,42 @@ function MemberSearch({ onPick }: { onPick: (handle: string) => void }) {
     queryFn: () => api<{ users: ApiUser[] }>(`/search?type=people&q=${encodeURIComponent(term)}`).then(r => r.users.filter(Boolean).map(adoptUser)),
   })
   const rows = (q.data ?? []).filter(u => u.handle !== me?.handle).slice(0, 6)
+  // 11.8.7: before typing, people you follow (newest first), else real suggestions. never made up.
+  const mine = me?.handle
+  const near = useQuery({
+    queryKey: ['tip-near', mine], enabled: !!mine && term.length === 0, staleTime: 60_000,
+    queryFn: async () => {
+      const f = await api<{ users: ApiUser[] }>(`/users/${encodeURIComponent(mine!)}/following`).then(r => r.users.filter(Boolean)).catch(() => [] as ApiUser[])
+      if (f.length) return { label: 'people you follow', users: f.slice(0, 6).map(adoptUser) }
+      const s = await api<{ users: ApiUser[] }>('/suggest/users?limit=6').then(r => r.users.filter(Boolean)).catch(() => [] as ApiUser[])
+      return { label: 'suggested', users: s.slice(0, 6).map(adoptUser) }
+    },
+  })
+  const nearRows = (near.data?.users ?? []).filter(u => u.handle !== mine)
+  const row = (u: { handle: string; name: string; wifName?: string | null }) => (
+    <li key={u.handle}>
+      <button type="button" role="option" aria-selected="false" className="tipfind__row" data-testid="tip-member-row" onClick={() => onPick(u.handle)}>
+        <Avatar handle={u.handle} size={36} />
+        <span className="tiprcpt__who"><b className="clamp-1">{u.name}</b><span className="muted clamp-1">@{u.handle}</span></span>
+        {u.wifName && <span className="tipfind__pill">{u.wifName}.wif</span>}
+      </button>
+    </li>
+  )
   return (
     <div className="tipfind" data-testid="tip-member-search">
       <label className="field">
         <span className="field__label">send to</span>
         <span className="field__input"><Icon name="search" size={16} /><input autoFocus value={v} onChange={e => setV(e.target.value)} placeholder="search @username or name" aria-label="search members" autoCapitalize="none" spellCheck={false} /></span>
       </label>
+      {term.length === 0 && nearRows.length > 0 && (
+        <div className="tipfind__near" data-testid="tip-near">
+          <span className="tipfind__head small muted">{near.data?.label}</span>
+          <ul className="tipfind__list" role="listbox" aria-label={near.data?.label}>{nearRows.map(row)}</ul>
+        </div>
+      )}
       {term.length >= 1 && (
         <ul className="tipfind__list" role="listbox">
-          {rows.map(u => (
-            <li key={u.handle}>
-              <button type="button" role="option" aria-selected="false" className="tipfind__row" data-testid="tip-member-row" onClick={() => onPick(u.handle)}>
-                <Avatar handle={u.handle} size={36} />
-                <span className="tiprcpt__who"><b className="clamp-1">{u.name}</b><span className="muted clamp-1">@{u.handle}</span></span>
-                {u.wifName && <span className="tipfind__pill">{u.wifName}.wif</span>}
-              </button>
-            </li>
-          ))}
+          {rows.map(row)}
           {!q.isFetching && rows.length === 0 && <li className="small muted tipfind__none">no members match “{term}”</li>}
         </ul>
       )}
@@ -321,8 +341,8 @@ export function ResolveLine({ raw, loading, r }: { raw: string; loading: boolean
   if (raw.length < 3) return null
   if (loading) return <p className="tiny muted">resolving {raw}…</p>
   if (!r) return <p className="tiny error">that isn’t a name.wif, @username or address</p>
-  if (!r.address) return <p className="tiny error">{r.label} resolves to no wallet, so it can’t receive WIF</p>
-  return <p className="tiny resolve-ok"><Icon name="check" size={12} /> {r.label} → <span className="mono">{r.address.slice(0, 6)}…{r.address.slice(-4)}</span> <span className="muted">· {r.kind === 'wif' ? (r.source === 'chain' ? 'resolve() onchain' : 'Wifly mirror') : r.kind === 'handle' ? 'member wallet' : 'address'}</span></p>
+  if (!r.address) return <p className="tiny error">{r.label} resolves to no wallet, so it can’t receive wif</p>
+  return <p className="tiny resolve-ok"><Icon name="check" size={12} /> {r.label} → <span className="mono">{r.address.slice(0, 6)}…{r.address.slice(-4)}</span> <span className="muted">· {r.kind === 'wif' ? (r.source === 'chain' ? 'resolve() onchain' : 'wifly mirror') : r.kind === 'handle' ? 'member wallet' : 'address'}</span></p>
 }
 
 function UnlockSheet({ postId }: { postId: string }) {
@@ -341,7 +361,7 @@ function UnlockSheet({ postId }: { postId: string }) {
         <TxSteps pull={price} action="unlock the drop" />
         <button className="btn btn--dark btn--block btn--lg" disabled={self || onChain === true || busy}
           onClick={() => run(a ? plans.unlock(a, post.id, price) : null, 'post unlocked', () => unlock(post.id))}>
-          <Icon name="unlock" size={18} /> {busy ? 'sending…' : onChain ? 'already unlocked' : `unlock for ${price.toLocaleString()} WIF`}
+          <Icon name="unlock" size={18} /> {busy ? 'sending…' : onChain ? 'already unlocked' : `unlock for ${price.toLocaleString()} wif`}
         </button>
         <PreviewNote />
       </>}>
@@ -382,7 +402,7 @@ function SubscribeSheet({ handle, tierId }: { handle: string; tierId?: string })
         <TxSteps pull={tier.price} action="start 30 days" />
         <button className="btn btn--dark btn--block btn--lg" disabled={self || busy}
           onClick={() => run(a ? plans.subscribe(a, pick, tier.price) : null, `subscribed: ${tier.name}`, () => subscribe(handle, pick))}>
-          {busy ? 'sending…' : <>{current?.id === pick ? 'renew' : current ? 'switch tier' : 'subscribe'} · {tier.price.toLocaleString()} WIF / 30 days</>}
+          {busy ? 'sending…' : <>{current?.id === pick ? 'renew' : current ? 'switch tier' : 'subscribe'} · {tier.price.toLocaleString()} wif / 30 days</>}
         </button>
         <PreviewNote />
       </>}>
@@ -435,20 +455,20 @@ function BidSheet() {
         <TxSteps pull={bid} action="promote to the top spot" />
         <button className="btn btn--dark btn--block btn--lg" disabled={!ok || busy}
           onClick={() => run(plans.takeTopSpot(postId, bid), 'you hold the top spot', () => takeTopSpot(postId, bid))}>
-          <Icon name="pin" size={18} /> {busy ? 'sending…' : lockedFor ? `locked for ${lockedFor}s` : `promote for ${bid.toLocaleString()} WIF`}
+          <Icon name="pin" size={18} /> {busy ? 'sending…' : lockedFor ? `locked for ${lockedFor}s` : `promote for ${bid.toLocaleString()} wif`}
         </button>
         <PreviewNote />
       </>}>
       <p className="muted">pin your latest drop on top<InfoTip label="about promotion">it stays above every feed until someone pays more.</InfoTip></p>
       {!me ? <p className="small warn">sign in first. the top spot pins your latest drop.</p> : !postId && <p className="small warn">post a drop first. the top spot pins your latest one.</p>}
       <AmountPicker value={bid} onChange={setBid} presets={[min, Math.ceil(min * 1.25), Math.ceil(min * 1.5)]} />
-      {bid < min && <p className="small error">minimum bid is {min.toLocaleString()} WIF{empty ? '' : ` (${pct(TOPSPOT_MIN_RAISE)} over the current spot)`}.</p>}
+      {bid < min && <p className="small error">minimum bid is {min.toLocaleString()} wif{empty ? '' : ` (${pct(TOPSPOT_MIN_RAISE)} over the current spot)`}.</p>}
       {lockedFor > 0 && <p className="small warn">the current holder is in the minimum hold. bidding opens in {lockedFor}s.</p>}
       <LowBalance need={bid} />
       <div className="fee">
         <div className="fee__rows">
-          {!empty && <div className="fee__row"><span>{`${holder?.name ?? 'current holder'} gets back · ${pct(TOPSPOT_HOLDER_SHARE)}`}</span><span className="num strong">{n(split.toHolder)} WIF</span></div>}
-          <div className="fee__row"><span>promotion fee · {empty ? '100% (empty spot)' : pct(TOPSPOT_FEE_SHARE)}</span><span className="num">{n(split.fee)} WIF</span></div>
+          {!empty && <div className="fee__row"><span>{`${holder?.name ?? 'current holder'} gets back · ${pct(TOPSPOT_HOLDER_SHARE)}`}</span><span className="num strong">{n(split.toHolder)} wif</span></div>}
+          <div className="fee__row"><span>promotion fee · {empty ? '100% (empty spot)' : pct(TOPSPOT_FEE_SHARE)}</span><span className="num">{n(split.fee)} wif</span></div>
         </div>
         <FeeParts fee={split.fee} />
         <div className="fee__legend"><span>{empty ? 'the first bid on an empty spot is all fee.' : `when someone outbids you, you get ${pct(TOPSPOT_HOLDER_SHARE)} of their bid back.`} every fee: {FEE_SPLIT_LABEL}.</span></div>
@@ -471,7 +491,7 @@ function BuySheet({ handle, itemId }: { handle: string; itemId: string }) {
         <TxSteps pull={item.price} action="buy it" />
         <button className="btn btn--dark btn--block btn--lg" disabled={self || busy}
           onClick={() => run(a ? plans.pay(a, item.price, 'order', `${handle}:${item.id}`) : null, `order ready: ${item.title}`, () => {})}>
-          {busy ? 'sending…' : `pay ${item.price.toLocaleString()} WIF`}
+          {busy ? 'sending…' : `pay ${item.price.toLocaleString()} wif`}
         </button>
         <PreviewNote />
       </>}>
@@ -500,12 +520,12 @@ function PayDmSheet({ handle }: { handle: string }) {
         <TxSteps pull={price} action="pay and send" />
         <button className="btn btn--dark btn--block btn--lg" disabled={self || busy}
           onClick={() => run(a ? plans.pay(a, price, 'dm', handle) : null, 'message unlocked', () => { payDm(handle); nav(`/messages/${handle}`) })}>
-          {busy ? 'sending…' : `pay ${price} WIF and message`}
+          {busy ? 'sending…' : `pay ${price} wif and message`}
         </button>
         <PreviewNote />
       </>}>
       <div className="recipient"><Avatar handle={handle} size={44} /><div><Name handle={handle} /><div className="muted small">doesn’t follow you</div></div></div>
-      <p>{u?.name} charges <b className="num">{price} WIF</b> for a first message from people they don’t follow. replies are free after that.</p>
+      <p>{u?.name} charges <b className="num">{price} wif</b> for a first message from people they don’t follow. replies are free after that.</p>
       <FeeSplit amount={price} recipientLabel={`${u?.name} receives`} />
       <LowBalance need={price} />
     </Sheet>
@@ -537,14 +557,14 @@ function VoteSheet({ handle, postId }: { handle: string; postId?: string }) {
           onClick={() => run(a ? plans.vote(a, cost, postId) : null, `${n} vote${n === 1 ? '' : 's'} cast`, () => {
             if (postId) addVotes(`post:${postId}`, n)
             addVotes(`creator:${handle}`, n)
-          }, { celebrate })}><Icon name="vote" size={18} /> {busy ? 'sending…' : `cast ${n} vote${n === 1 ? '' : 's'} · ${cost.toLocaleString()} WIF`}</button>
+          }, { celebrate })}><Icon name="vote" size={18} /> {busy ? 'sending…' : `cast ${n} vote${n === 1 ? '' : 's'} · ${cost.toLocaleString()} wif`}</button>
         <PreviewNote />
       </>}>
       <div className="recipient">
         <Avatar handle={handle} size={44} />
         <div><Name handle={handle} />{post && <div className="muted small clamp-1">“{post.text}”</div>}</div>
       </div>
-      <p className="muted">{VOTE_PRICE} WIF per vote<InfoTip label="about votes">the crowd decides what rises. {FEE_SPLIT.pot}% to the weekly pot, {FEE_SPLIT.burn}% burned.</InfoTip></p>
+      <p className="muted">{VOTE_PRICE} wif per vote<InfoTip label="about votes">the crowd decides what rises. {FEE_SPLIT.pot}% to the weekly pot, {FEE_SPLIT.burn}% burned.</InfoTip></p>
       {self && <SelfNote what="vote for" />}
       <div className="vote-cheer" aria-hidden="true"><Mascot size={56} mood={cheer ? 'happy' : n >= 25 ? 'wow' : 'calm'} happy={cheer} pulse={cheer ? 1 : n} /></div>
       {cheer && <CoinRain />}
@@ -558,7 +578,7 @@ function VoteSheet({ handle, postId }: { handle: string; postId?: string }) {
       </div>
       <div className="fee">
         <div className="fee__rows">
-          <div className="fee__row"><span>vote fee · 100%</span><span className="num strong">{cost.toLocaleString()} WIF</span></div>
+          <div className="fee__row"><span>vote fee · 100%</span><span className="num strong">{cost.toLocaleString()} wif</span></div>
           <div className="fee__row"><span>counts toward</span><span>creator of the week</span></div>
         </div>
         <FeeParts fee={cost} />
@@ -572,7 +592,7 @@ function VoteSheet({ handle, postId }: { handle: string; postId?: string }) {
 function SwapSheet({ wifOut, reason }: { wifOut?: number; reason?: string }) {
   const { closeSheet } = useStore()
   return (
-    <Sheet title="get $WIF" onClose={closeSheet}>
+    <Sheet title="get $wif" onClose={closeSheet}>
       <SwapPanel compact preset={wifOut ? { wifOut, reason } : undefined} onDone={closeSheet} />
     </Sheet>
   )
@@ -605,7 +625,7 @@ function ComposeSheet({ replyTo, quoteOf, initialLock = 'open' }: { replyTo?: st
     <Sheet title={replyTo ? 'reply' : quoteOf ? 'quote' : lock === 'price' ? 'new paid drop' : 'new drop'} onClose={closeSheet}>
       {replyTo && <ReplyContext id={replyTo} />}
       <Composer autoFocus replyTo={replyTo} quoteOf={quoteOf} placeholder={plain ? (lock === 'price' ? 'the part people pay to read' : prompt) : undefined}
-        extra={extra} canSubmit={canSubmit} submitLabel={lock === 'price' ? `drop for ${price.toLocaleString()} WIF` : undefined}
+        extra={extra} canSubmit={canSubmit} submitLabel={lock === 'price' ? `drop for ${price.toLocaleString()} wif` : undefined}
         onDone={async p => {
           closeSheet()
           if (p && replyTo) nav(`/post/${replyTo}`)
@@ -627,11 +647,11 @@ function ComposeSheet({ replyTo, quoteOf, initialLock = 'open' }: { replyTo?: st
             <AmountPicker value={price} onChange={setPrice} presets={[10, 25, 50, 100]} />
             <FeeSplit amount={price} recipientLabel="you receive per unlock" />
             <div className="lockcard" aria-label="how it looks in the feed">
-              <Icon name="lock" size={16} /><div><b>{teaser.trim() || 'your teaser shows here'}</b><div className="muted small">unlock for {price.toLocaleString()} WIF · paid onchain in $WIF</div></div>
+              <Icon name="lock" size={16} /><div><b>{teaser.trim() || 'your teaser shows here'}</b><div className="muted small">unlock for {price.toLocaleString()} wif · paid onchain in $wif</div></div>
             </div>
           </div>}
           {lock === 'supporters' && (myTiers.length ? <div className="seg seg--sm" role="radiogroup" aria-label="which tier">
-            {myTiers.map(t => <button key={t.id} role="radio" aria-checked={(tier || myTiers[0].id) === t.id} className={(tier || myTiers[0].id) === t.id ? 'is-on' : ''} onClick={() => setTier(t.id)}>{t.name} · {t.price.toLocaleString()} WIF/mo</button>)}
+            {myTiers.map(t => <button key={t.id} role="radio" aria-checked={(tier || myTiers[0].id) === t.id} className={(tier || myTiers[0].id) === t.id ? 'is-on' : ''} onClick={() => setTier(t.id)}>{t.name} · {t.price.toLocaleString()} wif/mo</button>)}
           </div> : <p className="muted small">you have no tiers yet. <button className="linkbtn" onClick={() => openSheet({ type: 'tiers' })}>set up subscription tiers</button></p>)}
         </>}
       </Composer>
@@ -655,7 +675,8 @@ function SignInSheet({ reason }: { reason?: string }) {
   const { signInGuest, signInWallet, signInPrivy } = useSession()
   const { isConnected } = useAccount()
   const { connectAsync, connectors } = useConnect()
-  const [busy, setBusy] = useState<'wallet' | 'guest' | 'privy' | null>(null)
+  const [view, setView] = useState<SignInView>({ busy: null, line: null })
+  const busy = view.busy
   const [useWallet, setUseWallet] = useState(false)
   const nav = useNavigate()
   const done = (m: { onboarded?: boolean; handle: string }) => {
@@ -663,24 +684,43 @@ function SignInSheet({ reason }: { reason?: string }) {
     // like x: stay on the page you were reading; only a brand-new account goes through /welcome
     if (!m.onboarded) nav('/welcome'); else toast(`signed in as @${m.handle}`)
   }
-  const wallet = async () => {
-    setBusy('wallet')
-    try {
-      let addr: `0x${string}` | undefined
-      if (!isConnected) { const c = connectors[0]; if (!c) throw new Error('no wallet found in this browser'); addr = (await connectAsync({ connector: c })).accounts[0] }
-      done(await signInWallet(addr))
-    } catch (e) { toast('sign-in didn’t finish', (e as Error).message) } finally { setBusy(null) }
-  }
-  const guest = async () => {
-    setBusy('guest')
-    try { done(await signInGuest()) } catch (e) { toast('sign-in didn’t finish', (e as Error).message) } finally { setBusy(null) }
-  }
-  const privy = async () => {
-    setBusy('privy')
-    try { done(await signInPrivy()) }
-    catch (e) { if ((e as Error).message !== 'sign-in closed') toast('sign-in didn’t finish', (e as Error).message) }
-    finally { setBusy(null) }
-  }
+  // 11.8.4b: every way in (wallet, guest, x/email) runs through one gate: a "cancel" link while it waits, a 20s cap that
+  // brings the buttons back with "try again", recovery when the window comes back with nothing pending, late results safe.
+  const doneRef = useRef(done); doneRef.current = done
+  const gate = useRef<ReturnType<typeof createSignInGate<{ onboarded?: boolean; handle: string }>> | null>(null)
+  gate.current ??= createSignInGate<{ onboarded?: boolean; handle: string }>({
+    onView: v => setView(v),
+    onSignedIn: m => doneRef.current(m),
+    quiet: e => /sign-in closed|reject|denied|cancel/i.test((e as Error)?.message ?? ''),
+  })
+  const last = useRef<SignInKind>('guest')
+  const wallet = () => { last.current = 'wallet'; gate.current!.run('wallet', async () => {
+    let addr: `0x${string}` | undefined
+    if (!isConnected) { const c = connectors[0]; if (!c) throw new Error('no wallet found in this browser'); addr = (await connectAsync({ connector: c })).accounts[0] }
+    return signInWallet(addr)
+  }) }
+  const guest = () => { last.current = 'guest'; gate.current!.run('guest', () => signInGuest()) }
+  const privy = () => { last.current = 'privy'; gate.current!.run('privy', () => signInPrivy()) }
+  const again = () => (last.current === 'wallet' ? wallet : last.current === 'privy' ? privy : guest)()
+  // a wallet popup or privy's window closed without telling us: once the page is back and nothing is pending, recover
+  useEffect(() => {
+    const back = () => {
+      if (document.visibilityState !== 'visible') return
+      const g = gate.current!, k = g.busy(), id = g.attempt()
+      if (!k || k === 'guest') return
+      setTimeout(() => {
+        if (g.attempt() !== id) return
+        const s = privyBridge.get(), dlg = document.getElementById('privy-dialog')
+        if (!stillPending(k, { authenticated: s.authenticated, dialogOpen: !!dlg && dlg.getClientRects().length > 0 })) g.recover(k)
+      }, RECOVER_GRACE_MS[k])
+    }
+    window.addEventListener('focus', back); document.addEventListener('visibilitychange', back)
+    return () => { window.removeEventListener('focus', back); document.removeEventListener('visibilitychange', back) }
+  }, [])
+  const status = busy
+    ? <p className="signin__retry small muted" role="status" data-testid="signin-cancel">{busy === 'wallet' ? 'waiting for your wallet.' : busy === 'privy' ? 'waiting for sign-in.' : 'signing you in.'} <button type="button" className="linkbtn" onClick={() => gate.current!.cancel()}>cancel</button></p>
+    : view.line ? <p className="signin__retry small muted" role="status" data-testid="signin-retry">{view.line} <button type="button" className="linkbtn" onClick={again}>try again</button></p>
+    : null
   // the sign-in sheet is open: start fetching Privy now so the modal is ready by the tap
   useEffect(() => { wantPrivy() }, [])
   if (privyEnabled && !useWallet) return (
@@ -692,6 +732,7 @@ function SignInSheet({ reason }: { reason?: string }) {
         <HumanCheck />
         <button className="btn btn--dark btn--block" disabled={!!busy} onClick={privy}><Icon name="user" size={18} /> {busy === 'privy' ? 'opening…' : 'sign up or sign in'}</button>
         <button className="btn btn--ghost btn--block" disabled={!!busy} onClick={() => setUseWallet(true)}><Icon name="wallet" size={18} /> i have a wallet</button>
+        {status}
         {reason && <button className="btn btn--text btn--block" onClick={closeSheet}>keep browsing</button>}
       </div>
     </Sheet>
@@ -706,6 +747,7 @@ function SignInSheet({ reason }: { reason?: string }) {
         <HumanCheck />
         <button className="btn btn--dark btn--block" disabled={!!busy} onClick={wallet}><Icon name="wallet" size={18} /> {busy === 'wallet' ? 'check your wallet…' : isConnected ? 'sign in with your wallet' : 'connect a wallet'}</button>
         <button className="btn btn--ghost btn--block" disabled={!!busy} onClick={guest}><Icon name="user" size={18} /> {busy === 'guest' ? 'signing…' : 'try it with a guest key'}</button>
+        {status}
         <p className="muted tiny">a guest key lives in this browser only. you can link a wallet later.</p>
         {reason && <button className="btn btn--text btn--block" onClick={closeSheet}>keep browsing</button>}
       </div>

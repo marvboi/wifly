@@ -1,4 +1,5 @@
 import { useAnyAccount } from '../auth/privyBridge'
+import { PayingFrom } from '../components/Payer'
 import { InfoTip } from '../components/InfoTip'
 import { useMemo, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
@@ -12,7 +13,7 @@ import { useWifBalance } from '../lib/chain'
 import { motion } from 'motion/react'
 import { PLUS_NAME } from '../brand'
 import { PREVIEW_NOTE, useStore } from '../state/store'
-import { failTitle, plans, useNeedsApprove, usePlusStatus, useSendPlan, type PlusPlanId } from '../lib/wifly'
+import { failArgs, plans, useNeedsApprove, usePlusStatus, useSendPlan, type PlusPlanId } from '../lib/wifly'
 import { PriceTag, Token } from '../components/Bits'
 import { FeeSplit } from '../components/FeeSplit'
 import { PageHead } from '../components/Shell'
@@ -26,8 +27,8 @@ const perks: Perk[] = [
   { icon: 'badge', title: 'the plus check', note: 'next to your name' },
   { icon: 'sparkle', title: 'assistant, no daily limit', note: `free: ${FREE_AI_MSGS_PER_DAY_FALLBACK} a day` },
   ...(AGENT_READY ? [{ icon: 'agent' as const, title: 'an agent that acts for you', note: 'only after you confirm' }] : []),
-  { icon: 'calendar', title: 'buy WIF on a schedule', note: 'pause anytime' },
-  ...(AGENT_READY ? [{ icon: 'power' as const, title: `${AGENT_CAP_PLUS.toLocaleString('en-US')} WIF a day for your agent`, note: `free: ${AGENT_CAP_FREE.toLocaleString('en-US')}` }] : []),
+  { icon: 'calendar', title: 'buy wif on a schedule', note: 'pause anytime' },
+  ...(AGENT_READY ? [{ icon: 'power' as const, title: `${AGENT_CAP_PLUS.toLocaleString('en-US')} wif a day for your agent`, note: `free: ${AGENT_CAP_FREE.toLocaleString('en-US')}` }] : []),
 ]
 
 const faq: Array<[string, string]> = [
@@ -117,7 +118,7 @@ export function Plus() {
         } catch { refresh() }
         qc.invalidateQueries({ queryKey: ['plus'] }); qc.invalidateQueries({ queryKey: ['readContracts'] })
       }
-      else toast(failTitle(r), r.reason)
+      else toast(...failArgs(r))
     } finally { setBusy(null) }
   }
   const [autoUi, setAutoUi] = useState<boolean | null>(null) // what the toggle shows while a change is in flight
@@ -127,16 +128,16 @@ export function Plus() {
     try {
       if (chain.live && chain.team) {
         const r = await send(plans.plusAutoRenew(chain.team, plan, on ? agreed : 0))
-        if (!r.sent) { setAutoUi(null); toast(failTitle(r), r.reason); return }
+        if (!r.sent) { setAutoUi(null); toast(...failArgs(r)); return }
         // the chain has it now; the server reads it back (autoRenewOf on the holder wallet) instead of being told
         if (me) await api('/plus/sync', { method: 'POST' }).catch(() => undefined)
         qc.invalidateQueries({ queryKey: ['readContracts'] })
       } else if (me) await api('/plus/auto-renew', { method: 'POST', json: { on, agreedPrice: agreed, plan } })
       await qc.invalidateQueries({ queryKey: ['plus'] })
-      toast(on ? `auto-renew on, up to ${agreed.toLocaleString()} WIF` : 'auto-renew off', chain.live ? 'saved onchain' : PREVIEW_NOTE)
+      toast(on ? `auto-renew on, up to ${agreed.toLocaleString()} wif` : 'auto-renew off', chain.live ? 'saved onchain' : PREVIEW_NOTE)
     } catch (e) { toast('couldn’t change auto-renew', (e as Error).message) } finally { setAutoUi(null); setBusy(null) }
   }
-  const getWif = () => { const n = plusTopUp(price); openSheet({ type: 'swap', wifOut: n, reason: `get ${n.toLocaleString()} WIF for ${name} (${price.toLocaleString()} + a small buffer)` }) }
+  const getWif = () => { const n = plusTopUp(price); openSheet({ type: 'swap', wifOut: n, reason: `get ${n.toLocaleString()} wif for ${name} (${price.toLocaleString()} + a small buffer)` }) }
 
 
   const needsApprove = useNeedsApprove(price)
@@ -160,15 +161,15 @@ export function Plus() {
           {v.state === 'active' && <>active until <b>{fmtDate(v.expiresAt)}</b>.{v.renewsOn ? <> renews on <b>{fmtDate(v.renewsOn)}</b>.</> : v.autoRenew ? null : ' auto-renew is off.'}</>}
           {v.state === 'grace' && <>it ended on {fmtDate(v.expiresAt)}. you keep the check until <b>{fmtDate(v.graceEndsAt)}</b>. renew before then.</>}
           {v.state === 'expired' && <>it ended on {fmtDate(v.expiresAt)} and the grace period is over. renew anytime to get the check back.</>}
-          {v.state === 'none' && <>a monthly or yearly pass, paid in WIF.</>}
+          {v.state === 'none' && <>a monthly or yearly pass, paid in wif.</>}
         </p>
 
         {v.priceChanged && (
           <div className="plusx-alert" role="alert">
             <b>the price changed. confirm the new price.</b>
-            <p>auto-renew is paused: plus now costs <b>{v.price.toLocaleString()} WIF</b> and you agreed to at most <b>{(v.agreedPrice ?? 0).toLocaleString()} WIF</b>. nothing renews until you confirm.</p>
+            <p>auto-renew is paused: plus now costs <b>{v.price.toLocaleString()} wif</b> and you agreed to at most <b>{(v.agreedPrice ?? 0).toLocaleString()} wif</b>. nothing renews until you confirm.</p>
             <div className="plusx-alert__row">
-              <button className="btn btn--dark btn--sm" disabled={!!busy} onClick={() => { setCap(v.price); setAuto(true, v.price) }}>confirm {v.price.toLocaleString()} WIF</button>
+              <button className="btn btn--dark btn--sm" disabled={!!busy} onClick={() => { setCap(v.price); setAuto(true, v.price) }}>confirm {v.price.toLocaleString()} wif</button>
               <button className="btn btn--ghost btn--sm" disabled={!!busy} onClick={() => setAuto(false)}>turn auto-renew off</button>
             </div>
           </div>
@@ -186,20 +187,21 @@ export function Plus() {
             <b>{chain.pricesLoading ? 'checking the price…' : `${plan === 'year' ? 'yearly ' : ''}plus opens soon`}</b>
             {soon && <span className="small muted">the price isn’t set yet. this turns on by itself once it is.</span>}
           </div>}
+          {showPay && <PayingFrom />}
           {showPay ? <button className="btn btn--lg btn--dark btn--block" data-testid="plus-pay" disabled={!open || isTeam || !!busy} onClick={() => pay(has ? 'renew' : 'buy')}>
             {!open ? (chain.pricesLoading ? 'loading…' : 'opens soon') : busy === 'buy' || busy === 'renew' ? 'waiting for confirmation…'
-              : switching ? (plan === 'year' ? `upgrade to yearly · ${price.toLocaleString()} WIF` : `switch to monthly · ${price.toLocaleString()} WIF`)
-              : v.state === 'grace' ? `renew for ${price.toLocaleString()} WIF`
-              : extend ? `extend ${addsLabel} · ${price.toLocaleString()} WIF`
-              : v.state === 'expired' ? `renew for ${price.toLocaleString()} WIF` : `get plus for ${price.toLocaleString()} WIF`}
+              : switching ? (plan === 'year' ? `upgrade to yearly · ${price.toLocaleString()} wif` : `switch to monthly · ${price.toLocaleString()} wif`)
+              : v.state === 'grace' ? `renew for ${price.toLocaleString()} wif`
+              : extend ? `extend ${addsLabel} · ${price.toLocaleString()} wif`
+              : v.state === 'expired' ? `renew for ${price.toLocaleString()} wif` : `get plus for ${price.toLocaleString()} wif`}
           </button> : <div className="plusx-on" data-testid="plus-on"><Icon name="check" size={16} /> <span>you’re covered until <b>{fmtDate(v.expiresAt)}</b></span>
             {open && <button className="plusx-link" data-testid="plus-extend" onClick={() => setExtend(true)}>extend</button>}</div>}
           {has && (switching || extend || v.state === 'grace') && open && <p className="small muted plusx-note plusx-stack" data-testid="plus-stack-note">
             adds {addsLabel} from {fmtDate(base)} · new end <b>{fmtDate(newEnd)}</b>. no proration: every day you paid for stays.
             {extend && !switching && <> <button className="plusx-link" onClick={() => setExtend(false)}>cancel</button></>}</p>}
           <div className="plusx-wallet">
-            <span className="small muted"><Token size={16} /> {wif === undefined ? 'connect a wallet to see your WIF' : <>you have <b className="num">{Math.floor(wif).toLocaleString()} WIF</b></>}</span>
-            {open && (shortBy || wif === undefined) && <button className="btn btn--ghost btn--sm" onClick={getWif}>get WIF</button>}
+            <span className="small muted"><Token size={16} /> {wif === undefined ? 'connect a wallet to see your wif' : <>you have <b className="num">{Math.floor(wif).toLocaleString()} wif</b></>}</span>
+            {open && (shortBy || wif === undefined) && <button className="btn btn--ghost btn--sm" onClick={getWif}>get wif</button>}
           </div>
           {isTeam && <p className="small muted plusx-note"><Icon name="shield" size={14} /> this is the team wallet. it can’t subscribe to itself.</p>}
         </div>
@@ -212,9 +214,9 @@ export function Plus() {
           </div>
           {wrongWallet && <p className="small plusx-switch" data-testid="plus-switch"><Icon name="shield" size={14} /> {switchMsg}. auto-renew lives on the wallet that paid.</p>}
           <label className="field"><span className="field__label">max price per renewal</span>
-            <span className="field__input"><input inputMode="decimal" value={cap || ''} onChange={e => setCap(Number(e.target.value.replace(/[^0-9.]/g, '')) || 0)} /><span className="muted">WIF</span></span>
+            <span className="field__input"><input inputMode="decimal" value={cap || ''} onChange={e => setCap(Number(e.target.value.replace(/[^0-9.]/g, '')) || 0)} /><span className="muted">wif</span></span>
           </label>
-          {cap < price && <p className="error small">your cap is below the current {plan === 'year' ? 'yearly' : 'monthly'} price ({price.toLocaleString()} WIF), so it would never renew.</p>}
+          {cap < price && <p className="error small">your cap is below the current {plan === 'year' ? 'yearly' : 'monthly'} price ({price.toLocaleString()} wif), so it would never renew.</p>}
           <div className="plus-auto__row">
             <PriceTag value={cap} size={16} />
             <button className="btn btn--dark btn--sm" disabled={!!busy || cap < price || wrongWallet} onClick={() => setAuto(true)}>{v.autoRenew ? 'update cap' : 'turn on auto-renew'}</button>
@@ -234,7 +236,7 @@ export function Plus() {
       </ul>
 
       {open && <>
-      <h3 className="plusx-h">where your WIF goes<InfoTip label="about plus payments">paid to the wifly team. the {FEE_PERCENT_LABEL} fee: {FEE_SPLIT.pot}% weekly pot, {FEE_SPLIT.burn}% burned.</InfoTip></h3>
+      <h3 className="plusx-h">where your wif goes<InfoTip label="about plus payments">paid to the wifly team. the {FEE_PERCENT_LABEL} fee: {FEE_SPLIT.pot}% weekly pot, {FEE_SPLIT.burn}% burned.</InfoTip></h3>
       <section className="card plusx-card">
         <FeeSplit amount={price} recipientLabel="wifly team gets" />
       </section>
@@ -243,7 +245,7 @@ export function Plus() {
       <ol className="plusx-steps">
         <li className={needsApprove ? '' : 'is-done'}>
           <span className="plusx-steps__n">{needsApprove ? 1 : <Icon name="check" size={12} />}</span>
-          <div><b>allow {price.toLocaleString()} WIF</b><p className="small muted">{needsApprove ? 'your wallet asks once.' : 'already done.'}</p></div>
+          <div><b>allow {price.toLocaleString()} wif</b><p className="small muted">{needsApprove ? 'your wallet asks once.' : 'already done.'}</p></div>
         </li>
         <li>
           <span className="plusx-steps__n">2</span>

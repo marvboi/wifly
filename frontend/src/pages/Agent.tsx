@@ -2,10 +2,12 @@ import { useAnyAccount } from '../auth/privyBridge'
 import { motion } from 'motion/react'
 import { Link } from 'react-router-dom'
 import { AnimatedNumber } from '../components/Motion'
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
+import { PayingFrom } from '../components/Payer'
+import { usePayerState } from '../lib/payerStore'
 import { AGENT_CAP_FREE, AGENT_CAP_PLUS, AGENT_READY, LIVE, WIFLY_AGENT_ADDRESS } from '../config'
 import { PREVIEW_NOTE, useStore } from '../state/store'
-import { failTitle, plans, useAgentOnChain, usePlusStatus, useInAppBalance, useSendPlan, type Plan } from '../lib/wifly'
+import { failArgs, plans, useAgentOnChain, usePlusStatus, useInAppBalance, useSendPlan, type Plan } from '../lib/wifly'
 import { shortAddr } from '../lib/format'
 import { PageHead } from '../components/Shell'
 import { TxSteps } from '../components/TxSteps'
@@ -34,28 +36,53 @@ export function Agent() {
   const { me, guest } = useSession()
   const chat = () => window.dispatchEvent(new Event('wifly:companion'))
   const plus = usePlusStatus(localPlus).active
-  const { address } = useAnyAccount()
-  const chainAgent = useAgentOnChain(address)
+  const { address: account } = useAnyAccount()
+  // 11.8.8: everything onchain is read for the CURRENT payer wallet (the one turn on / cap / deposit pay from), not
+  // whichever account wagmi happens to hold. switching payer changes the query key, so it re-reads.
+  const payer = usePayerState()
+  const address = (payer.address ?? account ?? undefined) as `0x${string}` | undefined
+  const chainQ = useAgentOnChain(address)
+  const chainAgent = chainQ.data
   const deposited = useInAppBalance(address)
   const send = useSendPlan()
   const [deposit, setDeposit] = useState(500)
   // free agents go up to 500 WIF a day; plus raises it to 5,000 (matches the plus page)
   const maxCap = plus ? AGENT_CAP_PLUS : AGENT_CAP_FREE
-  const cap = Math.min(agent.dailyCap, maxCap)
+  // live: the chain is the source of truth for on/off, cap, spent today and what's left. the local store is only the
+  // slider draft (and the whole state in preview). while the read is in flight the page says so instead of "off".
+  const reading = LIVE && (chainQ.loading || (!address && !!account))
+  const readFailed = LIVE && !reading && chainQ.error
+  const synced = useRef('')
+  useEffect(() => { // the slider starts at the onchain cap, once per wallet + cap (a drag isn't undone by a re-read)
+    if (!chainAgent || !address) return
+    const k = `${address.toLowerCase()}:${chainAgent.dailyCap}:${chainAgent.enabled}`
+    if (synced.current === k) return
+    synced.current = k
+    setAgent(a => ({ ...a, enabled: chainAgent.enabled, dailyCap: chainAgent.enabled && chainAgent.dailyCap > 0 ? chainAgent.dailyCap : a.dailyCap, spentToday: chainAgent.spentToday }))
+  }, [chainAgent, address, setAgent])
+  const cap = Math.min(agent.dailyCap, maxCap) // the draft the slider edits and save sends
   const pct = maxCap ? cap / maxCap : 0
   const [dragging, setDragging] = useState(false)
-  const spent = Math.min(agent.spentToday, cap)
-  const remaining = chainAgent ? chainAgent.remaining : Math.max(0, cap - spent)
-  const on = agent.enabled
+  const liveCap = LIVE ? (chainAgent?.dailyCap ?? 0) : cap
+  const spent = LIVE ? (chainAgent?.spentToday ?? 0) : Math.min(agent.spentToday, cap)
+  const remaining = LIVE ? (chainAgent?.remaining ?? 0) : Math.max(0, cap - spent)
+  const on = LIVE ? !!chainAgent?.enabled : agent.enabled
 
+  // 11.8.5: one send at a time (a second tap while the wallet is open does nothing), so an error shows once
+  const [sending, setSending] = useState(false)
+  const busyRef = useRef(false)
   const go = async (plan: Plan, title: string, local: () => void) => {
     if (!LIVE) { local(); toast(title, PREVIEW_NOTE); return }
-    const r = await send(plan)
-    if (r.sent) { local(); toast(title, 'confirmed onchain') } else toast(failTitle(r), r.reason)
+    if (busyRef.current) return
+    busyRef.current = true; setSending(true)
+    try {
+      const r = await send(plan)
+      if (r.sent) { local(); toast(title, 'confirmed onchain'); synced.current = ''; void chainQ.refetch() } else toast(...failArgs(r))
+    } finally { busyRef.current = false; setSending(false) }
   }
   const save = () => {
     if (!WIFLY_AGENT_ADDRESS && LIVE) { toast('not sent', 'the agent isn’t ready yet'); return }
-    go(plans.setAgent(WIFLY_AGENT_ADDRESS ?? '0x0000000000000000000000000000000000000000', cap), `agent cap set to ${cap} WIF a day`, () => setAgent(a => ({ ...a, enabled: true })))
+    go(plans.setAgent(WIFLY_AGENT_ADDRESS ?? '0x0000000000000000000000000000000000000000', cap), `agent cap set to ${cap} wif a day`, () => setAgent(a => ({ ...a, enabled: true })))
   }
   const turnOff = () => go(plans.revokeAgent(), 'agent turned off', () => setAgent(a => ({ ...a, enabled: false })))
 
@@ -92,24 +119,30 @@ export function Agent() {
         <button className="btn btn--dark btn--sm" data-testid="agent-chat-open" onClick={chat}>open chat</button>
       </section>
       {!READY && <p className="soon-line small muted" role="note">spending is off. your agent chats and suggests, and never sends anything.</p>}
-      <section className={`agent-hero ${on ? '' : 'is-off'}`}>
+      <section className={`agent-hero ${on || reading ? '' : 'is-off'}${reading ? ' is-reading' : ''}`} data-testid="agent-hero" data-state={reading ? 'reading' : readFailed ? 'error' : on ? 'on' : 'off'} aria-busy={reading || undefined}>
         <div className="agent-hero__top">
           <div>
             {chainAgent?.agent && <span className="tiny muted mono">{shortAddr(chainAgent.agent)}</span>}
-            <h2 className="display">{on ? 'your agent is working.' : READY ? 'your agent is off.' : 'spending is off.'}</h2>
+            <h2 className="display">{reading ? 'checking your agent…' : readFailed ? 'couldn’t read your agent.' : on ? 'your agent is working.' : READY ? 'your agent is off.' : 'spending is off.'}</h2>
           </div>
-          {READY || on
-            ? <button className={`power ${on ? 'is-on' : ''}`} onClick={on ? turnOff : save} aria-pressed={on}>
-                <Icon name="power" size={20} /> {on ? 'turn off' : 'turn on'}
+          {reading
+            ? <span className="power is-on power--reading" data-testid="agent-power" aria-disabled="true"><span className="spin-dot" aria-hidden="true" /> checking…</span>
+            : readFailed
+            ? <button className="power is-on" onClick={() => void chainQ.refetch()} data-testid="agent-power">try again</button>
+            : READY || on
+            ? <button className={`power ${on ? 'is-on' : ''}`} onClick={on ? turnOff : save} aria-pressed={on} disabled={sending} data-testid="agent-power">
+                <Icon name="power" size={20} /> {sending ? 'waiting…' : on ? 'turn off' : 'turn on'}
               </button>
             : <span className="agent-hero__nap" title="spending is off"><Mascot size={64} mood="calm" title="spending is off" /></span>}
         </div>
-        <div className="capbar" aria-label={`${spent} of ${cap} WIF spent today`}>
-          <motion.span className="capbar__fill" initial={{ width: 0 }} animate={{ width: `${cap ? (spent / cap) * 100 : 0}%` }} transition={{ type: 'spring', stiffness: 120, damping: 20 }} />
+        {(READY || on) && <PayingFrom className="agent-payer" />}{/* the one paying-from row on this page: turn on, cap and deposit all pay from it */}
+        <div className="capbar" aria-label={reading ? 'reading today’s spend' : `${spent} of ${liveCap} wif spent today`}>
+          <motion.span className="capbar__fill" initial={{ width: 0 }} animate={{ width: `${liveCap && !reading ? Math.min(1, spent / liveCap) * 100 : 0}%` }} transition={{ type: 'spring', stiffness: 120, damping: 20 }} />
         </div>
         <div className="capbar__legend small">
-          <span><b><AnimatedNumber value={spent} /></b> spent today</span>
-          <span><b><AnimatedNumber value={Math.round(remaining)} /></b> left of <b><AnimatedNumber value={cap} /></b> WIF</span>
+          {reading ? <span className="muted" data-testid="agent-reading">reading from the chain…</span> : <>
+          <span data-testid="agent-spent"><b><AnimatedNumber value={spent} /></b> spent today</span>
+          <span data-testid="agent-left"><b><AnimatedNumber value={Math.round(remaining)} /></b> left of <b><AnimatedNumber value={liveCap} /></b> wif</span></>}
         </div>
         <ul className="agent-promises small">
           <li><Icon name="shield" size={14} /> it can never withdraw your money. only you can.</li>
@@ -120,8 +153,8 @@ export function Agent() {
 
       <section className="card settings">
         <div className="settings__row settings__row--cap">
-          <div><div className="strong">daily cap</div><div className="muted small">resets every day at 00:00 utc</div></div>
-          <span className="strong"><AnimatedNumber value={cap} duration={0.35} /> WIF</span>
+          <div><div className="strong">daily cap</div><div className="muted small">resets daily</div></div>
+          <span className="strong"><AnimatedNumber value={cap} duration={0.35} /> wif</span>
         </div>
         <div className="range-wrap">
           <motion.output className="range__bubble num" aria-hidden="true" style={{ left: `calc(${pct * 100}% + ${11 - pct * 22}px)` }}
@@ -131,10 +164,10 @@ export function Agent() {
           <input className="range" type="range" min={0} max={maxCap} step={plus ? 50 : 10} value={cap} disabled={!on}
             style={{ '--pct': `${pct * 100}%` } as React.CSSProperties}
             onPointerDown={() => setDragging(true)} onPointerUp={() => setDragging(false)} onBlur={() => setDragging(false)}
-            onChange={e => setAgent(a => ({ ...a, dailyCap: Number(e.target.value) }))} aria-label="daily cap in WIF" />
+            onChange={e => setAgent(a => ({ ...a, dailyCap: Number(e.target.value) }))} aria-label="daily cap in wif" />
         </div>
         <div className="range__ticks small muted">{[0, 0.25, 0.5, 0.75, 1].map(f => <span key={f}>{(maxCap * f).toLocaleString()}</span>)}</div>
-        {!plus && <p className="muted small range__note">up to {AGENT_CAP_FREE.toLocaleString('en-US')} WIF a day. with <Link to="/plus">plus</Link>, {AGENT_CAP_PLUS.toLocaleString('en-US')} WIF a day.</p>}
+        {!plus && <p className="muted small range__note">up to {AGENT_CAP_FREE.toLocaleString('en-US')} wif a day. with <Link to="/plus">plus</Link>, {AGENT_CAP_PLUS.toLocaleString('en-US')} wif a day.</p>}
         {toggleRows.map(t => (
           <div key={t.key} className="settings__row">
             <span className="settings__icon"><Icon name={t.icon} size={20} /></span>
@@ -144,7 +177,7 @@ export function Agent() {
           </div>
         ))}
         <div className="settings__save">
-          {READY && <TxSteps pull={0} action={`save a ${cap} WIF daily cap`} />}
+          {READY && <TxSteps pull={0} action={`save a ${cap} wif daily cap`} payer={false} />}
           <button className="btn btn--dark btn--block" onClick={save} disabled={!on || !READY}>save cap</button>
         </div>
       </section>
@@ -153,14 +186,14 @@ export function Agent() {
         <div className="settings__row">
           <span className="settings__icon"><Icon name="wallet" size={20} /></span>
           <div className="settings__copy"><div className="strong">agent balance</div><div className="muted small">the agent spends from here. withdraw any time.</div></div>
-          <span className="num strong">{deposited !== undefined ? `${deposited.toLocaleString()} WIF` : LIVE ? '…' : '0 WIF'}</span>
+          <span className="num strong">{deposited !== undefined ? `${deposited.toLocaleString()} wif` : LIVE ? '…' : '0 wif'}</span>
         </div>
         <div className="deposit">
           <input inputMode="decimal" value={deposit || ''} onChange={e => setDeposit(Number(e.target.value.replace(/[^0-9.]/g, '')) || 0)} aria-label="deposit amount" />
-          <button className="btn btn--ghost" disabled={!deposit || !READY} onClick={() => go(plans.deposit(deposit), `deposited ${deposit} WIF`, () => {})}>deposit</button>
+          <button className="btn btn--ghost" disabled={!deposit || !READY} onClick={() => go(plans.deposit(deposit), `deposited ${deposit} wif`, () => {})}>deposit</button>
           <button className="btn btn--ghost" disabled={!READY} onClick={() => go(plans.withdraw(), 'withdrew your whole balance', () => {})}>withdraw all</button>
         </div>
-        {READY && <TxSteps pull={deposit} action="add to your balance" />}
+        {READY && <TxSteps pull={deposit} action="add to your balance" payer={false} />}
       </section>
 
       <section className="card">

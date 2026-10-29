@@ -4,6 +4,7 @@
  * and builds without an app id stay on the wallet + guest sign-in.
  * The app id is public. The Privy app secret is server only and never appears in the frontend.
  */
+import { usePayerState } from '../lib/payerStore'
 import { useSyncExternalStore } from 'react'
 import { useAccount } from 'wagmi'
 
@@ -42,6 +43,8 @@ type Actions = {
   signMessageFrom?: (from: string, message: string) => Promise<`0x${string}`>
   /** Privy's own export modal (the key shows only inside Privy's iframe, never in this app). */
   exportWallet?: (address: string) => Promise<void>
+  /** 11.8.5: Privy's connect-wallet prompt (connect only, never link), suggesting one address. Resolves with what connected. */
+  connectWallet?: (address: string) => Promise<string>
 }
 
 /** Lazy loading: the Privy chunk (~1.5MB) mounts only once something wants it: a sign-in tap or sheet, an account
@@ -147,6 +150,17 @@ export const privyBridge = {
     if (!actions?.sendTxFrom || !privyBridge.has(from)) return Promise.reject(new Error('sign in with x or email to use this wallet'))
     return actions.sendTxFrom(from, to, data, chainId, value)
   },
+  /** Connect exactly this already-linked external wallet. 'other' = a different address connected (it is not used). */
+  async connectExact(address: string): Promise<'ok' | 'other' | 'closed'> {
+    wantPrivy()
+    if (!actions) await until(() => !!actions && state.ready)
+    if (privyBridge.has(address)) return 'ok'
+    if (!actions!.connectWallet) throw new Error('connecting a wallet isn’t available here')
+    try {
+      const got = await actions!.connectWallet(address)
+      return got.toLowerCase() === address.toLowerCase() ? 'ok' : 'other'
+    } catch (e) { if (/closed|exited/i.test((e as Error).message)) return 'closed'; throw e }
+  },
   exportWallet(address: string) {
     if (!actions?.exportWallet || !privyBridge.has(address)) return Promise.reject(new Error('sign in with x or email to use this wallet'))
     return actions.exportWallet(address)
@@ -198,5 +212,8 @@ export function usePrivyState() { return useSyncExternalStore(privyBridge.subscr
 export function useAnyAccount(): { address: `0x${string}` | undefined } {
   const { address } = useAccount()
   const p = usePrivyState()
+  // 11.8.5: the wallet the user picked to pay (wallet menu) leads, so every balance and allowance read follows it
+  const payer = usePayerState().address
+  if (payer) return { address: payer as `0x${string}` }
   return { address: address ?? (p.authenticated && p.activeWallet ? p.activeWallet as `0x${string}` : undefined) }
 }

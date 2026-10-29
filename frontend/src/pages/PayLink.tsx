@@ -6,7 +6,7 @@ import { ResolveLine } from '../sheets/Sheets'
 import { APP_NAME } from '../brand'
 import { LIVE } from '../config'
 import { PREVIEW_NOTE, useStore } from '../state/store'
-import { failTitle, plans, useSendPlan } from '../lib/wifly'
+import { failArgs, plans, useSendPlan } from '../lib/wifly'
 import { Corners, Wordmark } from '../components/Bits'
 import { FeeSplit } from '../components/FeeSplit'
 import { TxSteps } from '../components/TxSteps'
@@ -36,7 +36,7 @@ function PayName({ to }: { to: string }) {
     setBusy(true)
     try {
       const x = await send(plans.pay(r.address as Address, amount, 'paylink', `name:${r.label}`))
-      if (x.sent) toast('paid', 'confirmed onchain'); else toast(failTitle(x), x.reason)
+      if (x.sent) toast('paid', 'confirmed onchain'); else toast(...failArgs(x))
     } finally { setBusy(false) }
   }
   return (
@@ -46,13 +46,13 @@ function PayName({ to }: { to: string }) {
         <Corners />
         <h1 className="paylink__title">pay {r?.label ?? to}</h1>
         <ResolveLine raw={to} loading={res.isFetching} r={r} />
-        <label className="field"><span className="field__label">amount</span><span className="field__input"><input inputMode="decimal" value={amount} onChange={e => setAmount(Number(e.target.value.replace(/[^0-9.]/g, '')) || 0)} /><span className="muted">WIF</span></span></label>
+        <label className="field"><span className="field__label">amount</span><span className="field__input"><input inputMode="decimal" value={amount} onChange={e => setAmount(Number(e.target.value.replace(/[^0-9.]/g, '')) || 0)} /><span className="muted">wif</span></span></label>
         <FeeSplit amount={amount} recipientLabel={`${r?.label ?? 'they'} receive`} />
         <LowBalance need={amount} />
         <TxSteps pull={amount} action="pay" />
-        <button className="btn btn--dark btn--block btn--lg" disabled={!r?.address || !amount || busy} onClick={pay}>{busy ? 'sending…' : `pay ${amount.toLocaleString()} WIF`}</button>
+        <button className="btn btn--dark btn--block btn--lg" disabled={!r?.address || !amount || busy} onClick={pay}>{busy ? 'sending…' : `pay ${amount.toLocaleString()} wif`}</button>
       </main>
-      <footer className="paylink__foot muted small">made with <Link to="/">{APP_NAME.toLowerCase()}</Link>. get paid in $WIF at your .wif name.</footer>
+      <footer className="paylink__foot muted small">made with <Link to="/">{APP_NAME.toLowerCase()}</Link>. get paid in $wif at your .wif name.</footer>
     </div>
   )
 }

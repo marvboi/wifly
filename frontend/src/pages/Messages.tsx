@@ -109,7 +109,7 @@ function InboxPane({ active }: { active?: string }) {
 function preview(m: DmMessage | null) {
   if (!m) return ''
   const who = m.mine ? 'you: ' : ''
-  if (m.kind === 'tip') return `${who}tipped ${fmtWif(m.tip?.amount ?? 0)} WIF`
+  if (m.kind === 'tip') return `${who}tipped ${fmtWif(m.tip?.amount ?? 0)} wif`
   if (!m.text && m.image) return `${who}sent a photo`
   return who + m.text.replace(/\s+/g, ' ')
 }
@@ -308,7 +308,7 @@ function Bubble({ m, tail, picked, onPick, onDelete, onReport }: { m: DmMessage;
     <div className={`dmb-row${m.mine ? ' dmb-row--me' : ''}`}>
       <div className={cls} data-testid={m.kind === 'tip' ? 'dm-tip-bubble' : 'dm-bubble'} onClick={e => { if (!(e.target as HTMLElement).closest('a')) onPick() }}>
         {m.kind === 'tip' ? (
-          <span className="dmb__tip"><TipJar size={20} title="" /><span><b className="num">{fmtWif(m.tip?.amount ?? 0)} WIF</b><span className="dmb__tipline">{m.mine ? 'tip sent' : 'tip received'}{m.tip?.verified ? ' · onchain' : ''}</span></span></span>
+          <span className="dmb__tip"><TipJar size={20} title="" /><span><b className="num">{fmtWif(m.tip?.amount ?? 0)} wif</b><span className="dmb__tipline">{m.mine ? 'tip sent' : 'tip received'}{m.tip?.verified ? ' · onchain' : ''}</span></span></span>
         ) : <>
           {m.image && <a href={m.image} target="_blank" rel="noopener noreferrer" className="dmb__img"><img src={m.image} alt="photo" loading="lazy" /></a>}
           {m.text && <RichText text={m.text} className="dmb__text" />}
@@ -350,7 +350,7 @@ function Composer({ handle, onSent }: { handle: string; onSent: () => void }) {
   const pick = async (f: File | undefined) => {
     if (!f) return
     if (!DM_IMAGE_TYPES.includes(f.type)) { toast('use a png, jpg, webp or gif'); return }
-    if (f.size > DM_IMAGE_MAX) { toast('images up to 20 MB'); return }
+    if (f.size > DM_IMAGE_MAX) { toast('images up to 20 mb'); return }
     const local = URL.createObjectURL(f)
     setImg({ url: null, local, busy: true })
     try { const url = await uploadDmImage(f); setImg(s => s && s.local === local ? { ...s, url, busy: false } : s) }

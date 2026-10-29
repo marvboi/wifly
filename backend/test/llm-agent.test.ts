@@ -98,8 +98,9 @@ test('a paid model never gets a request, even if AI_MODELS lists one', async () 
   process.env.AI_MODELS = `${GEMMA},${NEMO}`
 })
 
-test('calm(): model capitals become lowercase (wifly plus too), tickers, handles, links and addresses stay', () => {
-  assert.equal(calm('Sure! I can do that. You have 50 WIF.'), 'sure! i can do that. you have 50 WIF.')
+test('calm(): model capitals become lowercase (wifly plus too), tickers lowercase (11.8.8), handles, links and addresses stay', () => {
+  assert.equal(calm('Sure! I can do that. You have 50 WIF.'), 'sure! i can do that. you have 50 wif.')
+  assert.equal(calm('Swap 0.01 ETH to $WIF, a DCA via AI. WIFLY OK'), 'swap 0.01 eth to $wif, a dca via ai. WIFLY OK')
   assert.equal(calm('Get Wifly Plus. Plus is Great.'), 'get wifly plus. plus is great.')
   assert.equal(calm('Tip @Juno at 0xAbC1 via https://x.com/AbC'), 'tip @Juno at 0xAbC1 via https://x.com/AbC')
 })

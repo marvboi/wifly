@@ -6,6 +6,8 @@
  *   server through the agent path (tipFor / subscribeFor / subscribeForPlan / takeTopSpotFor), inside the daily cap,
  *   spending only the deposited Wifly balance. Top up, cap sheet (set / raise / revoke) and the activity log live here.
  */
+import { AGENT_LABEL, shortA } from '../lib/payer'
+import { CopyAddr } from '../components/Payer'
 import { profilePath } from '../lib/paths'
 import { AnimatePresence, motion } from 'motion/react'
 import { useEffect, useRef, useState, type FormEvent } from 'react'
@@ -16,7 +18,9 @@ import { TxSteps } from '../components/TxSteps'
 import { useSession } from '../api/session'
 import { useStore } from '../state/store'
 import { AGENT_READY, FEE_BPS, LIVE, TOPSPOT_FEE_SHARE, WIFLY_AGENT_ADDRESS } from '../config'
-import { failTitle, plans, useSendPlan } from '../lib/wifly'
+import { failLine, plans, useSendPlan, type SendFail } from '../lib/wifly'
+import { looksRaw, txErrorLine, GENERIC_LINE } from '../lib/txError'
+import { TxErrorNote } from '../components/TxNote'
 import { Usd, usdText, useWifPrice } from '../lib/price'
 import { companion, useCompanionFeed } from '../lib/companion'
 import { FEE_PERCENT_LABEL, FEE_SPLIT_LABEL, splitFee } from '../lib/fees'
@@ -136,9 +140,9 @@ function Panel({ signedIn, guest, onClose, feedMood, pulse }: { signedIn: boolea
       refresh(r.state ?? r.action?.state)
       setMsgs(v => v.map(m => (m.id === msgId ? { ...m, result: r } : m)))
       if (r.status === 'sent') { companion.celebrate('agent', `${p.summary}. confirmed`); setMood('happy'); push({ from: 'face', text: 'done. it’s in your activity with the transaction link.' }) }
-      else if (r.status === 'preview') { setMood('happy'); push({ from: 'face', text: r.reason ?? 'payments aren’t live yet, so nothing was sent.' }) }
-      else { setMood('oops'); push({ from: 'face', text: r.reason ?? 'that didn’t go through.' }) }
-    } catch (e) { setMood('oops'); push({ from: 'face', text: (e as Error).message }) } finally { setBusy(false); setTimeout(() => setMood('calm'), 2000) }
+      else if (r.status === 'preview') { setMood('happy'); push({ from: 'face', text: calmText(r.reason) ?? 'payments aren’t live yet, so nothing was sent.' }) }
+      else { setMood('oops'); push({ from: 'face', text: calmText(r.reason) ?? 'that didn’t go through.' }) }
+    } catch (e) { setMood('oops'); push({ from: 'face', text: txErrorLine(e).line }) } finally { setBusy(false); setTimeout(() => setMood('calm'), 2000) }
   }
 
   const submit = (e: FormEvent) => { e.preventDefault(); ask(text) }
@@ -239,7 +243,7 @@ function ChatCardView({ c, busy, onAsk, onGo }: { c: ChatCard; busy: boolean; on
   if (c.type === 'dca_manage') return (
     <div className="cmp-card">
       <div className="cmp-card__row"><span className="muted small">{c.action} plan</span><span className="strong">{c.plan.perBuyUsd ? `$${n(c.plan.perBuyUsd)}` : `${c.plan.perBuyEth} eth`} · {c.plan.status.replace('_', ' ')}</span></div>
-      <button className="btn btn--dark btn--sm btn--block" onClick={() => onGo('/dca')}>{c.action} on the DCA screen</button>
+      <button className="btn btn--dark btn--sm btn--block" onClick={() => onGo('/dca')}>{c.action} on the scheduled buys screen</button>
     </div>
   )
   if (c.type === 'creators') return <div className="cmp-sugg cmp-sugg--inline">{c.users.slice(0, 5).map((u, i) => u.handle && <button key={i} className="chip chip--sm" onClick={() => onGo(profilePath(u.handle ?? ""))}>@{u.handle}</button>)}</div>
@@ -253,6 +257,7 @@ function MyAgentPane({ onGo }: { onGo: (to: string) => void }) {
   const d = q.data
   return (
     <div className="cmp-pane">
+      <AgentHowItPays />
       {!d || d.locked ? (
         <div className="cmp-card cmp-card--soft">
           <span className="strong">your own agent comes with plus</span>
@@ -269,6 +274,22 @@ function MyAgentPane({ onGo }: { onGo: (to: string) => void }) {
         </>
       )}
       <RentAgentCard />
+    </div>
+  )
+}
+
+/** 11.8.5: who pays what, in three short lines, and the agent's address. */
+function AgentHowItPays() {
+  const a = WIFLY_AGENT_ADDRESS ?? null
+  return (
+    <div className="cmp-card cmp-card--soft cmp-how" data-testid="agent-how">
+      <p className="small">you deposit wif and set a daily cap from your wallet. one small gas fee each.</p>
+      <p className="small">after that the agent pays its own gas when it acts for you.</p>
+      <p className="small">it can never withdraw.</p>
+      <div className="cmp-how__agent">
+        <span className="tiny muted">{AGENT_LABEL}</span>
+        {a ? <span className="cmp-how__addr"><code className="mono small" title={a}>{shortA(a)}</code><CopyAddr address={a} label="copy agent address" /></span> : <span className="tiny muted">not set yet</span>}
+      </div>
     </div>
   )
 }
@@ -322,7 +343,7 @@ function ConfirmCard({ p, st, result, busy, onConfirm, onTopUp }: { p: Planned; 
       {done ? (
         <div className={`cmp-card__status is-${result!.status}`}>
           <Icon name={result!.status === 'sent' || result!.status === 'preview' ? 'check' : 'close'} size={14} />
-          {result!.status === 'sent' ? <>sent · <a href={`https://robinhoodchain.blockscout.com/tx/${result!.hash}`} target="_blank" rel="noreferrer">view transaction</a></> : result!.status === 'preview' ? 'not live yet: nothing was sent' : result!.reason}
+          {result!.status === 'sent' ? <>sent · <a href={`https://robinhoodchain.blockscout.com/tx/${result!.hash}`} target="_blank" rel="noreferrer">view transaction</a></> : result!.status === 'preview' ? 'not live yet: nothing was sent' : calmText(result!.reason)}
         </div>
       ) : p.needsTopUp ? (
         <button className="btn btn--dark btn--block btn--sm" onClick={() => onTopUp(p.needsTopUp!.shortfall)}>top up {n(p.needsTopUp.shortfall)} wif</button>
@@ -333,21 +354,32 @@ function ConfirmCard({ p, st, result, busy, onConfirm, onTopUp }: { p: Planned; 
   )
 }
 
+/** An inline send error: the calm line, and the wallet when it needs gas (11.8.5). */
+type TxErr = { line: string | null; address?: string }
+const errOf = (r: SendFail): TxErr => ({ line: failLine(r), address: r.kind === 'gas' ? r.address : undefined })
+/** Server-written reasons pass through unless they look like a raw dump (then the raw text goes to the console). */
+function calmText(s?: string | null): string | undefined {
+  if (!s) return undefined
+  if (!looksRaw(s)) return s
+  try { console.warn('[wifly] raw reason', s) } catch { /* no console */ }
+  return GENERIC_LINE
+}
+
 function TopUp({ st, suggested, onDone, onBack }: { st: AgentState; suggested: number; onDone: () => void; onBack: () => void }) {
   const [amount, setAmount] = useState(Math.max(suggested, 0) || 100)
   const [busy, setBusy] = useState(false)
-  const [err, setErr] = useState<string | null>(null)
+  const [err, setErr] = useState<TxErr | null>(null)
   const send = useSendPlan()
   const refresh = useAgentRefresh()
   const go = async () => {
     setBusy(true); setErr(null)
     try {
       let txHash: string | undefined
-      if (LIVE) { const r = await send(plans.deposit(amount)); if (!r.sent) { setErr(`${failTitle(r)}: ${r.reason}`); return } txHash = r.hash }
+      if (LIVE) { const r = await send(plans.deposit(amount)); if (!r.sent) { setErr(errOf(r)); return } txHash = r.hash }
       const s = await call<AgentState & { error?: string }>('/agent/deposit', 'POST', { amount, txHash })
-      if (s.error) { setErr(s.error); return }
+      if (s.error) { setErr({ line: calmText(s.error) ?? null }); return }
       refresh(s); onDone()
-    } catch (e) { setErr((e as Error).message) } finally { setBusy(false) }
+    } catch (e) { setErr({ line: txErrorLine(e).line }) } finally { setBusy(false) }
   }
   return (
     <div className="cmp-pane">
@@ -361,7 +393,7 @@ function TopUp({ st, suggested, onDone, onBack }: { st: AgentState; suggested: n
       <div className="cmp-presets">{[...(suggested ? [suggested] : []), 100, 500, 1000].filter((v, i, a) => a.indexOf(v) === i).map(v => <button key={v} className={`chip chip--sm ${amount === v ? 'is-on' : ''}`} onClick={() => setAmount(v)}>{v === suggested ? `${n(v)} (needed)` : n(v)}</button>)}</div>
       <div className="cmp-card__row"><span className="muted small">balance after</span><span className="num strong">{n(st.deposited + amount)} wif</span></div>
       <TxSteps pull={amount} action={`deposit ${n(amount)} wif`} />
-      {err && <p className="cmp-err small">{err}</p>}
+      <TxErrorNote line={err?.line ?? null} address={err?.address} className="cmp-txerr" />
       <button className="btn btn--dark btn--block" disabled={!amount || busy} onClick={go}>{busy ? 'depositing…' : `approve ${n(amount)} + deposit`}</button>
       {!LIVE && <p className="preview-note"><Icon name="shield" size={14} /> payments aren’t live yet. confirming sends nothing.</p>}
     </div>
@@ -371,7 +403,7 @@ function TopUp({ st, suggested, onDone, onBack }: { st: AgentState; suggested: n
 function CapSheet({ st }: { st: AgentState }) {
   const [cap, setCap] = useState(st.enabled ? st.cap : Math.min(100, st.maxCap))
   const [busy, setBusy] = useState(false)
-  const [err, setErr] = useState<string | null>(null)
+  const [err, setErr] = useState<TxErr | null>(null)
   const send = useSendPlan()
   const refresh = useAgentRefresh()
   // the server's signer address first (it is the one that sends); the build's VITE_WIFLY_AGENT_ADDRESS as a fallback.
@@ -383,29 +415,30 @@ function CapSheet({ st }: { st: AgentState }) {
     try {
       let txHash: string | undefined
       if (st.live) {
-        if (value > 0 && (!agentAddr || mismatch)) { setErr(mismatch ? 'the agent address doesn’t match the server’s. nothing was sent' : 'the agent address isn’t set yet. nothing was sent'); return }
+        if (value > 0 && (!agentAddr || mismatch)) { setErr({ line: mismatch ? 'the agent address doesn’t match the server’s. nothing was sent' : 'the agent address isn’t set yet. nothing was sent' }); return }
         const r = await send(value > 0 ? plans.setAgent(agentAddr as `0x${string}`, value) : plans.revokeAgent())
-        if (!r.sent) { setErr(`${failTitle(r)}: ${r.reason}`); return }
+        if (!r.sent) { setErr(errOf(r)); return }
         txHash = r.hash
       }
       const s = await call<AgentState & { error?: string }>('/agent/cap', 'PUT', { cap: value, txHash })
-      if (s.error) { setErr(s.error); return }
+      if (s.error) { setErr({ line: calmText(s.error) ?? null }); return }
       refresh(s); companion.say(value > 0 ? `daily cap set to ${n(value)} wif` : 'agent off. it can’t spend anything now', value > 0 ? 'happy' : 'calm')
-    } catch (e) { setErr((e as Error).message) } finally { setBusy(false) }
+    } catch (e) { setErr({ line: txErrorLine(e).line }) } finally { setBusy(false) }
   }
   const pct = st.maxCap ? cap / st.maxCap : 0
   const used = st.cap ? Math.min(1, st.spentToday / st.cap) : 0
   return (
     <div className="cmp-pane">
       <h3 className="cmp-pane__title">daily cap</h3>
-      <p className="muted small">the most the agent can spend for you each utc day, from your deposited balance. it can never withdraw.</p>
+      <p className="muted small">the most the agent can spend for you each day, from your deposited balance. it can never withdraw.</p>
       <div className="capbar" aria-label={`${st.spentToday} of ${st.cap} wif spent today`}><motion.span className="capbar__fill" animate={{ width: `${used * 100}%` }} /></div>
       <div className="capbar__legend small"><span><b className="num">{n(st.spentToday)}</b> spent today</span><span><b className="num">{n(st.remaining)}</b> left{st.enabled ? ` of ${n(st.cap)}` : ''} wif</span></div>
       <div className="cmp-amount"><input inputMode="numeric" value={cap || ''} onChange={e => setCap(Math.min(st.maxCap, Number(e.target.value.replace(/\D/g, '')) || 0))} aria-label="daily cap in wif" /><span>wif / day</span></div>
       <input className="range" type="range" min={0} max={st.maxCap} step={st.maxCap > 500 ? 50 : 10} value={cap} onChange={e => setCap(Number(e.target.value))} style={{ '--pct': `${pct * 100}%` } as React.CSSProperties} aria-label="daily cap" />
-      <p className="muted tiny">up to {n(st.maxCap)} wif a day{st.maxCap <= 500 ? ' (5,000 with plus)' : ''}. agent: <span className="mono">{agentAddr ? short(agentAddr) : 'not set yet'}</span></p>
+      <p className="muted tiny">up to {n(st.maxCap)} wif a day{st.maxCap <= 500 ? ' (5,000 with plus)' : ''}. </p>
+      <p className="muted tiny cmp-agentline">{AGENT_LABEL}: <span className="mono">{agentAddr ? short(agentAddr) : 'not set yet'}</span>{agentAddr && <CopyAddr address={agentAddr} label="copy agent address" />}</p>
       <TxSteps pull={0} action={cap > 0 ? `setAgent with a ${n(cap)} wif daily cap` : 'revokeAgent'} />
-      {err && <p className="cmp-err small">{err}</p>}
+      <TxErrorNote line={err?.line ?? null} address={err?.address} className="cmp-txerr" />
       <div className="cmp-row">
         <button className="btn btn--dark" disabled={busy || cap <= 0 || (st.live && (!agentAddr || mismatch)) || (st.enabled && cap === st.cap)} onClick={() => save(cap)}>{busy ? 'saving…' : !st.enabled ? 'turn on' : cap > st.cap ? 'raise cap' : 'lower cap'}</button>
         {st.enabled && <button className="btn btn--ghost" disabled={busy} onClick={() => save(0)}><Icon name="power" size={14} /> revoke</button>}
@@ -428,7 +461,7 @@ function ActivityLog() {
           <span className={`cmp-log__dot is-${a.status}`} aria-hidden="true" />
           <div className="cmp-log__copy">
             <div className="small strong clamp-1">{a.command}</div>
-            <div className="muted tiny">{new Date(a.at).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })} · {a.status}{a.recipient ? ` · ${a.recipient}` : ''}{a.reason && a.status !== 'sent' ? ` · ${a.reason}` : ''}</div>
+            <div className="muted tiny">{new Date(a.at).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }).toLowerCase()} · {a.status}{a.recipient ? ` · ${a.recipient}` : ''}{a.reason && a.status !== 'sent' ? ` · ${calmText(a.reason)}` : ''}</div>
             {a.txHash && <a className="tiny" href={`https://robinhoodchain.blockscout.com/tx/${a.txHash}`} target="_blank" rel="noreferrer">view transaction</a>}
           </div>
           {a.amount > 0 && <span className="num small strong">−{n(a.amount)}{usd ? <span className="muted tiny"> ≈ ${usdText(a.amount * usd)}</span> : null}</span>}

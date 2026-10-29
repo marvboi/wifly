@@ -25,7 +25,7 @@ const FONTS = ['WIFPar-Flat0.ttf', 'Geist-VariableFont_wght.ttf'].map(f => resol
 
 const INK = '#110E08', MUTED = '#6F6A60', LINE = '#ECE9E2', PAPER = '#F7F5F0', NEON = '#CCFF00'
 const SITE_NAME = 'wifly'
-const DEFAULT_DESC = 'get paid for what you post. tips, subscriptions and paid drops in $WIF, straight to your wallet.'
+const DEFAULT_DESC = 'get paid for what you post. tips, subscriptions and paid drops in $wif, straight to your wallet.'
 
 // the wifly face on its lime tile (same geometry as the app icon) and the logotype, path-only so no font is needed
 const FACE = (x: number, y: number, s: number, r = 0.26) => `<g transform="translate(${x} ${y}) scale(${s / 100})"><rect width="100" height="100" rx="${100 * r}" fill="${NEON}"/><g transform="translate(50 50.5) scale(0.62) translate(-50 -52)"><path d="M50 12 C74.1 12 93 31 93 55 C93 79.5 76.5 92 50 92 C23.5 92 7 79.5 7 55 C7 31 25.9 12 50 12 Z" fill="${INK}"/><rect x="32" y="32.75" width="11" height="18.5" rx="5.5" fill="${NEON}"/><rect x="57" y="32.75" width="11" height="18.5" rx="5.5" fill="${NEON}"/><path d="M32.50 60.50 C33.10 67.47 35.73 69.00 41.00 69.00 C46.40 69.00 49.60 65.85 50.00 62.00 C50.40 65.85 53.60 69.00 59.00 69.00 C64.27 69.00 66.90 67.47 67.50 60.50" fill="none" stroke="${NEON}" stroke-width="6.6" stroke-linecap="round" stroke-linejoin="round"/></g></g>`
@@ -170,8 +170,8 @@ const PAGE_TITLES: Record<string, [string, string]> = {
   explore: ['explore · wifly', 'find people, drops and .wif names on wifly.'],
   names: ['.wif names · wifly', 'claim a .wif name. it’s yours onchain, and the card is drawn onchain too.'],
   plus: ['wifly plus', 'the plus check, an assistant with no daily limit and more. optional: everything else stays free.'],
-  swap: ['get $WIF · wifly', 'swap for $WIF onchain, right inside wifly.'],
-  vote: ['vote · wifly', 'vote on the weekly pot with your $WIF.'],
+  swap: ['get $wif · wifly', 'swap for $wif onchain, right inside wifly.'],
+  vote: ['vote · wifly', 'vote on the weekly pot with your $wif.'],
   docs: ['docs · wifly', 'how wifly works: tips, subscriptions, paid drops, .wif names and the weekly pot.'],
 }
 const OG_RENDER = 2 // bump when the drawing changes, so previews that cached a broken card fetch a new one
@@ -195,7 +195,7 @@ export function metaFor(t: Target, _path: string, origin: string) {
   if (t.kind === 'profile') {
     const u = t.u
     title = `${u.name} (${u.wifName ? `${u.wifName}.wif` : `@${u.handle}`}) · ${SITE_NAME}`
-    desc = u.bio ? clip(u.bio.replace(/\s+/g, ' '), 200) : `${u.name} is on wifly. tips in $WIF go straight to their wallet.`
+    desc = u.bio ? clip(u.bio.replace(/\s+/g, ' '), 200) : `${u.name} is on wifly. tips in $wif go straight to their wallet.`
     img = `/api/og/img/profile/${u.handle}.png`; type = 'profile'
   } else if (t.kind === 'post') {
     title = `${t.u.name} on ${SITE_NAME}`
@@ -259,7 +259,7 @@ async function cardSvg(t: Target): Promise<string> {
     y += 64
     if (u.wifName) { const p = pill(400, y - 36, `${u.wifName}.wif`); s += p.svg; s += `<text x="${400 + p.w + 18}" y="${y}" font-family="Geist" font-size="30" fill="${MUTED}">@${esc(u.handle)}</text>` }
     else s += `<text x="400" y="${y}" font-family="Geist" font-size="30" fill="${MUTED}">@${esc(u.handle)}</text>`
-    const bio = wrap(u.bio || 'on wifly. tips in $WIF go straight to their wallet.', 32, 680, 3)
+    const bio = wrap(u.bio || 'on wifly. tips in $wif go straight to their wallet.', 32, 680, 3)
     s += `<text x="400" y="${y + 70}" font-family="Geist" font-size="32" fill="${u.bio ? INK : MUTED}">${tspans(bio, 400, 44)}</text>`
     return frame(s, `wifly.fun/@${u.handle}`)
   }
@@ -300,7 +300,7 @@ async function cardSvg(t: Target): Promise<string> {
   s += LOGO(480, 160, 120)
   const l1 = wrap(own ?? 'get paid for what you post.', 34, 600, 3)
   s += `<text x="486" y="352" font-family="Geist" font-size="34" fill="${INK}">${tspans(l1, 486, 46)}</text>`
-  if (!own) s += `<text x="486" y="410" font-family="Geist" font-size="28" fill="${MUTED}">${tspans(wrap('tips, subscriptions and paid drops in $WIF, straight to your wallet.', 28, 600, 2), 486, 40)}</text>`
+  if (!own) s += `<text x="486" y="410" font-family="Geist" font-size="28" fill="${MUTED}">${tspans(wrap('tips, subscriptions and paid drops in $wif, straight to your wallet.', 28, 600, 2), 486, 40)}</text>`
   return frame(s, 'wifly.fun', false)
 }
 

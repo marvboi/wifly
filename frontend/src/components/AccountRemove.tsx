@@ -34,7 +34,7 @@ export function RemoveAccountSheet({ handle, mode, onClose, onConfirm }: {
           </ul>
           <div className="acct-del__note">
             <Icon name="check" size={16} />
-            <span className="small">onchain things stay in the wallet: .wif names, badges and WIF tips belong to the wallet, not to wifly.</span>
+            <span className="small">onchain things stay in the wallet: .wif names, badges and wif tips belong to the wallet, not to wifly.</span>
           </div>
         </div>
       ) : (

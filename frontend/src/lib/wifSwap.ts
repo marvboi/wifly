@@ -59,13 +59,36 @@ export async function quote(client: PublicClient, side: Side, amountIn: bigint) 
 export const minOut = (amountOut: bigint, slippageBps = 100n) => (amountOut * (10_000n - slippageBps)) / 10_000n
 
 const V4_SWAP = 0x10
-const A = { SWAP_EXACT_IN_SINGLE: 0x06, SETTLE_ALL: 0x0c, TAKE_ALL: 0x0f } as const
+/** Universal Router TRANSFER(token, recipient, value): token 0x0 = ETH the router holds (from msg.value). */
+export const UR_TRANSFER = 0x05
+const A = { SWAP_EXACT_IN_SINGLE: 0x06, SETTLE_ALL: 0x0c, TAKE: 0x0e, TAKE_ALL: 0x0f } as const
+/**
+ * 11.8.5 options. recipient: who gets the output (v4 TAKE(currency, recipient, 0 = the whole open delta); the swap's own
+ * amountOutMinimum / exact amountOut still guards the price). gasTopUp: buys only, a little extra ETH in msg.value that the
+ * router passes to `to` with TRANSFER in the same transaction (~0.0001 ETH so an embedded wallet can pay its own gas).
+ */
+export type SwapOpts = { recipient?: Address; gasTopUp?: { to: Address; wei: bigint } }
+/** Largest gas top-up we'll ever add, and the default. */
+export const MAX_GAS_TOPUP = 1_000_000_000_000_000n // 0.001 ETH
+export const GAS_TOPUP_WEI = 100_000_000_000_000n // 0.0001 ETH
+export function takeAction(cOut: Address, amountMin: bigint, recipient?: Address): { action: number; param: Hex } {
+  return recipient
+    ? { action: A.TAKE, param: encodeAbiParameters([{ type: 'address' }, { type: 'address' }, { type: 'uint256' }], [cOut, recipient, 0n]) }
+    : { action: A.TAKE_ALL, param: encodeAbiParameters([{ type: 'address' }, { type: 'uint256' }], [cOut, amountMin]) }
+}
+export function topUpCommand(t?: { to: Address; wei: bigint }): { cmd: number; input: Hex } | null {
+  if (!t || t.wei <= 0n) return null
+  if (t.wei > MAX_GAS_TOPUP) throw new Error('gas top-up too large')
+  return { cmd: UR_TRANSFER, input: encodeAbiParameters([{ type: 'address' }, { type: 'address' }, { type: 'uint256' }], ['0x0000000000000000000000000000000000000000', t.to, t.wei]) }
+}
 
 /** Builds the Universal Router call for an exact-input single-pool swap. */
-export function buildSwap(side: Side, amountIn: bigint, amountOutMin: bigint, deadlineSec = 600) {
+export function buildSwap(side: Side, amountIn: bigint, amountOutMin: bigint, deadlineSec = 600, opts: SwapOpts = {}) {
   const zeroForOne = side === 'buy'
   const [cIn, cOut] = zeroForOne ? [POOL_KEY.currency0, POOL_KEY.currency1] : [POOL_KEY.currency1, POOL_KEY.currency0]
-  const actions = encodePacked(['uint8', 'uint8', 'uint8'], [A.SWAP_EXACT_IN_SINGLE, A.SETTLE_ALL, A.TAKE_ALL])
+  const take = takeAction(cOut, amountOutMin, opts.recipient)
+  const top = zeroForOne ? topUpCommand(opts.gasTopUp) : null
+  const actions = encodePacked(['uint8', 'uint8', 'uint8'], [A.SWAP_EXACT_IN_SINGLE, A.SETTLE_ALL, take.action])
   const params: Hex[] = [
     encodeAbiParameters(
       [{ type: 'tuple', components: [
@@ -75,13 +98,15 @@ export function buildSwap(side: Side, amountIn: bigint, amountOutMin: bigint, de
       [{ poolKey: POOL_KEY, zeroForOne, amountIn, amountOutMinimum: amountOutMin, hookData: '0x' }],
     ),
     encodeAbiParameters([{ type: 'address' }, { type: 'uint256' }], [cIn, amountIn]),     // SETTLE_ALL: pay at most amountIn
-    encodeAbiParameters([{ type: 'address' }, { type: 'uint256' }], [cOut, amountOutMin]), // TAKE_ALL: receive at least min
+    take.param, // TAKE_ALL to the sender (at least min), or TAKE everything owed to opts.recipient
   ]
   const input = encodeAbiParameters([{ type: 'bytes' }, { type: 'bytes[]' }], [actions, params])
+  const cmds = top ? encodePacked(['uint8', 'uint8'], [V4_SWAP, top.cmd]) : encodePacked(['uint8'], [V4_SWAP])
+  const inputs = top ? [input, top.input] : [input]
   return {
     address: ADDR.universalRouter, abi: routerAbi, functionName: 'execute' as const,
-    args: [encodePacked(['uint8'], [V4_SWAP]), [input], BigInt(Math.floor(Date.now() / 1000) + deadlineSec)] as const,
-    value: zeroForOne ? amountIn : 0n, // ETH in is sent as msg.value
+    args: [cmds, inputs, BigInt(Math.floor(Date.now() / 1000) + deadlineSec)] as const,
+    value: zeroForOne ? amountIn + (top ? opts.gasTopUp!.wei : 0n) : 0n, // ETH in (plus any gas top-up) is msg.value
   }
 }
 

@@ -42,7 +42,7 @@ export function Vote() {
         <Corners />
         <div className="vote-hero__copy">
           <h2 className="display">back a creator. the top one takes the weekly community pot.</h2>
-          <p className="muted">{VOTE_PRICE} WIF a vote. the top creator takes {Math.round(winnerShare * 100)}%, their voters share {Math.round(voterShare * 100)}%.</p>
+          <p className="muted">{VOTE_PRICE} wif a vote. the top creator takes {Math.round(winnerShare * 100)}%, their voters share {Math.round(voterShare * 100)}%.</p>
         </div>
         <div className="vote-hero__peek" aria-hidden="true">
           <motion.span className="vote-hero__face" initial={{ y: '70%' }} animate={{ y: '18%' }} whileHover={{ y: '4%' }}

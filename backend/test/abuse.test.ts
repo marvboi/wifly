@@ -50,18 +50,18 @@ test('turnstile: skipped when the keys are unset; the config hands out no site k
   assert.equal((await call('GET', '/api/auth/config')).body.turnstile, null)
 })
 
-test('turnstile: with a secret set, sign-up needs a token that siteverify accepts', async () => {
+test('turnstile: with a secret set, the token is checked but never blocks sign-up (11.8.3)', async () => {
   process.env.TURNSTILE_SECRET_KEY = 'test-only-not-a-real-secret'
   process.env.TURNSTILE_SITE_KEY = 'site-key-public'
   const seen: string[] = []
   setTurnstileFetch(async (_u, i) => { seen.push(i.body.get('response') ?? ''); return { json: async () => ({ success: i.body.get('response') === 'good' }) } })
-  assert.equal((await signUp()).status, 403, 'no token')
-  assert.equal((await signUp({ turnstileToken: 'bad' })).status, 403, 'rejected token')
+  assert.equal((await signUp()).status, 200, 'no token: allowed under ip limits')
+  assert.equal((await signUp({ turnstileToken: 'bad' })).status, 200, 'rejected token: allowed under ip limits')
   assert.equal((await signUp({ turnstileToken: 'good' })).status, 200)
   assert.deepEqual(seen, ['bad', 'good'])
   assert.equal((await call('GET', '/api/auth/config')).body.turnstile, 'site-key-public')
   setTurnstileFetch(async () => { throw new Error('network down') })
-  assert.equal((await signUp({ turnstileToken: 'good' })).status, 403, 'fails closed')
+  assert.equal((await signUp({ turnstileToken: 'good' })).status, 200, 'network error: allowed under ip limits')
   delete process.env.TURNSTILE_SITE_KEY
 })
 

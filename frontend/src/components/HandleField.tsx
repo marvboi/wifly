@@ -52,7 +52,7 @@ export function HandleField({ value, onChange, autoFocus, inputRef, onFocus, onB
       </label>
       <div className={`handle-field__meta ${showRules ? '' : 'is-hidden'}`}>
         {(!quiet || focused) && <span className="tiny muted">{value.length}/{NAME_MAX} · a–z, 0–9 and _</span>}
-        {state === 'bad' && check?.message && check.message.trim().toLowerCase() !== (LABEL[check?.reason ?? 'invalid'] ?? 'not available') && <span className="tiny">{check.message}{check.price ? ` for ${check.price.toLocaleString()} WIF` : ''}</span>}
+        {state === 'bad' && check?.message && check.message.trim().toLowerCase() !== (LABEL[check?.reason ?? 'invalid'] ?? 'not available') && <span className="tiny">{check.message}{check.price ? ` for ${check.price.toLocaleString()} wif` : ''}</span>}
       </div>
       {state === 'bad' && !!check?.suggestions?.length && (
         <div className="handle-field__sugg"><span className="tiny muted">try</span>

@@ -54,7 +54,7 @@ after(() => { setLlmProvider(undefined); db.close(); rmSync(dir, { recursive: tr
 test('dca parser', () => {
   const d = parseDca('buy $5 of WIF every Monday at 9am')!
   assert.deepEqual([d.perBuy, d.every, d.weekday, d.hour, d.minute], [{ usd: 5 }, 'week', 1, 9, 0])
-  assert.equal(d.summary, 'buy $5 of WIF every Monday at 9am')
+  assert.equal(d.summary, 'buy $5 of wif every monday at 9am')
   assert.equal(parseDca('stack 0.01 eth of wif daily at 21:30')!.perBuy.eth, 0.01)
   assert.equal(parseDca('buy me lunch every monday'), null)
 })
@@ -202,7 +202,7 @@ test('companion: free users get a few Q&A messages, no commands; Plus gets tools
   assert.equal(pz.status, 200)
   // typos: medium confidence -> "Did you mean" card only, nothing prepared; tapping the canonical text gives the real card
   const typo = await call('POST', '/api/companion/chat', { cookie: u.cookie, body: { text: 'by 5 wif evry mondy' } })
-  assert.equal(typo.body.reply, 'did you mean: buy $5 of WIF every monday at 9:00?')
+  assert.equal(typo.body.reply, 'did you mean: buy $5 of wif every monday at 9:00?')
   assert.deepEqual(typo.body.cards.map((c: any) => c.type), ['suggest'], 'no action/dca card before the user confirms the reading')
   const tapped = await call('POST', '/api/companion/chat', { cookie: u.cookie, body: { text: typo.body.cards[0].text } })
   assert.equal(tapped.body.cards[0].type, 'dca'); assert.equal(tapped.body.cards[0].draft.weekday, 1); assert.equal(tapped.body.cards[0].draft.perBuy.usd, 5)

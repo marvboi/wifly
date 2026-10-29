@@ -82,7 +82,7 @@ export async function uploadImage(file: File): Promise<string> {
 
 export const AVATAR_TYPES = ['image/png', 'image/jpeg', 'image/webp', 'image/gif']
 export const AVATAR_MAX_BYTES = 20 * 1024 * 1024 // same as the api's AVATAR_MAX_BYTES
-export const AVATAR_TOO_BIG = 'photo must be under 20 MB'
+export const AVATAR_TOO_BIG = 'photo must be under 20 mb'
 
 /** Problem with a chosen profile photo, in plain words, or null when it's fine. */
 export function avatarProblem(f: File): string | null {
@@ -146,7 +146,7 @@ export function adoptUser(a: ApiUser): User {
   const u: User = {
     ...(prev ?? {}),
     handle: a.handle, name: a.name, bio: a.bio, avatar: a.avatar, location: a.location ?? undefined,
-    joined: new Date(a.joined).toLocaleDateString('en-US', { month: 'short', year: 'numeric' }),
+    joined: new Date(a.joined).toLocaleDateString('en-US', { month: 'short', year: 'numeric' }).toLowerCase(),
     followers: a.followers, following: a.following, drops: a.drops, tone: a.tone,
     plus: a.plus, creator: a.creator, youFollow: a.youFollow, followsYou: a.followsYou, muted: a.muted, you: a.you, seed: a.seed,
     address: (a.address ?? undefined) as User['address'], wifName: a.wifName ?? null, plusGrace: a.plusGrace, badge: a.badge ?? prev?.badge,

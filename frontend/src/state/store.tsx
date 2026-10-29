@@ -1,3 +1,4 @@
+import { GENERIC_LINE, looksRaw } from '../lib/txError'
 import { createContext, useCallback, useContext, useMemo, useRef, useState, type ReactNode } from 'react'
 
 export type AgentLog = { id: string; text: string; amount?: number; time: string }
@@ -34,10 +35,10 @@ export type SheetState =
   | null
 
 export type ToastTone = 'ok' | 'warn' | 'info'
-type Toast = { id: number; title: string; body?: string; tone: ToastTone }
+type Toast = { id: number; title: string; body?: string; tone: ToastTone; /** a wallet address to show short with a copy button (gas toasts) */ copy?: string }
 /** Tone from the wording when the caller doesn't say: problems get the warning style, never a green check. */
 const WARN_RE = /couldn|can.t|cannot|didn.t|failed|fail|not sent|error|wrong|denied|rejected|declined|too (big|many|long|low)|must|over |sign in first|blocked|expired|not enough|unavailable|try again|isn.t/i
-const INFO_RE = /^(preview|heads up|note)|soon\b|copied/i
+const INFO_RE = /^(preview|heads up|note|cancelled|one moment)|soon\b|copied/i
 export const toneOf = (title: string, body?: string): ToastTone => WARN_RE.test(title) || WARN_RE.test(body ?? '') && !/^(sent|saved|done|confirmed)/i.test(title) ? 'warn' : INFO_RE.test(title) ? 'info' : 'ok'
 
 /** The api's link_required message: never toasted, the link sheet opens instead. */
@@ -57,7 +58,7 @@ type Store = {
   topSpot: { postId: string; holder: string; paid: number }; takeTopSpot: (postId: string, amount: number) => void
   agent: AgentState; setAgent: (fn: (a: AgentState) => AgentState) => void
   sheet: SheetState; openSheet: (s: SheetState) => void; closeSheet: () => void
-  toasts: Toast[]; toast: (title: string, body?: string, tone?: ToastTone) => void
+  toasts: Toast[]; toast: (title: string, body?: string, tone?: ToastTone, copy?: string) => void
 }
 
 const Ctx = createContext<Store | null>(null)
@@ -84,12 +85,14 @@ export function StoreProvider({ children, initialSheet = null }: { children: Rea
   const [toasts, setToasts] = useState<Toast[]>([])
   const nextId = useRef(1)
 
-  const toast = useCallback((title: string, body?: string, tone?: ToastTone) => {
+  const toast = useCallback((title: string, body?: string, tone?: ToastTone, copy?: string) => {
     if (LINK_LINE.test(title) || LINK_LINE.test(body ?? '')) return // the link sheet already says it
+    // 11.8.5: never a raw wall of text (it goes to the console), and each message shows once: a repeat replaces the old one
+    if (body && looksRaw(body)) { console.warn('[wifly] toast', body); body = GENERIC_LINE }
     const id = nextId.current++
     const tn = tone ?? toneOf(title, body)
-    setToasts(t => [...t.slice(-2), { id, title, body, tone: tn }])
-    window.setTimeout(() => setToasts(t => t.filter(x => x.id !== id)), tn === 'warn' ? 5200 : 3600)
+    setToasts(t => [...t.filter(x => !(x.title === title && x.body === body)).slice(-2), { id, title, body, tone: tn, copy }])
+    window.setTimeout(() => setToasts(t => t.filter(x => x.id !== id)), copy ? 9000 : tn === 'warn' ? 5200 : 3600)
   }, [])
 
   const value = useMemo<Store>(() => ({

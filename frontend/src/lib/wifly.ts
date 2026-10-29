@@ -1,4 +1,7 @@
 import { plusOpen } from './plusOpen'
+import { sendRoute, shortA } from './payer'
+import { openWalletMenu, usePayerState } from './payerStore'
+import { CANCELLED_LINE, GAS_LINE, PENDING_LINE, classifyTxError, shortOnGas, txErrorLine } from './txError'
 import { useAnyAccount } from '../auth/privyBridge'
 import { privyBridge, usePrivyState } from '../auth/privyBridge'
 /**
@@ -251,18 +254,23 @@ export function useTopSpotRules() {
   }
 }
 
-export function useAgentOnChain(user?: Address) {
+import { decodeAgent, type AgentTuple } from './agentChain'
+export { chainDay, decodeAgent, type AgentChain } from './agentChain'
+
+/** Reads the agent for `user` (the CURRENT payer wallet). The query key carries the address, so switching payer re-reads;
+ *  every confirmed tx invalidates all queries (useSendPlan), and refetch() is there for an explicit re-read. */
+export function useAgentOnChain(user?: Address | string | null) {
+  const u = (user && /^0x[0-9a-fA-F]{40}$/.test(user) ? user : undefined) as Address | undefined
   const r = useReadContracts({
     contracts: [
-      { ...base, functionName: 'agents', args: [user ?? zeroAddress] },
-      { ...base, functionName: 'agentRemaining', args: [user ?? zeroAddress] },
+      { ...base, functionName: 'agents', args: [u ?? zeroAddress] },
+      { ...base, functionName: 'agentRemaining', args: [u ?? zeroAddress] },
     ],
-    query: { enabled: LIVE && !!user },
+    query: { enabled: LIVE && !!u, refetchOnWindowFocus: true },
   })
-  if (!r.data) return undefined
-  const [a, rem] = r.data.map(x => x.result)
-  const ag = a as readonly [Address, bigint, bigint, bigint] | undefined
-  return { agent: ag?.[0], dailyCap: ag ? fromWei(ag[1]) : 0, remaining: rem !== undefined ? fromWei(rem as bigint) : 0 }
+  const ok = !!r.data && r.data.every(x => x.status === 'success')
+  const data = ok ? decodeAgent(r.data![0].result as AgentTuple, r.data![1].result as bigint) : undefined
+  return { data, loading: LIVE && !!u && !ok && !r.isError, error: r.isError || (!!r.data && !ok), refetch: r.refetch, address: u }
 }
 
 export function useWiflyAllowance(owner?: Address) {
@@ -354,9 +362,9 @@ export const approveData = (amount: bigint, spender: Address = W) => enc({ abi: 
 /** Plain-words messages for the contract's custom errors. */
 const errorText: Record<string, string> = {
   SelfPayment: 'you can’t tip, vote for or pay yourself',
-  InsufficientBalance: 'not enough WIF in your wifly balance',
-  BidTooLow: 'someone raised the Top Spot. bid at least the new minimum',
-  TopSpotLocked: 'the Top Spot is in its minimum hold. try again in a moment',
+  InsufficientBalance: 'not enough wif in your wifly balance',
+  BidTooLow: 'someone raised the top spot. bid at least the new minimum',
+  TopSpotLocked: 'the top spot is in its minimum hold. try again in a moment',
   AlreadyUnlocked: 'you already unlocked this',
   NotForSale: 'this drop isn’t for sale yet',
   TierDisabled: 'this tier isn’t switched on yet',
@@ -367,25 +375,37 @@ const errorText: Record<string, string> = {
   NotNameOwner: 'only the holder can change this name',
 }
 export function explainError(e: unknown): string {
+  // our own contract errors keep their calm text; everything else (gas, cancelled, pending, raw viem/rpc dumps) goes
+  // through txErrorLine, so no raw text ever reaches the screen (11.8.5)
+  let known: string | null = null
   if (e instanceof BaseError) {
     const rev = e.walk(x => x instanceof ContractFunctionRevertedError) as ContractFunctionRevertedError | null
     const name = rev?.data?.errorName
-    if (name) return errorText[name] ?? name
-    const raw = (e.walk() as { data?: Hex })?.data
-    if (raw) { try { const d = decodeErrorResult({ abi: wiflyAbi, data: raw }); return errorText[d.errorName] ?? d.errorName } catch { /* not ours */ } }
-    return e.shortMessage
+    if (name) known = errorText[name] ?? null
+    else {
+      const raw = (e.walk() as { data?: Hex })?.data
+      if (raw) { try { const d = decodeErrorResult({ abi: wiflyAbi, data: raw }); known = errorText[d.errorName] ?? null } catch { /* not ours */ } }
+    }
   }
-  return e instanceof Error ? e.message : String(e)
+  return txErrorLine(e, known).line
 }
 
 /** Why a plan didn't go through: nothing sent (preview, no wallet, dry-run failed), the wallet said no, or it reverted on chain. */
-export type SendFail = { sent: false; kind: 'off' | 'rejected' | 'reverted' | 'error'; reason: string }
+export type SendFail = { sent: false; kind: 'off' | 'rejected' | 'reverted' | 'error' | 'gas' | 'pending'; reason: string; /** the wallet that needs eth (kind 'gas') */ address?: Address }
 export type SendResult = SendFail | { sent: true; hash: Hex }
 
 /** True when the error chain contains a wallet rejection (EIP-1193 code 4001). */
 function isRejection(e: unknown): boolean {
-  if (e instanceof BaseError) return !!e.walk(x => x instanceof UserRejectedRequestError || (x as { code?: number })?.code === 4001)
-  return (e as { code?: number })?.code === 4001
+  if (e instanceof BaseError && e.walk(x => x instanceof UserRejectedRequestError || (x as { code?: number })?.code === 4001)) return true
+  return classifyTxError(e) === 'rejected'
+}
+/** A failed send, mapped to one calm line (gas / cancelled / pending / generic). */
+function failFrom(e: unknown, address?: Address): SendFail {
+  if (isRejection(e)) return { sent: false, kind: 'rejected', reason: 'nothing was sent.' }
+  const k = classifyTxError(e)
+  if (k === 'gas') return { sent: false, kind: 'gas', reason: GAS_LINE, address }
+  if (k === 'pending') return { sent: false, kind: 'pending', reason: PENDING_LINE }
+  return { sent: false, kind: 'error', reason: explainError(e) }
 }
 
 /**
@@ -396,12 +416,29 @@ function isRejection(e: unknown): boolean {
  * celebrate (animate, add to counters) before the chain confirms.
  * It sends only when TX_ENABLED is true, and TX_ENABLED is false in this build.
  */
-export function useSendPlan() {
+/**
+ * 11.8.5: the wallet that pays and how its sends go out. The wallet picked in the wallet menu leads (wagmi when it's the
+ * connected one, else privy: embedded or a privy-connected linked wallet). Without an account wallet list: wagmi first,
+ * otherwise the privy active wallet. route 'none' = picked but not connected here yet.
+ */
+export function usePayerRoute() {
   const { address: wagmiAddress } = useAccount()
   const privy = usePrivyState()
-  // wagmi wallet first; otherwise the Privy wallet (embedded or external), so both kinds work the same.
-  const viaPrivy = !wagmiAddress && !!privy.activeWallet && privy.authenticated
-  const address = (wagmiAddress ?? (viaPrivy ? privy.activeWallet as Address : undefined))
+  const payer = usePayerState()
+  const picked = payer.options.find(o => o.address === payer.address) ?? null
+  const route = picked ? sendRoute(picked.address, { wagmi: wagmiAddress, privyHas: a => privyBridge.has(a) }) : null
+  const viaPrivy = picked ? route === 'privy' : !wagmiAddress && !!privy.activeWallet && privy.authenticated
+  const address = picked ? picked.address as Address : (wagmiAddress ?? (viaPrivy ? privy.activeWallet as Address : undefined))
+  return { address, picked, route, viaPrivy }
+}
+/** The calm reason when the picked wallet isn't connected here (and opens the wallet menu to fix it). */
+export function notConnectedReason(picked: { address: string; kind: 'embedded' | 'linked' }) {
+  openWalletMenu()
+  return picked.kind === 'linked' ? `connect ${shortA(picked.address)} first, from the wallet menu` : 'sign in with the x or email login that made this wallet to use it'
+}
+
+export function useSendPlan() {
+  const { address, picked, route, viaPrivy } = usePayerRoute()
   const client = usePublicClient({ chainId })
   const { sendTransactionAsync } = useSendTransaction()
   const qc = useQueryClient()
@@ -415,16 +452,31 @@ export function useSendPlan() {
       return { sent: false, kind: 'off', reason: 'link a wallet, x or email to continue' }
     }
     if (!address) return { sent: false, kind: 'off', reason: 'connect a wallet first' }
+    if (picked && route === 'none') return { sent: false, kind: 'off', reason: notConnectedReason(picked) }
     if (!client) return { sent: false, kind: 'error', reason: 'can’t reach the network right now' }
     const want = plan.approve ?? plan.pull
     const have = want > 0n ? await client.readContract({ address: WIF_TOKEN, abi: erc20Abi, functionName: 'allowance', args: [address, to] }).catch(() => 0n) : 0n
     const needsApprove = want > 0n && have < want
     if (!needsApprove) {
-      try { await client.call({ account: address, to, data: plan.data, value: plan.value }) } catch (e) { return { sent: false, kind: 'error', reason: explainError(e) } }
+      try { await client.call({ account: address, to, data: plan.data, value: plan.value }) } catch (e) { return failFrom(e, address) }
     }
     if (!TX_ENABLED) return { sent: false, kind: 'off', reason: 'sending isn’t switched on yet' }
+    // gas pre-check (11.8.5): read the eth balance and an estimated cost first; short = say so and don't open the wallet
+    {
+      const first = needsApprove ? { to: WIF_TOKEN, data: approveData(want, to), value: undefined } : { to, data: plan.data, value: plan.value }
+      const balance = await client.getBalance({ address }).catch(() => null)
+      if (balance !== null) {
+        let est: bigint | null = null
+        try {
+          const [g, fees] = await Promise.all([client.estimateGas({ account: address, ...first }), client.estimateFeesPerGas().catch(() => null)])
+          const price = fees?.maxFeePerGas ?? fees?.gasPrice ?? await client.getGasPrice()
+          est = g * price
+        } catch (e) { if (classifyTxError(e) === 'gas') est = balance + 1n }
+        if (shortOnGas(balance, est, first.value ?? 0n)) return { sent: false, kind: 'gas', reason: GAS_LINE, address }
+      }
+    }
     const confirm = async (target: Address, data: Hex, value?: bigint): Promise<SendResult> => {
-      const hash = viaPrivy ? await privyBridge.sendTx(target, data, chainId, value) : await sendTransactionAsync({ to: target, data, chainId, value })
+      const hash = viaPrivy ? (picked ? await privyBridge.sendFrom(picked.address, target, data, chainId, value) : await privyBridge.sendTx(target, data, chainId, value)) : await sendTransactionAsync({ to: target, data, chainId, value })
       const receipt = await client.waitForTransactionReceipt({ hash })
       if (receipt.status !== 'success') return { sent: false, kind: 'reverted', reason: 'it reverted on chain. nothing moved except gas.' }
       return { sent: true, hash }
@@ -438,14 +490,18 @@ export function useSendPlan() {
       if (r.sent) await qc.invalidateQueries()
       return r
     } catch (e) {
-      if (isRejection(e)) return { sent: false, kind: 'rejected', reason: 'you cancelled it in your wallet. nothing was sent.' }
-      return { sent: false, kind: 'error', reason: explainError(e) }
+      return failFrom(e, address)
     }
-  }, [address, viaPrivy, client, sendTransactionAsync, qc])
+  }, [address, viaPrivy, picked, route, client, sendTransactionAsync, qc])
 }
 
 /** Toast title for a failed send. */
-export const failTitle = (r: SendFail) => r.kind === 'rejected' ? 'cancelled' : r.kind === 'reverted' ? 'transaction failed' : 'not sent'
+export const failTitle = (r: SendFail) => r.kind === 'rejected' ? 'cancelled' : r.kind === 'reverted' ? 'transaction failed' : r.kind === 'gas' ? 'needs a little eth' : r.kind === 'pending' ? 'one moment' : 'not sent'
+/** toast(...failArgs(r)): calm title + line; a quiet info tone for cancelled; the wallet with a copy button when it needs gas. */
+export const failArgs = (r: SendFail): [string, string, 'info' | 'warn', string | undefined] =>
+  [failTitle(r), r.reason, r.kind === 'rejected' || r.kind === 'pending' ? 'info' : 'warn', r.kind === 'gas' ? r.address : undefined]
+/** One inline line for a failed send: a quiet "cancelled", or the calm reason on its own (never "title: raw text"). */
+export const failLine = (r: SendFail) => r.kind === 'rejected' ? CANCELLED_LINE : r.reason
 
 /** Whether a plan will need the approve step for the connected wallet (always true when not live). */
 export function useNeedsApprove(pull: number) {
