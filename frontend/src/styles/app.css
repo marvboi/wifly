@@ -39,13 +39,14 @@
   --dock-gap: 20px;
   --dock-clearance: calc(var(--dock-h) + var(--dock-gap) + env(safe-area-inset-bottom, 0px));
   --joinbar-h: 68px;
+  --cmp-dock-h: 80px;
 }
 
 *, *::before, *::after { box-sizing: border-box; }
 html { -webkit-text-size-adjust: 100%; }
 body { margin: 0; background: var(--bg); color: var(--ink); font: 400 15px/1.5 var(--sans); -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility; }
 body.no-scroll { overflow: hidden; }
-html, body { overflow-x: clip; }
+html, body { overflow-x: clip; overscroll-behavior-y: contain; }
 a { color: inherit; text-decoration: none; }
 button { font: inherit; color: inherit; background: none; border: 0; padding: 0; cursor: pointer; }
 button:disabled { cursor: not-allowed; }
@@ -206,6 +207,13 @@ ul, ol { margin: 0; padding: 0; list-style: none; }
 
 /* sheets */
 .sheet-wrap { position: fixed; inset: 0; z-index: 50; background: rgba(17, 14, 8, .32); display: grid; place-items: center; padding: 24px; animation: fade .25s var(--ease); }
+body:has(#privy-dialog) .sheet-wrap,
+body:has(#privy-modal-content) .sheet-wrap {
+  visibility: hidden !important;
+  pointer-events: none !important;
+  background: transparent !important;
+}
+
 .sheet { width: 100%; max-width: 480px; max-height: calc(100vh - 48px); display: flex; flex-direction: column; background: var(--bg); border-radius: var(--r-lg); box-shadow: 0 24px 64px rgba(17, 14, 8, .18); animation: pop .35s var(--ease); overflow: hidden; }
 .sheet__grab { display: none; }
 .sheet__head { display: flex; align-items: center; justify-content: space-between; padding: 16px 16px 8px 24px; }
@@ -417,7 +425,7 @@ ul, ol { margin: 0; padding: 0; list-style: none; }
   .sheet { max-width: none; max-height: 92vh; border-radius: var(--r-lg) var(--r-lg) 0 0; animation: slideup .35s var(--ease); }
   .sheet__grab { display: block; width: 40px; height: 4px; border-radius: 4px; background: var(--line-strong); margin: 8px auto 0; }
   .sheet__head { padding: 8px 12px 4px 20px; }
-  .sheet__body { padding: 8px 20px 16px; }
+  .sheet__body { padding: 8px 20px calc(24px + env(safe-area-inset-bottom, 0px)); }
   .sheet__foot { padding: 12px 20px calc(16px + env(safe-area-inset-bottom)); }
   @keyframes slideup { from { transform: translateY(100%); } }
   .vote-hero { grid-template-columns: 1fr; padding: 24px 20px; gap: 20px; margin: 12px; }
@@ -458,7 +466,7 @@ ul, ol { margin: 0; padding: 0; list-style: none; }
 .topbar__me { border-radius: 32%; }
 
 .stage { padding: 16px 24px calc(var(--dock-clearance) + 40px); }
-.app--out .stage { padding-bottom: calc(var(--dock-clearance) + var(--joinbar-h) + 24px); }
+.app--out .stage { padding-bottom: calc(var(--dock-clearance) + var(--joinbar-h) + var(--cmp-dock-h) + 24px); }
 .stage > .page > * { max-width: var(--column); margin-left: auto; margin-right: auto; }
 .stage > .page > .world { max-width: var(--wide); }
 .column { display: block; }
@@ -919,6 +927,7 @@ ul, ol { margin: 0; padding: 0; list-style: none; }
 
 /* sign in + profile form */
 .signin { display: flex; flex-direction: column; align-items: center; text-align: center; gap: 12px; padding: 8px 0 4px; }
+
 .signin__title { margin: 4px 0 0; font: 400 26px/1.1 var(--display); }
 .signin .btn { height: 48px; }
 .pform { display: flex; flex-direction: column; gap: 14px; }
@@ -1203,7 +1212,7 @@ button.names-row__main:hover { background: var(--paper); }
   .cmp-dock.is-tucked { transform: translateX(calc(100% - 14px)); }
   .cmp-bubble { max-width: 200px; font-size: 13px; }
   .cmp-panel { left: 0; right: 0; bottom: 0; width: auto; height: min(86vh, 680px); border-radius: 28px 28px 0 0; }
-  .stage { padding-bottom: 160px; }
+  .stage { padding-bottom: calc(var(--dock-clearance) + var(--cmp-dock-h) + 16px); }
 }
 
 /* ------------------------------------------------------------ WIF Names */
@@ -1355,7 +1364,27 @@ a.wifname:hover .wifname__label { text-decoration: underline; text-underline-off
 .getwif { padding: 16px; max-width: 480px; }
 .hp { position: absolute; left: -9999px; width: 1px; height: 1px; overflow: hidden; }
 .humancheck:empty { display: none; }
-.humancheck { display: flex; justify-content: center; min-height: 0; }
+/* silent Turnstile: off-layout from the first frame so it never paints or shifts the sign-in card */
+.humancheck,
+.humancheck iframe,
+iframe[src*="challenges.cloudflare.com"],
+iframe[src*="turnstile"] {
+  position: fixed !important;
+  left: 0 !important;
+  top: 0 !important;
+  width: 0 !important;
+  height: 0 !important;
+  max-width: 0 !important;
+  max-height: 0 !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  overflow: hidden !important;
+  opacity: 0 !important;
+  pointer-events: none !important;
+  border: 0 !important;
+  clip-path: inset(50%);
+}
+.humancheck__retry { display: none !important; height: 0 !important; margin: 0 !important; padding: 0 !important; overflow: hidden !important; }
 
 /* free @name ↔ .wif cards (nudge, bump notice) */
 .idcard { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; justify-content: space-between; padding: 14px 16px; margin: 12px 0; border: 1px solid var(--line); border-radius: var(--r-md); background: var(--bg); }
@@ -1986,9 +2015,10 @@ a.wifname:hover .wifname__label { text-decoration: underline; text-underline-off
 .joinbar__btn--ghost:hover { box-shadow: inset 0 0 0 1px var(--ink); }
 .joinbar__btn--main { background: var(--ink); color: var(--bg); }
 .joinbar__btn--main:hover { background: var(--ink-2); }
-.app--out .stage { padding-bottom: calc(var(--dock-clearance) + var(--joinbar-h) + 24px); }
+.app--out .stage { padding-bottom: calc(var(--dock-clearance) + var(--joinbar-h) + var(--cmp-dock-h) + 24px); }
 .dock--out { bottom: calc(var(--joinbar-h) + var(--dock-gap) + env(safe-area-inset-bottom, 0px)); }
-.app--out .cmp-dock { bottom: calc(var(--joinbar-h) + var(--dock-clearance) + 16px); }
+/* speed.12.6.7: signed-out face sits just above the join bar (same 24px offset as signed-in), not a full dock-height higher */
+.app--out .cmp-dock { bottom: calc(var(--joinbar-h) + 24px + env(safe-area-inset-bottom, 0px)); }
 .topbar__signin { white-space: nowrap; }
 /* an account still picking its @name: the button has to fit beside bell + wallet on a phone */
 .topbar__pick { white-space: nowrap; flex: none; }
@@ -1998,13 +2028,15 @@ a.wifname:hover .wifname__label { text-decoration: underline; text-underline-off
   .topbar__right--pick { gap: 6px; }
 }
 @media (max-width: 720px) {
+  :root, .app { --joinbar-h: 60px; }
   .joinbar__inner { min-height: 60px; padding: 10px 16px; }
   .joinbar__line { display: none; }
   .joinbar__title { font-size: 15px; }
   .joinbar__btn { height: 38px; padding: 0 16px; }
   .dock--out { left: 50%; right: auto; transform: translateX(-50%); justify-content: center; gap: 4px; bottom: calc(var(--joinbar-h) + var(--dock-gap) + env(safe-area-inset-bottom, 0px)); }
+  /* phones: dock is wide, so stay just above the raised dock to avoid overlap */
   .app--out .cmp-dock { bottom: calc(var(--joinbar-h) + var(--dock-clearance) + 16px); }
-  .app--out .stage { padding-bottom: calc(var(--dock-clearance) + var(--joinbar-h) + 16px); }
+  .app--out .stage { padding-bottom: calc(var(--dock-clearance) + var(--joinbar-h) + var(--cmp-dock-h) + 16px); }
 }
 @media (max-width: 480px) {
   .joinbar__copy { display: none; }
@@ -2668,3 +2700,418 @@ html[data-theme="dark"] .wallet-pop.wallet-pop--pro { background: var(--raise-2,
   transform: translateY(0.16em);
 }
 .drop__when .meta-ico { white-space: nowrap; }
+
+
+/* speed.12.6: portaled wallet pop always stays in the viewport */
+.wallet-pop.wallet-pop--float {
+  position: fixed;
+  z-index: 45;
+  top: auto; right: auto; bottom: auto; left: auto;
+  width: min(320px, calc(100vw - 16px));
+  max-width: calc(100vw - 16px);
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+}
+html .wallet-pop.wallet-pop--float.wallet-pop--pro,
+html .wallet-pop.wallet-pop--float.wallet-pop--pro {
+  width: min(340px, calc(100vw - 16px));
+}
+@media (max-width: 720px) {
+  html .wallet-pop.wallet-pop--float.wallet-pop--pro { width: min(340px, calc(100vw - 16px)); }
+}
+
+/* speed.12.6: pull-to-refresh indicator on the home feed */
+.ptr {
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  height: 0;
+  overflow: hidden;
+  pointer-events: none;
+  transition: height .15s var(--ease);
+}
+.ptr.is-on, .ptr.is-refreshing { transition: none; }
+.ptr__mark {
+  width: 22px;
+  height: 22px;
+  margin-bottom: 10px;
+  border-radius: 50%;
+  border: 1.5px solid var(--line-strong);
+  border-top-color: var(--ink);
+  flex: none;
+}
+.ptr.is-ready .ptr__mark { border-top-color: var(--neon); }
+.ptr.is-refreshing .ptr__mark {
+  border-top-color: var(--neon);
+  animation: spin .7s linear infinite;
+}
+
+/* speed.12.6: bouncing official logos behind the sign-up / onboarding page */
+.welcome { position: relative; isolation: isolate; overflow-x: clip; --play-x: 0; --play-y: 0; --play-red: #E24A3A; --play-blue: #2F62D6; --play-green: #1F8A4C; --play-yellow: #E8B000; }
+.welcome > :not(.playful-marks) { position: relative; z-index: 1; }
+.welcome__card {
+  background: color-mix(in srgb, var(--bg) 96%, #fff);
+  box-shadow: 0 1px 2px rgba(17,14,8,.04), 0 16px 40px rgba(17,14,8,.08);
+}
+.welcome__say { background: color-mix(in srgb, var(--bg) 96%, #fff); }
+.playful-marks { position: absolute; inset: 0; overflow: hidden; pointer-events: none; z-index: 0; }
+.playful-marks:not(.is-placed) { visibility: hidden; }
+/* speed.12.6.6: bounce and mouse offset live on separate wrappers; no transform transition on the mouse layer */
+.playful-marks__mark {
+  position: absolute;
+  display: block;
+  pointer-events: auto;
+  user-select: none;
+  opacity: .78;
+  transform: rotate(var(--rot));
+  transform-origin: center;
+  transition: opacity .2s var(--ease);
+}
+.playful-marks__drift,
+.playful-marks__react {
+  display: block;
+  position: absolute;
+  inset: 0;
+}
+.playful-marks__drift {
+  animation: playful-mark-drift var(--dur) var(--delay) ease-in-out infinite;
+}
+.playful-marks__react {
+  transform: translate3d(calc(var(--play-x) * var(--depth) * 22px), calc(var(--play-y) * var(--depth) * 18px), 0);
+  transition: scale .28s var(--ease);
+}
+.playful-marks__tile { position: absolute; inset: 0; width: 100%; height: 100%; display: block; overflow: visible; }
+.playful-marks__face { position: absolute; left: 17%; top: 16.18%; width: 66%; height: 66%; display: block; pointer-events: none; }
+.playful-marks__mark--red { color: var(--play-red); }
+.playful-marks__mark--blue { color: var(--play-blue); }
+.playful-marks__mark--green { color: var(--play-green); }
+.playful-marks__mark--yellow { color: var(--play-yellow); }
+.playful-marks__mark.is-hot,
+.playful-marks__mark:hover { opacity: .96; }
+.playful-marks__mark.is-hot .playful-marks__react,
+.playful-marks__mark:hover .playful-marks__react { scale: 1.12; }
+.playful-marks__mark:active { opacity: 1; }
+.playful-marks__mark:active .playful-marks__react { scale: 0.92 0.84; }
+@keyframes playful-mark-drift {
+  0%, 100% { translate: 0 0; }
+  50% { translate: 10px -14px; }
+}
+
+html[data-theme="dark"] .welcome { --play-red: #FF7A6E; --play-blue: #7AA4FF; --play-green: #5CDB8A; --play-yellow: #FFD24A; }
+html[data-theme="dark"] .welcome__card {
+  background: color-mix(in srgb, var(--raise, var(--bg)) 94%, #17150F);
+  box-shadow: 0 1px 0 var(--line) inset, 0 18px 48px rgba(0, 0, 0, .4);
+}
+html[data-theme="dark"] .welcome__say { background: color-mix(in srgb, var(--bg) 94%, #17150F); }
+html[data-theme="dark"] .playful-marks__mark { opacity: .7; }
+html[data-theme="dark"] .playful-marks__mark.is-hot,
+html[data-theme="dark"] .playful-marks__mark:hover { opacity: .92; }
+@media (max-width: 720px) {
+  .playful-marks__mark { opacity: .7; }
+  .playful-marks__mark--sparse { display: none; }
+.playful-marks__mark--stowed { display: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .playful-marks__mark, .playful-marks__mark.is-hot, .playful-marks__mark:hover, .playful-marks__mark:active {
+    animation: none;
+    transition: none;
+    transform: rotate(var(--rot));
+    translate: 0;
+    scale: 1;
+  }
+  .playful-marks__drift, .playful-marks__react,
+  .playful-marks__mark.is-hot .playful-marks__react,
+  .playful-marks__mark:hover .playful-marks__react,
+  .playful-marks__mark:active .playful-marks__react {
+    animation: none;
+    transition: none;
+    transform: none;
+    translate: 0;
+    scale: 1;
+  }
+}
+
+/* speed.12.6.1: onboarding card — comfortable margins, no clip on short phones */
+@media (max-width: 760px) {
+  .welcome {
+    box-sizing: border-box;
+    justify-content: flex-start;
+    min-height: 100svh;
+    min-height: 100dvh;
+    height: 100dvh;
+    max-height: 100dvh;
+    overflow-x: clip;
+    overflow-y: auto;
+    overscroll-behavior-y: contain;
+    padding-top: calc(16px + env(safe-area-inset-top, 0px));
+    padding-right: calc(18px + env(safe-area-inset-right, 0px));
+    padding-bottom: calc(20px + env(safe-area-inset-bottom, 0px));
+    padding-left: calc(18px + env(safe-area-inset-left, 0px));
+    scroll-padding-top: calc(16px + env(safe-area-inset-top, 0px));
+    scroll-padding-bottom: calc(16px + env(safe-area-inset-bottom, 0px));
+  }
+  .welcome__top { width: 100%; margin-bottom: 4px; flex: none; }
+  .welcome__stage { width: 100%; max-width: 100%; margin-top: 0; gap: 10px; flex: 1 0 auto; min-height: 0; }
+  .welcome__card {
+    width: 100%;
+    max-width: 100%;
+    box-sizing: border-box;
+    padding: 22px 20px 20px;
+    gap: 16px;
+  }
+  .welcome__profile { gap: 14px; }
+  .welcome__handle { gap: 10px; }
+  .welcome__card > .btn { margin-top: 2px; }
+}
+@media (max-width: 760px) and (max-height: 700px) {
+  .welcome__card { padding: 18px 18px 16px; gap: 14px; }
+  .welcome__card h1 { font-size: 22px; }
+  .welcome__stage { gap: 8px; }
+}
+@media (max-width: 760px) and (max-height: 560px) {
+  .welcome { padding-top: calc(12px + env(safe-area-inset-top, 0px)); padding-bottom: calc(16px + env(safe-area-inset-bottom, 0px)); }
+  .welcome__card { padding: 16px 18px; gap: 12px; }
+  .welcome__profile { gap: 12px; }
+  .welcome__host svg { width: 48px; height: 48px; }
+}
+
+/* speed.12.6.2: “who are you?” text hierarchy — more air between groups, wording unchanged */
+.welcome__handle .handle-field__meta { margin-top: 2px; }
+.welcome__handle > .welcome__sub { margin-top: 8px; }
+.welcome__handle .usewif { margin-top: 10px; }
+.welcome__already {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+  line-height: 1.55;
+}
+.welcome__already .linkbtn { margin-top: 0; }
+@media (max-width: 760px) {
+  .welcome__card {
+    padding: 24px 20px 22px;
+    gap: 18px;
+  }
+  .welcome__card h1 { font-size: 24px; letter-spacing: -.03em; }
+  .welcome__profile { gap: 16px; }
+  .welcome__handle { gap: 8px; }
+  .welcome__card > .btn { margin-top: 8px; }
+}
+@media (max-width: 760px) and (max-height: 700px) {
+  .welcome__card { padding: 20px 18px 18px; gap: 16px; }
+  .welcome__card h1 { font-size: 22px; }
+  .welcome__stage { gap: 8px; }
+  .welcome__host svg { width: 56px; height: 56px; }
+}
+@media (max-width: 760px) and (max-height: 580px) {
+  /* keep comfortable type spacing; the page already scrolls on short phones */
+  .welcome__card { padding: 18px 18px 16px; gap: 14px; }
+  .welcome__profile { gap: 14px; }
+  .welcome__handle > .welcome__sub { margin-top: 6px; }
+  .welcome__handle .usewif { margin-top: 8px; }
+  .welcome__already { gap: 6px; margin-top: 6px; }
+  .welcome__host svg { width: 48px; height: 48px; }
+}
+
+/* speed.12.6.3: premium “who are you?” — stacked hierarchy, live check in the field, error only when needed */
+.handle-field__state { flex: none; width: 22px; height: 22px; justify-content: center; }
+.handle-field__state .spinner { width: 16px; height: 16px; }
+.handle-field__error { margin: 6px 2px 0; font-size: 13px; line-height: 1.4; color: var(--danger); }
+/* speed.12.6.6: tiny picker logo on the right of the @username field (same Mascot as ClaimBox) */
+.handle-field__trail { display: inline-flex; flex: none; align-items: center; gap: 6px; margin-left: 8px; }
+.handle-field__trail .handle-field__state:empty { display: none; }
+.handle-field__face { display: inline-flex; flex: none; align-items: center; pointer-events: none; }
+.handle-field__face .mascot { display: block; }
+
+.handle-field__meta { display: none; } /* rules hint removed; availability is inline */
+
+.welcome__card--you { gap: 22px; padding: 32px 28px 28px; }
+.welcome__card--you h1 { font-size: 32px; letter-spacing: -.04em; text-align: center; }
+.welcome__card--you .welcome__profile { flex-direction: column; flex-wrap: nowrap; align-items: center; gap: 20px; }
+.welcome__card--you .welcome__profile .field { width: 100%; min-width: 0; }
+.welcome__card--you .welcome__profile .field__input { height: 52px; font-size: 17px; }
+.welcome__card--you .welcome__handle { gap: 12px; }
+.welcome__card--you > .btn { margin-top: 4px; }
+.welcome__card--you .welcome__already {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  margin-top: 4px;
+  line-height: 1.55;
+  color: var(--muted);
+}
+.welcome__card--you .welcome__already .linkbtn { margin-top: 0; color: var(--ink-2); }
+
+@media (max-width: 760px) {
+  .welcome__card--you { padding: 28px 22px 24px; gap: 20px; }
+  .welcome__card--you h1 { font-size: 28px; letter-spacing: -.03em; }
+}
+@media (max-width: 760px) and (max-height: 700px) {
+  .welcome__card--you { padding: 22px 20px 20px; gap: 18px; }
+  .welcome__card--you h1 { font-size: 26px; }
+}
+@media (max-width: 760px) and (max-height: 580px) {
+  /* keep the sign-in link on screen at 320x568; still roomy, not packed */
+  .welcome__card--you { padding: 16px 18px 14px; gap: 12px; }
+  .welcome__card--you h1 { font-size: 24px; }
+  .welcome__card--you .welcome__profile { gap: 12px; }
+  .welcome__card--you .avpick__circle { width: 80px !important; height: 80px !important; }
+  .welcome__card--you .welcome__profile .field__input { height: 48px; }
+  .welcome__card--you > .btn { margin-top: 0; }
+}
+
+/* speed.12.6.4: welcome text links — no underlines; footer is one centered wrapping line */
+.welcome .linkbtn { text-decoration: none; }
+.welcome .linkbtn:hover,
+.welcome .linkbtn:focus-visible { text-decoration: none; color: var(--ink); }
+.welcome .linkbtn:disabled { opacity: .5; cursor: default; }
+
+.welcome__already,
+.welcome__card--you .welcome__already {
+  display: block;
+  text-align: center;
+  flex-direction: unset;
+  align-items: unset;
+  gap: unset;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.5;
+  margin-top: 6px;
+  max-width: 100%;
+  text-wrap: pretty;
+}
+.welcome__already .linkbtn,
+.welcome__card--you .welcome__already .linkbtn {
+  display: inline;
+  margin: 0;
+  padding: 0;
+  font-size: inherit;
+  font-weight: 650;
+  color: var(--ink);
+  align-self: auto;
+}
+.welcome__already .linkbtn:hover,
+.welcome__already .linkbtn:focus-visible { opacity: .7; color: var(--ink); }
+
+.welcome .usewif--compact {
+  display: inline-flex;
+  align-items: center;
+  gap: 0;
+}
+.welcome .usewif--compact .linkbtn {
+  color: var(--muted);
+  font-weight: 500;
+  padding: 4px 0;
+}
+.welcome .usewif--compact .linkbtn:hover,
+.welcome .usewif--compact .linkbtn:focus-visible { color: var(--ink); opacity: 1; }
+.welcome .usewif--compact .infotip { margin-left: 2px; flex: none; align-self: center; }
+
+/* speed.12.6.5: “already own a .wif? use it” is out of the main flow — A footer (default) or B under the field */
+.welcome__alt {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  margin-top: 6px;
+  text-align: center;
+  width: 100%;
+}
+.welcome__alt .welcome__already { margin-top: 0; }
+
+.welcome__card--wif-a .welcome__alt .usewif--compact {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0;
+}
+.welcome__card--wif-a .welcome__alt .usewif--compact .linkbtn {
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 500;
+  padding: 0;
+}
+
+.welcome__card--wif-b .welcome__handle .usewif--compact {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  width: 100%;
+  margin: 4px 0 0;
+}
+.welcome__card--wif-b .welcome__handle .usewif--compact .linkbtn {
+  font-size: 12.5px;
+  font-weight: 500;
+  color: var(--muted);
+  padding: 0;
+}
+.welcome__card--wif-b .welcome__handle { gap: 8px; }
+
+@media (max-width: 760px) and (max-height: 580px) {
+  .welcome__alt { gap: 6px; margin-top: 4px; }
+}
+
+/* speed.12.6.8: signed-out /welcome shows the existing sign-up card, centered without the companion column */
+.welcome__stage--signup { grid-template-columns: minmax(0, 520px); }
+
+/* speed.12.6.9: full-page signed-out “join wifly.” card is vertically centered in the viewport */
+.welcome.welcome--signup {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr) auto minmax(0, 1fr);
+  justify-items: center;
+  align-items: start;
+  box-sizing: border-box;
+  min-height: 100vh;
+  min-height: 100dvh;
+  height: 100dvh;
+  max-height: 100dvh;
+  padding-top: max(24px, env(safe-area-inset-top, 0px));
+  padding-right: 20px;
+  padding-bottom: max(24px, env(safe-area-inset-bottom, 0px));
+  padding-left: 20px;
+  overflow-x: clip;
+  overflow-y: auto;
+}
+.welcome.welcome--signup .welcome__top {
+  grid-row: 1;
+  grid-column: 1;
+  align-self: start;
+  justify-self: center;
+  width: 100%;
+  max-width: 960px;
+  margin-bottom: 0;
+}
+.welcome.welcome--signup .welcome__stage,
+.welcome.welcome--signup .welcome__stage--signup {
+  grid-row: 2;
+  grid-column: 1;
+  margin-top: 0;
+  margin-bottom: 0;
+  flex: none;
+  width: 100%;
+  max-width: 520px;
+}
+@media (max-width: 760px) {
+  .welcome.welcome--signup {
+    height: 100dvh;
+    max-height: 100dvh;
+    justify-content: unset;
+    padding-top: max(24px, calc(16px + env(safe-area-inset-top, 0px)));
+    padding-right: calc(18px + env(safe-area-inset-right, 0px));
+    padding-bottom: max(24px, calc(16px + env(safe-area-inset-bottom, 0px)));
+    padding-left: calc(18px + env(safe-area-inset-left, 0px));
+    overflow-y: auto;
+  }
+  .welcome.welcome--signup .welcome__stage,
+  .welcome.welcome--signup .welcome__stage--signup {
+    flex: none;
+    margin-top: 0;
+    max-width: 100%;
+  }
+}
+

@@ -16,8 +16,8 @@ const pub = (r: string) => readFileSync(join(FE, 'public', r))
 const sha = (buf: Buffer) => createHash('sha256').update(buf).digest('hex')
 
 test('package version is 0.12.4 lineage (accepts 12.5 ship)', () => {
-  assert.match(readFileSync(join(root, 'frontend/package.json'), 'utf8'), /"version": "0\.12\.\d+"/)
-  assert.match(readFileSync(join(root, 'backend/package.json'), 'utf8'), /"version": "0\.12\.\d+"/)
+  assert.match(readFileSync(join(root, 'frontend/package.json'), 'utf8'), /"version": "0\.12\.\d+(\.\d+)?"/)
+  assert.match(readFileSync(join(root, 'backend/package.json'), 'utf8'), /"version": "0\.12\.\d+(\.\d+)?"/)
 })
 
 test('tab, apple-touch and manifest icons are the official logo with cache-bust', () => {
@@ -152,7 +152,7 @@ test('PayingFrom is used in every pay flow; gas note is one short line plus addr
   assert.match(src('components/WalletProofs.tsx'), /tip-destination/)
   assert.match(src('pages/Welcome.tsx'), /your wifly wallet/)
   assert.match(src('pages/Welcome.tsx'), /no seed phrase/)
-  assert.match(src('sheets/Sheets.tsx'), /you sign a message to prove it.s you\. nothing is sent or spent\./)
-  assert.match(src('sheets/Sheets.tsx'), /a guest key lives in this browser only/)
-  assert.match(src('sheets/Sheets.tsx'), /it takes about a minute/)
+  assert.match(src('components/SignInForm.tsx'), /you sign a message to prove it.s you\. nothing is sent or spent\./)
+  assert.match(src('components/SignInForm.tsx'), /a guest key lives in this browser only/)
+  assert.match(src('components/SignInForm.tsx'), /it takes about a minute/)
 })

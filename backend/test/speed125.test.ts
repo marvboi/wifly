@@ -39,9 +39,9 @@ afterEach(() => {
   resetRateLimits()
 })
 
-test('package version is 0.12.5', () => {
-  assert.match(readFileSync(join(root, 'frontend/package.json'), 'utf8'), /"version": "0\.12\.5"/)
-  assert.match(readFileSync(join(root, 'backend/package.json'), 'utf8'), /"version": "0\.12\.5"/)
+test('package version is 0.12.6.13', () => {
+  assert.match(readFileSync(join(root, 'frontend/package.json'), 'utf8'), /"version": "0\.12\.6\.13"/)
+  assert.match(readFileSync(join(root, 'backend/package.json'), 'utf8'), /"version": "0\.12\.6\.13"/)
 })
 
 test('rpc list: official + public defaults, env overrides come first, no keyed URLs', () => {
@@ -245,7 +245,7 @@ test('settings extras, one sign-in control, dock clearance, dark muted contrast'
   assert.match(settings, /data-testid="settings-about"/)
   assert.doesNotMatch(settings, /data-testid="settings-notifications"/)
   assert.doesNotMatch(settings, /<h2 className="sc-section__h">notifications<\/h2>/)
-  assert.match(settings, />version<\/span><span className="muted">0\.12\.5</)
+  assert.match(settings, />version<\/span><span className="muted">0\.12\.6\.13</)
   assert.match(settings, />docs<\/AppLink>/)
   assert.match(settings, /\$wif on x/)
   assert.match(settings, /sign in to manage your settings\./)

@@ -4,9 +4,10 @@
  * It renders nothing itself; it only syncs Privy's state into privyBridge.
  */
 import { useEffect, useRef } from 'react'
-import { PrivyProvider, useIdentityToken, useLinkAccount, useLogin, useConnectWallet, useLoginWithOAuth, useLogout, usePrivy, useWallets, getIdentityToken, type WalletListEntry } from '@privy-io/react-auth'
+import { PrivyProvider, useIdentityToken, useLinkAccount, useLogin, useConnectWallet, useLoginWithOAuth, useLogout, usePrivy, useWallets, getIdentityToken } from '@privy-io/react-auth'
 import { robinhoodChain } from '../config'
 import { PRIVY_APP_ID, privyBridge } from './privyBridge'
+import { PRIVY_WALLET_LIST, WC_PROJECT_ID } from '../lib/privyWallets'
 
 function Sync() {
   const { ready, authenticated, user, getAccessToken, exportWallet } = usePrivy()
@@ -71,7 +72,11 @@ function Sync() {
       connectWallet: address => new Promise<string>((resolve, reject) => {
         connecting.current?.reject(new Error('sign-in closed'))
         connecting.current = { resolve, reject }
-        try { connectWallet({ suggestedAddress: address, description: `connect ${address.slice(0, 6)}…${address.slice(-4)}, the wallet already on your account` }) } catch (e) { connecting.current = null; reject(e as Error) }
+        try {
+          connectWallet(address
+            ? { suggestedAddress: address, description: `connect ${address.slice(0, 6)}…${address.slice(-4)}, the wallet already on your account` }
+            : { walletList: WALLETS, walletChainType: 'ethereum-only' })
+        } catch (e) { connecting.current = null; reject(e as Error) }
       }),
       sendTx: async (to, data, chainId, value) => {
         const w = activeRef.current
@@ -99,9 +104,7 @@ function Sync() {
   return null
 }
 
-const WC_PROJECT_ID = (import.meta.env.VITE_WALLETCONNECT_PROJECT_ID ?? '').trim()
-// Rabby and other browser wallets show up through EIP-6963 detection (Privy dropped the separate rabby_wallet entry).
-const WALLETS: WalletListEntry[] = ['detected_ethereum_wallets', 'metamask', ...(WC_PROJECT_ID ? ['wallet_connect' as const] : [])]
+const WALLETS = PRIVY_WALLET_LIST
 
 export default function PrivyMount() {
   return (

@@ -1,9 +1,9 @@
 import { PostSkel } from '../components/Delight'
 import { motion } from 'motion/react'
-import { Fragment, useEffect, useMemo } from 'react'
-import { Link, useSearchParams } from 'react-router-dom'
+import { Fragment, useEffect, useMemo, useState } from 'react'
+import { Link, useLocation, useSearchParams } from 'react-router-dom'
 import { useStore } from '../state/store'
-import { useSession } from '../api/session'
+import { prefersGuestBrowse, useSession } from '../api/session'
 import { useFeed, useNewDrops, type FeedTab } from '../api/hooks'
 import { PostCard } from '../components/PostCard'
 import { Composer } from '../components/Composer'
@@ -11,10 +11,12 @@ import { NewPill, Sentinel, Trending, WhoToFollow } from '../components/Social'
 import { WorldStrip } from '../components/TopSpot'
 import { Icon } from '../components/Icon'
 import { GuestNudge, GuestWall } from '../components/GuestWall'
+import { GUEST_BROWSE_EVENT, consumeGuestBrowse } from '../lib/guestBrowse'
 import { Mascot } from '../components/Mascot'
 import { BumpNotice, NameNudge } from '../components/Identity'
 import { FEE_SPLIT } from '../config'
 import { ShortcutRow, ToolsRail } from '../components/Tools'
+import { PullToRefresh } from '../components/PullToRefresh'
 
 const tabs: Array<{ id: FeedTab; label: string }> = [
   { id: 'foryou', label: 'for you' },
@@ -31,6 +33,16 @@ export function Home() {
   const tab = (params.get('tab') as FeedTab) || 'foryou'
   const { openSheet } = useStore()
   const { me, ready } = useSession()
+  // after “try it with a guest key” (no key): show the existing in-feed guest nudge so the choice is visible, even on /
+  // consume the latch + storage + nav state here: a signal fired on /welcome would be missed by a listener that was not mounted.
+  const loc = useLocation()
+  const [guestBrowse, setGuestBrowse] = useState(() => consumeGuestBrowse(prefersGuestBrowse) || loc.state?.guestBrowse === true)
+  useEffect(() => {
+    if (consumeGuestBrowse(prefersGuestBrowse) || loc.state?.guestBrowse === true) setGuestBrowse(true)
+    const on = () => { setGuestBrowse(true); window.scrollTo({ top: 0, behavior: 'smooth' }) }
+    window.addEventListener(GUEST_BROWSE_EVENT, on)
+    return () => window.removeEventListener(GUEST_BROWSE_EVENT, on)
+  }, [loc.pathname, loc.state])
   useEffect(() => {
     if (params.get('compose')) { openSheet({ type: 'compose' }); setParams({}, { replace: true }) }
   }, [params, openSheet, setParams])
@@ -42,11 +54,18 @@ export function Home() {
   }, [feed.rows, feed.snapshot])
   const fresh = useNewDrops(tab, tab === 'crowd' ? undefined : since)
   const showNew = async () => { window.scrollTo({ top: 0, behavior: 'smooth' }); await fresh.refresh() }
+  const refreshFeed = async () => {
+    const y = window.scrollY
+    if (since) await fresh.refresh()
+    else await feed.refetch()
+    if (y > 0) requestAnimationFrame(() => window.scrollTo(0, y))
+  }
 
   return (
     <>
       <div className="home-grid">
         <div className="column">
+          <PullToRefresh onRefresh={refreshFeed} />
           <header className="home-head">
             <h1 className="home-head__title">post anything. get tipped in $wif.</h1>
           </header>
@@ -66,6 +85,10 @@ export function Home() {
             </div>
             <NewPill count={fresh.count} avatars={fresh.authors} onClick={showNew} />
           </div>
+
+          {ready && !me && guestBrowse && (
+            <div className="feed__item" data-testid="guest-browse-nudge"><GuestNudge /></div>
+          )}
 
           {tab === 'crowd' && (
             <div className="crowd-note">
@@ -117,7 +140,7 @@ export function Home() {
                 </div>
                 {i === 2 && tab !== 'crowd' && <div className="feed__item feed__inline"><WhoToFollow limit={3} /></div>}
                 {i === 8 && <div className="feed__item feed__inline"><Trending limit={5} /></div>}
-                {i === 4 && ready && !me && <div className="feed__item feed__inline"><GuestNudge /></div>}
+                {i === 4 && ready && !me && !guestBrowse && <div className="feed__item feed__inline"><GuestNudge /></div>}
               </Fragment>
             ))}
           </div>

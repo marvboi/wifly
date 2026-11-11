@@ -63,6 +63,6 @@ test('settings rows target 44px+ taps and labeled theme sits in appearance', () 
 test('package version is 0.12.1 lineage (accepts 12.3 ship)', () => {
   const fe = readFileSync(join(FE, '../package.json'), 'utf8')
   const be = readFileSync(join(FE, '../../backend/package.json'), 'utf8')
-  assert.match(fe, /"version": "0\.12\.\d+"/)
-  assert.match(be, /"version": "0\.12\.\d+"/)
+  assert.match(fe, /"version": "0\.12\.\d+(\.\d+)?"/)
+  assert.match(be, /"version": "0\.12\.\d+(\.\d+)?"/)
 })

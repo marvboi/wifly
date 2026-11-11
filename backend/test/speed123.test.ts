@@ -9,8 +9,8 @@ const FE = join(root, 'frontend/src')
 const src = (r: string) => readFileSync(join(FE, r), 'utf8')
 
 test('package version is 0.12.3 lineage (accepts 12.4 ship)', () => {
-  assert.match(readFileSync(join(root, 'frontend/package.json'), 'utf8'), /"version": "0\.12\.\d+"/)
-  assert.match(readFileSync(join(root, 'backend/package.json'), 'utf8'), /"version": "0\.12\.\d+"/)
+  assert.match(readFileSync(join(root, 'frontend/package.json'), 'utf8'), /"version": "0\.12\.\d+(\.\d+)?"/)
+  assert.match(readFileSync(join(root, 'backend/package.json'), 'utf8'), /"version": "0\.12\.\d+(\.\d+)?"/)
 })
 
 test('dead concept A/C code is gone; bento is the page', () => {

@@ -103,6 +103,8 @@ export function gasChip(eth: bigint | undefined): GasChip {
   const amt = fmtUnits(eth, 'eth')
   return eth < LOW_GAS_WEI ? { tone: 'low', label: `low gas · ${amt}` } : { tone: 'ok', label: `${amt} for gas` }
 }
+/** The embedded-wallet fund line: only when eth is known and below the gas-chip low threshold (including empty). Hidden while loading. */
+export const showEmbeddedFundLine = (eth: bigint | undefined): boolean => eth !== undefined && eth < LOW_GAS_WEI
 /** The big number: "1,234.5" (no unit; the menu adds a quiet "wif"). */
 export const wifNumber = (v: bigint | undefined) => fmtUnits(v, 'wif').replace(/ wif$/, '')
 /** ≈ $ for a wif balance, only with a live price. */

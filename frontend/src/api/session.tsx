@@ -4,17 +4,19 @@
  * identity token. Without it, Sign-In with Ethereum, two ways in:
  *  - your wallet (wagmi): a signature, never a transaction;
  *  - a guest key kept in this browser: a throwaway key that signs the same SIWE message, for
- *    people without a wallet yet. Open decision: keep or drop guest keys in production.
+ *    people who already have a key in this browser. New visitors browse signed-out; we never mint a new key.
  */
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { createSiweMessage } from 'viem/siwe'
-import { generatePrivateKey, privateKeyToAccount } from 'viem/accounts'
+import { privateKeyToAccount } from 'viem/accounts'
 import type { Hex } from 'viem'
 import { useAccount, useDisconnect, useSignMessage } from 'wagmi'
 import { robinhoodChain } from '../config'
 import { AFTER_SIGNIN_MS, SIWE_STEP_MS, calmTimeout, deadlineSignal, withDeadline } from '../lib/deadline'
 import { privyBridge, privyEnabled, privyUsable, wantPrivy, type PrivyTokens } from '../auth/privyBridge'
+import { SIGNED_OUT, blockSessionRestore, sessionRestoreBlocked, allowSessionRestore } from '../lib/sessionRestore'
+export { SIGNED_OUT, blockSessionRestore, sessionRestoreBlocked, allowSessionRestore } from '../lib/sessionRestore'
 import { humanCheck, resetHumanCheck, waitForHumanCheck } from '../components/HumanCheck'
 import { adoptUser, api, endSessionEpoch, getVersion, getDrop, subscribe, type ApiUser } from './client'
 import { users, type Post, type User } from '../state/registry'
@@ -56,6 +58,8 @@ const Ctx = createContext<Session | null>(null)
 const NO_DMS = { inbox: 0, requests: 0 }
 const GUEST = 'wifly_guest_key'
 const SIGNED = 'wifly_signed_in'
+/** Remember that this browser chose signed-out browsing, so a welcome/sign-in sheet does not auto-open on load. */
+const BROWSE = 'wifly_guest_browse'
 /** Set before an X login that is really a link (a guest or wallet account adding X). Read once Privy is back. */
 const LINK_INTENT = 'wifly_link_intent'
 const intent = {
@@ -72,8 +76,10 @@ export const verifyNote = {
 }
 /** A link error that happened after a trip to x.com and back, kept until settings (or the guest banner) shows it. */
 const LINK_ERROR = 'wifly_link_error'
-/** Device settings that belong to nobody's account; everything else under wifly / wagmi goes on sign-out. */
-const KEEP_ON_SIGN_OUT = new Set([GUEST, 'wifly-theme', 'wifly-theme-picked', 'wifly_imgdims', 'wifly_world_h'])
+/** Device settings that belong to nobody's account; everything else under wifly / wagmi goes on sign-out.
+ *  SIGNED_OUT stays so a reload cannot auto-restore a Privy session. The guest key is kept (wiping it would lose
+ *  that account for good); it is never used to sign back in unless the user taps the guest button. */
+const KEEP_ON_SIGN_OUT = new Set([GUEST, BROWSE, SIGNED_OUT, 'wifly-theme', 'wifly-theme-picked', 'wifly_imgdims', 'wifly_world_h'])
 export function clearAccountStorage() {
   for (const st of [localStorage, sessionStorage]) {
     try {
@@ -96,8 +102,23 @@ export function linkErrorText(e: unknown, kind: 'x' | 'wallet' | 'email'): strin
   if (/different x or email/i.test(m)) return 'this account already has a different x or email sign-in linked'
   return userError(e)
 }
+/** A previously stored guest key, if it still parses. Never creates one. */
+export function existingGuestKey(): Hex | null {
+  try {
+    const pk = localStorage.getItem(GUEST) as Hex | null
+    if (!pk) return null
+    privateKeyToAccount(pk)
+    return pk
+  } catch { return null }
+}
 function guestAddress(): string | null {
-  try { const pk = localStorage.getItem(GUEST) as Hex | null; return pk ? privateKeyToAccount(pk).address.toLowerCase() : null } catch { return null }
+  try { const pk = existingGuestKey(); return pk ? privateKeyToAccount(pk).address.toLowerCase() : null } catch { return null }
+}
+export function rememberGuestBrowse() {
+  try { localStorage.setItem(BROWSE, '1') } catch { /* storage off */ }
+}
+export function prefersGuestBrowse() {
+  try { return localStorage.getItem(BROWSE) === '1' } catch { return false }
 }
 const wasSignedIn = (() => { try { return localStorage.getItem(SIGNED) === '1' } catch { return false } })()
 
@@ -134,13 +155,16 @@ export function SessionProvider({ children }: { children: ReactNode }) {
 
   const after = useCallback((m: Me) => { setOverride(m); qc.invalidateQueries() ; return m }, [qc])
   const signInGuest = useCallback(async () => {
-    let pk = localStorage.getItem(GUEST) as Hex | null
-    if (!pk) { pk = generatePrivateKey(); localStorage.setItem(GUEST, pk) }
+    allowSessionRestore()
+    // only an existing key from this browser: we never mint a throwaway key.
+    const pk = existingGuestKey()
+    if (!pk) throw new Error('no guest key in this browser')
     const acct = privateKeyToAccount(pk)
     const m = await siwe(acct.address, x => acct.signMessage({ message: x }), true); via.current = 'wallet'; return after(m)
   }, [after])
   // the address comes in from the caller right after connecting: the hook's own value is still the old render's
   const signInWallet = useCallback(async (addr?: `0x${string}`) => {
+    allowSessionRestore()
     const a = addr ?? address
     if (!a) throw new Error('connect a wallet first')
     const m = await siwe(a, x => signMessageAsync({ message: x, account: a })); via.current = 'wallet'; return after(m)
@@ -150,6 +174,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     return (await api<{ me: Me }>('/auth/privy', { method: 'POST', json: { ...t, ...humanCheck() } }).finally(resetHumanCheck)).me
   }, [])
   const signInPrivy = useCallback(async () => {
+    allowSessionRestore()
     privyLogin.current = true
     try { const m = await exchange(await privyBridge.login()); via.current = 'privy'; return after(m) } finally { privyLogin.current = false }
   }, [exchange, after])
@@ -173,6 +198,8 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       return
     }
     if (!st.ready || !st.authenticated || q.isLoading || privyLogin.current) return
+    // a manual sign-out must win: never exchange a leftover Privy session (that used to sign the user straight back in)
+    if (sessionRestoreBlocked()) { lastTok.current = null; via.current = null; void privyBridge.logout(); return }
     // back from X after "link x" on a guest or wallet account: add X to that account instead of switching to another one
     if (q.data?.me && intent.has()) {
       intent.take(); privyLogin.current = true
@@ -282,12 +309,14 @@ export function SessionProvider({ children }: { children: ReactNode }) {
    * Sign-out is a clean switch: the old session's in-flight answers are dropped (epoch), every cache is emptied, privy
    * and the server session end (the server revokes the token), the wallet connector lets go, this device forgets the
    * account's notes (drafts, link errors, nudges, welcome state), and the app reloads from / so nothing in memory survives.
-   * Kept on purpose: theme, image sizes and the guest key (a guest account lives only in that key, so dropping it would
-   * lose it for good; it signs in again only when someone picks "continue as guest").
+   * Kept on purpose: theme, image sizes, the signed-out browse flag, and an existing guest key (a guest account lives
+   * only in that key, so dropping it would lose it for good; it signs in again only when someone picks the guest button
+   * and this browser already holds a key).
    */
   const signOut = useCallback(async (then?: 'signin', to?: { path: string; reason?: string }) => {
     endSessionEpoch()
     lastTok.current = null; via.current = null
+    blockSessionRestore()
     await qc.cancelQueries().catch(() => {})
     qc.clear()
     delete users.you

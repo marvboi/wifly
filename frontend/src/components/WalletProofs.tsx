@@ -6,8 +6,9 @@ import { api, type ApiUser } from '../api/client'
 import { useSession } from '../api/session'
 import { useStore } from '../state/store'
 import { InfoTip } from './InfoTip'
-import { privyBridge } from '../auth/privyBridge'
+import { privyBridge, privyEnabled } from '../auth/privyBridge'
 import { userError } from '../lib/txError'
+import { hasInjectedProvider, injectedConnector } from '../lib/walletOpen'
 import { tipPayoutMismatch, tipPayoutTarget } from '../lib/tipPayout'
 
 type Addr = `0x${string}`
@@ -47,8 +48,13 @@ export function useWalletProof() {
     let a = address as Addr | undefined
     let conn = connector
     if (!a) {
-      const c = connectors[0]; if (!c) throw new Error('no wallet found in this browser')
-      a = (await connectAsync({ connector: c })).accounts[0]; conn = c
+      if (privyEnabled) {
+        a = await privyBridge.connectExternal() as Addr
+      } else {
+        if (hasInjectedProvider() === false) throw new Error('no wallet found in this browser')
+        const c = injectedConnector(connectors); if (!c) throw new Error('no wallet found in this browser')
+        a = (await connectAsync({ connector: c })).accounts[0]; conn = c
+      }
     }
     if (w && a.toLowerCase() !== w) {
       const accts = await pickWalletAccount(conn).catch(() => [] as Addr[])

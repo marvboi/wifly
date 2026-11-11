@@ -3,6 +3,7 @@
  * Every write carries `x-wifly: 1` (the server's CSRF check) and the session rides in an httpOnly cookie.
  */
 import type { Media, Post, User } from '../state/registry'
+import { toggles, TOGGLE_FIELD, type ToggleKind } from './dropState'
 
 export type ApiUser = {
   handle: string; name: string; bio: string; avatar: string | null; location: string | null; tone: number
@@ -249,39 +250,35 @@ export function setDrop(p: Post) {
   notify()
 }
 
-/** Pending optimistic writes per drop: a stale server echo must not undo a newer tap. */
-const pending = new Map<string, number>()
-
 export function adoptDrop(d: ApiDrop): Post {
-  const p = toPost(d)
-  if (!pending.get(d.id)) setDrop(p)
+  // apply after settle so a stale list/thread snapshot cannot undo a newer tap
+  const p = toggles.adopt(d.id, toPost(d))
+  setDrop(p)
   return live.get(d.id) ?? p
 }
 export const adoptDrops = (ds: ApiDrop[]) => ds.map(adoptDrop)
 
-type Toggle = 'like' | 'pass' | 'bookmark'
-const field: Record<Toggle, ['liked' | 'passed' | 'bookmarked', 'likes' | 'reposts' | null]> = {
-  like: ['liked', 'likes'], pass: ['passed', 'reposts'], bookmark: ['bookmarked', null],
-}
+type Toggle = ToggleKind
 
-/** Optimistic like / pass it on / bookmark: flip now, send, then reconcile with what the server returns. */
+/** Optimistic like / pass / bookmark: flip now, POST or DELETE the intended state, keep that intent until a matching GET. */
 export async function toggleDrop(id: string, kind: Toggle): Promise<void> {
   const cur = live.get(id)
   if (!cur) return
-  const [flag, count] = field[kind]
+  const [flag, count] = TOGGLE_FIELD[kind]
   const on = !cur[flag]
-  setDrop({ ...cur, [flag]: on, ...(count ? { [count]: Math.max(0, (cur[count] ?? 0) + (on ? 1 : -1)) } : {}) })
-  pending.set(id, (pending.get(id) ?? 0) + 1)
+  toggles.setIntent(id, flag, on)
+  setDrop(toggles.withIntent(id, { ...cur, [flag]: on, ...(count ? { [count]: Math.max(0, (cur[count] ?? 0) + (on ? 1 : -1)) } : {}) }))
+  const g = toggles.nextGen(id, kind)
   try {
     const r = await api<{ drop: ApiDrop }>(`/drops/${id}/${kind}`, { method: on ? 'POST' : 'DELETE' })
-    const left = (pending.get(id) ?? 1) - 1
-    pending.set(id, left)
-    if (left === 0) setDrop(toPost(r.drop)) // last write wins; the server's counts are the truth
+    if (!toggles.isCurrent(id, kind, g)) return
+    // do not settle here: a slower in-flight GET must still see the intent
+    setDrop(toggles.withIntent(id, toPost(r.drop)))
   } catch (e) {
-    const left = (pending.get(id) ?? 1) - 1
-    pending.set(id, left)
+    if (!toggles.isCurrent(id, kind, g)) throw e
+    toggles.revertIntent(id, flag, on)
     const now = live.get(id)
-    if (now) setDrop({ ...now, [flag]: !on, ...(count ? { [count]: Math.max(0, (now[count] ?? 0) + (on ? -1 : 1)) } : {}) })
+    if (now) setDrop(toggles.withIntent(id, { ...now, [flag]: !on, ...(count ? { [count]: Math.max(0, (now[count] ?? 0) + (on ? -1 : 1)) } : {}) }))
     throw e
   }
 }

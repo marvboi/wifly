@@ -362,7 +362,7 @@ export function Landing() {
     <div className="lp">
       <header className="lp-nav">
         <div className="lp-wrap lp-nav__in">
-          <Link to="/" className="lp-nav__brand" aria-label="wifly home"><Wordmark size="md" /></Link>
+          <Link to="/" className="lp-nav__brand" aria-label="wifly home"><Wordmark to={null} size="md" /></Link>
           <nav className="lp-nav__links" aria-label="sections">
             <a href="#how">how it works</a>
             <a href="#names">names</a>
@@ -380,7 +380,6 @@ export function Landing() {
         <section className="lp-hero">
           <div className="lp-wrap lp-hero__grid">
             <div className="lp-hero__copy">
-              <span className="lp-eyebrow"><Token size={16} /> runs on $wif</span>
               <h1 className="lp-title" aria-label="post. get tipped. keep it.">
                 <span className="lp-title__l" aria-hidden="true"><span>post.</span></span>
                 <span className="lp-title__l" aria-hidden="true"><span>get <em>tipped.</em></span></span>

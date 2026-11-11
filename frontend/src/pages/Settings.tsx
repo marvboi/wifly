@@ -23,7 +23,7 @@ function SettingsExtras() {
     <div className="sc-sections">
       <section className="sc-section" data-testid="settings-about">
         <h2 className="sc-section__h">about</h2>
-        <p className="sc-section__row"><span>version</span><span className="muted">0.12.5</span></p>
+        <p className="sc-section__row"><span>version</span><span className="muted">0.12.6.13</span></p>
         <AppLink className="sc-section__row" to="/docs">docs</AppLink>
         <a className="sc-section__row" href={LINKS.wifX} target="_blank" rel="noreferrer">$wif on x</a>
       </section>

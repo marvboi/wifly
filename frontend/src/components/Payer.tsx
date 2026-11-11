@@ -10,12 +10,13 @@ import { useQuery } from '@tanstack/react-query'
 import { useAccount, useConnect, useDisconnect, usePublicClient } from 'wagmi'
 import { erc20Abi, type Address } from 'viem'
 import { useSession } from '../api/session'
-import { privyBridge, usePrivyState } from '../auth/privyBridge'
+import { privyBridge, privyEnabled, usePrivyState } from '../auth/privyBridge'
 import { robinhoodChain, WIF_TOKEN } from '../config'
-import { EMBEDDED_FUND_LINE, PAYER_GAS_LINE, addrLabel, avatarColors, defaultPayer, fmtUnits, gasChip, linkedButton, payerOptions, payerTag, shortA, wifNumber, wifUsd, type PayerOption } from '../lib/payer'
+import { EMBEDDED_FUND_LINE, PAYER_GAS_LINE, addrLabel, avatarColors, defaultPayer, fmtUnits, gasChip, linkedButton, payerOptions, payerTag, shortA, showEmbeddedFundLine, wifNumber, wifUsd, type PayerOption } from '../lib/payer'
 import { openWalletMenu, payerStore, usePayerState } from '../lib/payerStore'
 import { Icon } from './Icon'
 import { useWifPrice, Usd } from '../lib/price'
+import { hasInjectedProvider, injectedConnector } from '../lib/walletOpen'
 
 type Bal = { eth: bigint; wif: bigint }
 
@@ -60,7 +61,6 @@ export function PayerSync() {
 
 /** Switch to a wallet: ready ones switch at once; a linked one that isn't connected connects that exact address first. */
 export function usePayerSwitch() {
-  const privy = usePrivyState()
   const { connectAsync, connectors } = useConnect()
   const { disconnect } = useDisconnect()
   const [busy, setBusy] = useState<string | null>(null)
@@ -72,9 +72,10 @@ export function usePayerSwitch() {
     setBusy(o.address)
     try {
       let got: 'ok' | 'other' | 'closed'
-      if (privy.authenticated) got = await privyBridge.connectExact(o.address)
+      if (privyEnabled) got = await privyBridge.connectExact(o.address)
       else {
-        const c = connectors[0]
+        if (hasInjectedProvider() === false) { setErr('no browser wallet found here'); return }
+        const c = injectedConnector(connectors)
         if (!c) { setErr('no browser wallet found here'); return }
         const r = await connectAsync({ connector: c, chainId: robinhoodChain.id })
         got = r.accounts.some(a => a.toLowerCase() === o.address) ? 'ok' : 'other'
@@ -115,14 +116,15 @@ const GasPill = ({ eth }: { eth: bigint | undefined }) => {
 }
 
 /**
- * The gas note: one short line plus the address and copy. Linked + empty: PAYER_GAS_LINE; embedded always
- * gets EMBEDDED_FUND_LINE (privy wallets aren't gas-sponsored).
+ * The gas note: one short line plus the address and copy. Linked + empty: PAYER_GAS_LINE; embedded
+ * gets EMBEDDED_FUND_LINE only when its eth is known and below LOW_GAS_WEI (same rule as the gas chip).
  */
-export function PayerGas({ o, empty = true }: { o: PayerOption; empty?: boolean }) {
+export function PayerGas({ o, empty = true, eth }: { o: PayerOption; empty?: boolean; eth?: bigint }) {
+  const fundEmbedded = o.kind === 'embedded' && showEmbeddedFundLine(eth)
   return (
     <div className="payer__gas" role="note" data-testid={empty ? 'payer-gas' : 'payer-fund'}>
       {empty && o.kind !== 'embedded' && <p className="small">{PAYER_GAS_LINE}</p>}
-      {o.kind === 'embedded' && <p className="small" data-testid="embedded-fund">{EMBEDDED_FUND_LINE}</p>}
+      {fundEmbedded && <p className="small" data-testid="embedded-fund">{EMBEDDED_FUND_LINE}</p>}
       <p className="tiny muted payer__gasaddr"><code className="mono" title={o.address}>{addrLabel(o.address)}</code><CopyAddr address={o.address} /></p>
     </div>
   )
@@ -130,7 +132,7 @@ export function PayerGas({ o, empty = true }: { o: PayerOption; empty?: boolean 
 
 /**
  * One compact row: "paying from 0x25bb…d5d7 [linked] · copy · switch", balances on a small second line, then the gas
- * note when it has none (or always for embedded), and the linked-wallet shortcut. "switch" opens the top wallet menu,
+ * note when it has none (or when an embedded wallet is low on gas), and the linked-wallet shortcut. "switch" opens the top wallet menu,
  * where the choice lives. Renders nothing when there's no account wallet list. Reads well on light and dark cards.
  */
 export function PayingFrom({ className = '' }: { className?: string }) {
@@ -160,7 +162,7 @@ export function PayingFrom({ className = '' }: { className?: string }) {
       {!o.ready && o.kind === 'linked' && (
         <button type="button" className="btn btn--ghost btn--sm payer__connect" disabled={sw.busy === o.address} onClick={() => void sw.use(o)}>{sw.busy === o.address ? 'connecting…' : `connect ${shortA(o.address)}`}</button>
       )}
-      {(noGas || o.kind === 'embedded') && <PayerGas o={o} empty={noGas} />}
+      {(noGas || showEmbeddedFundLine(o.kind === 'embedded' ? b?.eth : undefined)) && <PayerGas o={o} empty={noGas} eth={b?.eth} />}
       {linked && o.kind === 'embedded' && (
         <div className="payer__links">
           <button type="button" className="linkbtn" disabled={sw.busy === linked.address} onClick={() => void sw.use(linked)}>{sw.busy === linked.address ? 'connecting…' : linkedButton(linked.address)}</button>
@@ -184,7 +186,7 @@ export function WalletMenuPayer() {
   const o = ps.options.find(x => x.address === ps.address) ?? null
   if (!o) return null
   const b = bal.data?.[o.address]
-  const gasNote = b?.eth === 0n || o.kind === 'embedded'
+  const gasNote = b?.eth === 0n || (o.kind === 'embedded' && showEmbeddedFundLine(b?.eth))
   return (
     <div className="payer payer--menu" data-testid="wallet-payer">
       <AnimatePresence mode="wait" initial={false}>
@@ -203,7 +205,7 @@ export function WalletMenuPayer() {
             <Usd value={wifUsd(b?.wif, usd)} className="wm-usd" />
             <GasPill eth={b?.eth} />
           </div>
-          {gasNote && <PayerGas o={o} empty={b?.eth === 0n} />}
+          {gasNote && <PayerGas o={o} empty={b?.eth === 0n} eth={b?.eth} />}
           {!o.ready && o.kind === 'linked' && (
             <button type="button" className="btn btn--dark btn--sm payer__connect" disabled={sw.busy === o.address} onClick={() => void sw.use(o)}>{sw.busy === o.address ? 'connecting…' : `connect ${shortA(o.address)}`}</button>
           )}

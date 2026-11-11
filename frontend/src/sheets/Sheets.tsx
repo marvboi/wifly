@@ -12,7 +12,7 @@ import { InfoTip } from '../components/InfoTip'
 import { adoptUser, api, getDrop, type ApiUser, LINK_REQUIRED_EVENT, uploadAvatar } from '../api/client'
 import { AvatarPicker } from '../components/AvatarPicker'
 import { useSession } from '../api/session'
-import { privyBridge, privyEnabled, wantPrivy } from '../auth/privyBridge'
+import { privyEnabled, wantPrivy } from '../auth/privyBridge'
 import { Composer } from '../components/Composer'
 import { useNavigate } from 'react-router-dom'
 import { useAccount, useConnect } from 'wagmi'
@@ -22,24 +22,24 @@ import { posts, users } from '../state/registry'
 import { PREVIEW_NOTE, useStore, type SheetState } from '../state/store'
 import { FEE_SPLIT_LABEL, topSpotMinBid, topSpotSplit } from '../lib/fees'
 import { userError, failArgs, plans, useQuoteFee, useHasUnlocked, useIsSubscribed, useSendPlan, useTopSpotRules, id32, type Plan } from '../lib/wifly'
+import { connectBrowserWallet } from '../lib/connectBrowserWallet'
 import { Amount, Avatar, DisplayName, Name, Token, WifUsd } from '../components/Bits'
 import { BurnSheet, BadgeSheet, TiersSheet } from './NewSheets'
-import { HumanCheck } from '../components/HumanCheck'
 import { FeeParts, FeeSplit } from '../components/FeeSplit'
 import { Icon } from '../components/Icon'
+import { SignInForm } from '../components/SignInForm'
 import { BumpNotice, MakeItYours } from '../components/Identity'
 import { LowBalance, SwapPanel } from '../components/Swap'
 import { TxSteps } from '../components/TxSteps'
 import { isWifName, useResolve } from '../lib/names'
 import { useDebounced } from '../api/hooks'
-import { RECOVER_GRACE_MS, createSignInGate, stillPending, type SignInKind, type SignInView } from '../lib/attempt'
 
 // Top Spot shares as labels (TOP_SPOT_PREV_BPS 9000 onchain)
 const pct = (x: number) => `${Math.round(x * 100)}%`
 
 export function Sheet({ title, onClose, children, footer, size, className }: { title: string; onClose: () => void; children: ReactNode; footer?: ReactNode; size?: 'sm'; className?: string }) {
   useEffect(() => {
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape' && !document.getElementById('privy-dialog') && !document.getElementById('privy-modal-content')) onClose() }
     document.addEventListener('keydown', onKey)
     document.body.classList.add('no-scroll')
     return () => { document.removeEventListener('keydown', onKey); document.body.classList.remove('no-scroll') }
@@ -684,86 +684,10 @@ function ReplyContext({ id }: { id: string }) {
 }
 
 function SignInSheet({ reason }: { reason?: string }) {
-  const { closeSheet, toast } = useStore()
-  const { signInGuest, signInWallet, signInPrivy } = useSession()
-  const { isConnected } = useAccount()
-  const { connectAsync, connectors } = useConnect()
-  const [view, setView] = useState<SignInView>({ busy: null, line: null })
-  const busy = view.busy
-  const [useWallet, setUseWallet] = useState(false)
-  const nav = useNavigate()
-  const done = (m: { onboarded?: boolean; handle: string }) => {
-    closeSheet()
-    // like x: stay on the page you were reading; only a brand-new account goes through /welcome
-    if (!m.onboarded) nav('/welcome'); else toast(`signed in as @${m.handle}`)
-  }
-  // 11.8.4b: every way in (wallet, guest, x/email) runs through one gate: a "cancel" link while it waits, a 20s cap that
-  // brings the buttons back with "try again", recovery when the window comes back with nothing pending, late results safe.
-  const doneRef = useRef(done); doneRef.current = done
-  const gate = useRef<ReturnType<typeof createSignInGate<{ onboarded?: boolean; handle: string }>> | null>(null)
-  gate.current ??= createSignInGate<{ onboarded?: boolean; handle: string }>({
-    onView: v => setView(v),
-    onSignedIn: m => doneRef.current(m),
-    quiet: e => /sign-in closed|reject|denied|cancel/i.test((e as Error)?.message ?? ''),
-  })
-  const last = useRef<SignInKind>('guest')
-  const wallet = () => { last.current = 'wallet'; gate.current!.run('wallet', async () => {
-    let addr: `0x${string}` | undefined
-    if (!isConnected) { const c = connectors[0]; if (!c) throw new Error('no wallet found in this browser'); addr = (await connectAsync({ connector: c })).accounts[0] }
-    return signInWallet(addr)
-  }) }
-  const guest = () => { last.current = 'guest'; gate.current!.run('guest', () => signInGuest()) }
-  const privy = () => { last.current = 'privy'; gate.current!.run('privy', () => signInPrivy()) }
-  const again = () => (last.current === 'wallet' ? wallet : last.current === 'privy' ? privy : guest)()
-  // a wallet popup or privy's window closed without telling us: once the page is back and nothing is pending, recover
-  useEffect(() => {
-    const back = () => {
-      if (document.visibilityState !== 'visible') return
-      const g = gate.current!, k = g.busy(), id = g.attempt()
-      if (!k || k === 'guest') return
-      setTimeout(() => {
-        if (g.attempt() !== id) return
-        const s = privyBridge.get(), dlg = document.getElementById('privy-dialog')
-        if (!stillPending(k, { authenticated: s.authenticated, dialogOpen: !!dlg && dlg.getClientRects().length > 0 })) g.recover(k)
-      }, RECOVER_GRACE_MS[k])
-    }
-    window.addEventListener('focus', back); document.addEventListener('visibilitychange', back)
-    return () => { window.removeEventListener('focus', back); document.removeEventListener('visibilitychange', back) }
-  }, [])
-  const status = busy
-    ? <p className="signin__retry small muted" role="status" data-testid="signin-cancel">{busy === 'wallet' ? 'waiting for your wallet.' : busy === 'privy' ? 'waiting for sign-in.' : 'signing you in.'} <button type="button" className="linkbtn" onClick={() => gate.current!.cancel()}>cancel</button></p>
-    : view.line ? <p className="signin__retry small muted" role="status" data-testid="signin-retry">{view.line} <button type="button" className="linkbtn" onClick={again}>try again</button></p>
-    : null
-  // the sign-in sheet is open: start fetching Privy now so the modal is ready by the tap
-  useEffect(() => { wantPrivy() }, [])
-  if (privyEnabled && !useWallet) return (
-    <Sheet title="sign in" onClose={closeSheet}>
-      <div className="signin">
-        <Mascot size={72} />
-        <h3 className="signin__title">{reason ?? 'join wifly.'}</h3>
-        <p className="muted small">{reason ? 'it takes about a minute. you can keep looking around after.' : 'use X, email or a wallet. it takes about a minute.'}</p>
-        <HumanCheck />
-        <button className="btn btn--dark btn--block" disabled={!!busy} onClick={privy}><Icon name="user" size={18} /> {busy === 'privy' ? 'opening…' : 'sign up or sign in'}</button>
-        <button className="btn btn--ghost btn--block" disabled={!!busy} onClick={() => setUseWallet(true)}><Icon name="wallet" size={18} /> i have a wallet</button>
-        {status}
-        {reason && <button className="btn btn--text btn--block" onClick={closeSheet}>keep browsing</button>}
-      </div>
-    </Sheet>
-  )
+  const { closeSheet } = useStore()
   return (
     <Sheet title="sign in" onClose={closeSheet}>
-      <div className="signin">
-        <Mascot size={72} />
-        <h3 className="signin__title">{reason ?? 'join wifly.'}</h3>
-        {reason && <p className="muted small">it takes about a minute. you can keep looking around after.</p>}
-        <p className="muted small">you sign a message to prove it’s you. nothing is sent or spent.</p>
-        <HumanCheck />
-        <button className="btn btn--dark btn--block" disabled={!!busy} onClick={wallet}><Icon name="wallet" size={18} /> {busy === 'wallet' ? 'check your wallet…' : isConnected ? 'sign in with your wallet' : 'connect a wallet'}</button>
-        <button className="btn btn--ghost btn--block" disabled={!!busy} onClick={guest}><Icon name="user" size={18} /> {busy === 'guest' ? 'signing…' : 'try it with a guest key'}</button>
-        {status}
-        <p className="muted tiny">a guest key lives in this browser only. you can link a wallet later.</p>
-        {reason && <button className="btn btn--text btn--block" onClick={closeSheet}>keep browsing</button>}
-      </div>
+      <SignInForm reason={reason} />
     </Sheet>
   )
 }
@@ -829,9 +753,8 @@ function LinkSheet({ then }: { then?: () => void }) {
     setBusy(kind); setErr(null)
     try {
       if (kind === 'wallet') {
-        let a = isConnected ? address : undefined
-        if (!a) { const c = connectors[0]; if (!c) throw new Error('no wallet found in this browser'); a = (await connectAsync({ connector: c })).accounts[0] }
-        await linkWallet(a!)
+        const a = await connectBrowserWallet({ address, isConnected, connectors, connectAsync })
+        await linkWallet(a)
       } else if (kind === 'x') await linkX()
       else await linkEmail()
     } catch (e) {

@@ -88,7 +88,7 @@ test('landing Reveal respects reduced-motion (no opacity-0 hold)', () => {
 
 test('package version is 0.12.x (speed.12 lineage)', () => {
   const pkg = readFileSync(join(FE, '../package.json'), 'utf8')
-  assert.match(pkg, /"version": "0\.12\.\d+"/)
+  assert.match(pkg, /"version": "0\.12\.\d+(\.\d+)?"/)
 })
 
 test('onError behaviour: generic 500, HTTPException message preserved', async () => {

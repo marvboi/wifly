@@ -160,7 +160,8 @@ test('one paying wallet app-wide: sends, swap, wallet menu and the "paying from"
 test('connecting a linked wallet only connects (privy connectWallet), never links, and checks the exact address', () => {
   const m = src('auth/PrivyMount.tsx'), b = src('auth/privyBridge.ts'), p = src('components/Payer.tsx')
   assert.match(m, /useConnectWallet\(/)
-  assert.match(m, /connectWallet\(\{ suggestedAddress: address/)
+  assert.match(m, /suggestedAddress: address/)
+  assert.match(m, /wallet already on your account/)
   assert.match(b, /got\.toLowerCase\(\) === address\.toLowerCase\(\) \? 'ok' : 'other'/)
   assert.ok(!/linkWallet|linkTwitter|\/auth\/link/.test(p), 'the payer UI never links')
   assert.match(src('lib/payerStore.ts'), /!state\.options\.some\(o => o\.address === a\)/)
@@ -250,8 +251,8 @@ test('one toast per error: repeats replace, raw text never toasts; the agent pag
   assert.doesNotMatch(ag, /toast\([^)]*r\.reason\)/)
   assert.match(ag, /<PayingFrom/)
   const p = fread('components/Payer.tsx')
-  assert.match(p, /o\.kind === 'embedded' && <p className="small" data-testid="embedded-fund">\{EMBEDDED_FUND_LINE\}/)
-  assert.match(p, /\(noGas \|\| o\.kind === 'embedded'\)/)
+  assert.match(p, /fundEmbedded && <p className="small" data-testid="embedded-fund">\{EMBEDDED_FUND_LINE\}/)
+  assert.match(p, /showEmbeddedFundLine/)
 })
 
 test('agent page shows one paying-from row; the embedded note is just the fund line + address + copy', () => {

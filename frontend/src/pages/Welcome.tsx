@@ -9,6 +9,7 @@ import { api, uploadAvatar, type ApiUser } from '../api/client'
 import { useSession } from '../api/session'
 import { privyEnabled, usePrivyState } from '../auth/privyBridge'
 import { useConnect } from 'wagmi'
+import { connectBrowserWallet } from '../lib/connectBrowserWallet'
 import { HandleField, useHandleCheck } from '../components/HandleField'
 import { Avatar, Wordmark } from '../components/Bits'
 import { AvatarPicker } from '../components/AvatarPicker'
@@ -20,6 +21,9 @@ import { ClaimBox, ClaimSoon, NAMES_LIVE, type ClaimState } from './Names'
 import { UseMyWif } from '../components/WalletProofs'
 import { followLabel, followPayload, seedFollow, toggleFollow } from './onboardFollow'
 import { userError } from '../lib/txError'
+import { PlayfulMarksBg } from '../components/PlayfulMarksBg'
+import { SignInForm } from '../components/SignInForm'
+import { USE_WIF_PLACEMENT } from '../lib/onboardWifPlacement'
 
 type Onb = { suggestedHandle: string | null; ownedWif?: string | null; notice?: string | null; x: { username: string } | null; wallet: string | null; email: boolean; users: ApiUser[]; tags: string[] }
 const STEPS = ['you', 'wif', 'follow', 'link'] as const
@@ -30,6 +34,7 @@ export function Welcome() {
   const { toast } = useStore()
   const nav = useNavigate()
   const [sp] = useSearchParams()
+  const wifPlace: 'a' | 'b' = sp.get('wif') === 'b' || sp.get('wif') === 'a' ? (sp.get('wif') as 'a' | 'b') : USE_WIF_PLACEMENT
   const privy = usePrivyState()
   const onb = useQuery({ queryKey: ['onboarding'], queryFn: () => api<Onb>('/onboarding'), enabled: !!me })
   const want = sp.get('step') === 'username' ? 'you' : sp.get('step') ?? 'you'
@@ -89,8 +94,7 @@ export function Welcome() {
     try {
       if (kind === 'twitter') { if (!(await linkX())) return }
       else {
-        const c = connectors[0]; if (!c) throw new Error('no wallet found in this browser')
-        const addr = (await connectAsync({ connector: c })).accounts[0]
+        const addr = await connectBrowserWallet({ connectors, connectAsync })
         await linkWallet(addr)
       }
       await onb.refetch()
@@ -129,7 +133,8 @@ export function Welcome() {
     return linkState === 'ready' ? { mood: 'calm', line: 'all optional. link x to show your handle on your profile.' } : { mood: 'calm', line: 'all optional. you can link accounts later in settings.' }
   }, [step, handle, check, checking, name, wifState, claimed, follow.size, onb.data, linkState, owned])
 
-  if (ready && !me) return <Navigate to="/" replace />
+  // signed-out visitors stay on /welcome and see the existing sign-up card (do not bounce to /).
+  if (ready && !me) return <WelcomeSignUp />
   if (me?.onboarded && !me.needsHandle && !sp.get('step') && !sp.get('h')) return <Navigate to={FEED_PATH} replace />
 
   const okHandle = !!check?.available
@@ -157,8 +162,13 @@ export function Welcome() {
   }
   const toggle = (set: Set<string>, v: string, put: (s: Set<string>) => void) => { const n = new Set(set); n.has(v) ? n.delete(v) : n.add(v); put(n) }
 
+  const useWifBtn = !owned && (
+    <UseMyWif compact onDone={n => { setHandle(n); setClaimed(n); if (renaming) nav(FEED_PATH, { replace: true }); else setStep(2) }} />
+  )
+
   return (
     <div className="welcome">
+      <PlayfulMarksBg />
       <header className="welcome__top">
         <Wordmark to="/" size="sm" />
         {!renaming && <ol className="welcome__dots" aria-label={`step ${step + 1} of ${STEPS.length}`}>{STEPS.map((s, i) => <li key={s} className={i < step ? 'is-done' : i === step ? 'is-current' : ''} aria-current={i === step ? 'step' : undefined} />)}</ol>}
@@ -169,13 +179,13 @@ export function Welcome() {
           <p className="sr-only" aria-live="polite">{host.line}</p>
         </div>
         <AnimatePresence mode="wait">
-          <motion.section key={step} className="welcome__card" aria-label={TITLES[step]} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }} transition={{ duration: 0.2 }}>
+          <motion.section key={step} className={`welcome__card${step === 0 ? ` welcome__card--you welcome__card--wif-${wifPlace}` : ''}`} aria-label={TITLES[step]} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }} transition={{ duration: 0.2 }}>
             {step === 0 && <>
               <h1>{renaming ? 'pick your @name' : 'who are you?'}</h1>
               {onb.data?.notice ? <p className="welcome__sub welcome__notice" data-testid="handle-notice">@{onb.data.notice} now goes with {onb.data.notice}.wif, held by another wallet. pick a new @name; your posts stay.</p>
                 : renaming && <p className="welcome__sub">pick the @name you want. everything else stays.</p>}
               <div className="welcome__profile">
-                <AvatarPicker size={72} src={avatar} name={name} handle={handle} onPick={pick} onRemove={() => setAvatar(null)} onError={m => toast('couldn’t add that photo', userError(m))} />
+                <AvatarPicker size={96} src={avatar} name={name} handle={handle} onPick={pick} onRemove={() => setAvatar(null)} onError={m => toast('couldn’t add that photo', userError(m))} />
                 <label className="field"><span className="field__label">display name</span>
                   <input className="field__input" value={name} maxLength={50} placeholder="your name" autoComplete="name" {...watchProps}
                     onChange={e => { setName(e.target.value); watchInput(e) }} onKeyUp={watchInput} onSelect={watchInput} />
@@ -183,18 +193,20 @@ export function Welcome() {
               </div>
               <div className="welcome__handle">
                 <HandleField quiet value={handle} onChange={v => { setHandle(v); requestAnimationFrame(() => { const el = document.activeElement; if (el instanceof HTMLInputElement) watchInput({ currentTarget: el }) }) }} autoFocus {...watchProps} />
-                <p className="welcome__sub">free, and yours.</p>
                 {owned && handle !== owned && <button type="button" className="welcome__owned" data-testid="use-owned" onClick={() => { setHandle(owned); if (!renaming) setStep(1) }}>
                   <span className="welcome__owned-l">you own <b>{owned}.wif</b></span><span className="welcome__owned-r">use @{owned} <Icon name="chevron" size={14} /></span>
                 </button>}
-                {!owned && <UseMyWif compact onDone={n => { setHandle(n); setClaimed(n); if (renaming) nav(FEED_PATH, { replace: true }); else setStep(2) }} />}
+                {wifPlace === 'b' && useWifBtn}
                 {!owned && suggestion && handle !== suggestion && <p className="welcome__sub">{onb.data?.x ? 'from your x: ' : 'idea: '}<button className="linkbtn" onClick={() => setHandle(suggestion)}>@{suggestion}</button></p>}
               </div>
               <button className="btn btn--dark btn--lg btn--block" disabled={!okHandle || busy} onClick={renaming ? saveName : next}>{renaming ? (busy ? 'saving…' : 'save my @name') : 'continue'}</button>
-              {!renaming && !onb.data?.notice && <p className="welcome__sub welcome__already" data-testid="already-have">already have an account? <button type="button" className="linkbtn" onClick={async () => {
-                // this fresh sign-up stays empty (no @name, nothing posted); linking its wallet later folds it into the real account
-                await signOut('signin').catch(() => {})
-              }}>sign in with x or email instead</button></p>}
+              <div className="welcome__alt">
+                {wifPlace === 'a' && useWifBtn}
+                {!renaming && !onb.data?.notice && <p className="welcome__sub welcome__already" data-testid="already-have">already have an account? <button type="button" className="linkbtn" onClick={async () => {
+                  // this fresh sign-up stays empty (no @name, nothing posted); linking its wallet later folds it into the real account
+                  await signOut('signin').catch(() => {})
+                }}>sign in with x or email instead</button></p>}
+              </div>
             </>}
             {step === 1 && (NAMES_LIVE ? <>
               <h1>want {handle}.wif too?</h1>
@@ -281,3 +293,21 @@ function WalletRow({ address }: { address: string }) {
 
 /** Names the server gave new accounts before they picked one (older accounts carry "new on wifly"). */
 const isPlaceholderName = (n: string) => /^new on wifly$/i.test(n.trim())
+
+
+/** Signed-out /welcome: the existing sign-in card (Privy, connect wallet, guest). No new wording. */
+function WelcomeSignUp() {
+  return (
+    <div className="welcome welcome--signup" data-testid="welcome-signup">
+      <PlayfulMarksBg />
+      <header className="welcome__top">
+        <Wordmark to="/" size="sm" />
+      </header>
+      <div className="welcome__stage welcome__stage--signup">
+        <section className="welcome__card" aria-label="sign in">
+          <SignInForm />
+        </section>
+      </div>
+    </div>
+  )
+}

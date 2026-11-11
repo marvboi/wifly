@@ -16,13 +16,17 @@ import { HEAD_D, INK, NEON, bodyTransform, eyeBox, mouthD, restState } from '../
  * LOGO SLOT. Placeholder wordmark: styled text from APP_NAME, set in WIF Par.
  * When the Wifly logo is ready, set WORDMARK_SRC in src/brand.ts and this renders the file instead.
  */
-export function Wordmark({ to = '/', size = 'md', tone = 'ink' }: { to?: string; size?: 'sm' | 'md' | 'lg'; tone?: 'ink' | 'paper' }) {
+export function Wordmark({ to = '/', size = 'md', tone = 'ink' }: { to?: string | null; size?: 'sm' | 'md' | 'lg'; tone?: 'ink' | 'paper' }) {
   const h = { sm: 24, md: 28, lg: 40 }[size]
+  const cls = `wordmark wordmark--${size} wordmark--${tone}`
+  const glyph = WORDMARK_SRC
+    ? <img src={WORDMARK_SRC} alt={APP_NAME.toLowerCase()} height={h} width={Math.round(h * WORDMARK_RATIO)} />
+    : <span className="wordmark__name">{APP_NAME.toLowerCase()}</span>
+  // to={null}: the glyph only, for when a parent link already wraps it (nested <a> is invalid)
+  if (!to) return <span className={cls} data-logo-slot>{glyph}</span>
   return (
-    <Link to={to} className={`wordmark wordmark--${size} wordmark--${tone}`} aria-label={`${APP_NAME.toLowerCase()} home`} data-logo-slot>
-      {WORDMARK_SRC
-        ? <img src={WORDMARK_SRC} alt={APP_NAME.toLowerCase()} height={h} width={Math.round(h * WORDMARK_RATIO)} />
-        : <span className="wordmark__name">{APP_NAME.toLowerCase()}</span>}
+    <Link to={to} className={cls} aria-label={`${APP_NAME.toLowerCase()} home`} data-logo-slot>
+      {glyph}
     </Link>
   )
 }

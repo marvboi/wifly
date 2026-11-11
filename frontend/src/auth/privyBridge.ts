@@ -7,6 +7,8 @@
 import { usePayerState } from '../lib/payerStore'
 import { useSyncExternalStore } from 'react'
 import { useAccount } from 'wagmi'
+import { PRIVY_SESSION_KEYS, clearPrivySessionStorage } from '../lib/privySession'
+export { PRIVY_SESSION_KEYS, clearPrivySessionStorage } from '../lib/privySession'
 
 export const PRIVY_APP_ID = (import.meta.env.VITE_PRIVY_APP_ID ?? '').trim()
 export const privyEnabled = PRIVY_APP_ID.length > 0
@@ -22,6 +24,7 @@ export type PrivyState = {
   linkedWallet: string | null     // an external wallet linked to the account, if any
   activeWallet: string | null     // the wallet Privy signs with: embedded (X/email logins) or external (MetaMask, Rabby, WalletConnect)
   wallets: string                 // every wallet Privy can sign with right now, lowercase, comma separated
+  connectedExternal: string | null // an external wallet just connected via Privy's modal, even if the user is not signed in
 }
 /** What the api accepts for a Privy sign-in: the identity token when the dashboard returns one, else the access token. */
 export type PrivyTokens = { identityToken: string } | { accessToken: string }
@@ -43,20 +46,19 @@ type Actions = {
   signMessageFrom?: (from: string, message: string) => Promise<`0x${string}`>
   /** Privy's own export modal (the key shows only inside Privy's iframe, never in this app). */
   exportWallet?: (address: string) => Promise<void>
-  /** 11.8.5: Privy's connect-wallet prompt (connect only, never link), suggesting one address. Resolves with what connected. */
-  connectWallet?: (address: string) => Promise<string>
+  /** Privy's connect-wallet prompt (connect only, never link or login). Optional address suggests one already on the account. */
+  connectWallet?: (address?: string) => Promise<string>
 }
 
 /** Lazy loading: the Privy chunk (~1.5MB) mounts only once something wants it: a sign-in tap or sheet, an account
  *  link, a Privy session left in this browser, an OAuth return, or a signed-in account that isn't a local guest key.
  *  Visitors who are only looking around never download it. */
-const PRIVY_KEYS = /^privy:(token|refresh_token|id_token|pat|connections|state_code|code_verifier|headless_oauth)/
 export function hasPrivyTrace(): boolean {
   if (!privyEnabled || typeof window === 'undefined') return false
   try {
     if (/[?&]privy_oauth_/.test(location.search)) return true
     if (/(?:^|;\s*)privy-/.test(document.cookie)) return true
-    for (let i = 0; i < localStorage.length; i++) if (PRIVY_KEYS.test(localStorage.key(i) ?? '')) return true
+    for (let i = 0; i < localStorage.length; i++) if (PRIVY_SESSION_KEYS.test(localStorage.key(i) ?? '')) return true
     if (new URLSearchParams(location.search).get('sheet') === 'signin') return true
   } catch { /* storage blocked: wait for a tap */ }
   return false
@@ -71,7 +73,7 @@ export const privyWanted = {
 export function wantPrivy() { if (!privyEnabled || wanted) return; wanted = true; wantSubs.forEach(f => f()) }
 export function usePrivyWanted() { return useSyncExternalStore(privyWanted.subscribe, privyWanted.get) }
 
-let state: PrivyState = { loaded: false, ready: false, authenticated: false, identityToken: null, smartWallet: null, embeddedWallet: null, xUsername: null, linkedWallet: null, activeWallet: null, wallets: '' }
+let state: PrivyState = { loaded: false, ready: false, authenticated: false, identityToken: null, smartWallet: null, embeddedWallet: null, xUsername: null, linkedWallet: null, activeWallet: null, wallets: '', connectedExternal: null }
 let actions: Actions | null = null
 /** dev server only (the build drops this): local probes can stand in a privy session that owns some embedded wallets */
 type ProbePrivy = { authenticated: boolean; wallets: string; verify?: 'ok' | 'cancel'; walletsAfter?: string }
@@ -158,8 +160,18 @@ export const privyBridge = {
     if (!actions!.connectWallet) throw new Error('connecting a wallet isn’t available here')
     try {
       const got = await actions!.connectWallet(address)
+      privyBridge.set({ connectedExternal: got.toLowerCase() })
       return got.toLowerCase() === address.toLowerCase() ? 'ok' : 'other'
     } catch (e) { if (/closed|exited/i.test((e as Error).message)) return 'closed'; throw e }
+  },
+  /** Open Privy's connect-wallet modal for an external wallet. Connect only: no login, no embedded wallet. */
+  async connectExternal(): Promise<string> {
+    wantPrivy()
+    if (!actions) await until(() => !!actions && state.ready)
+    if (!actions!.connectWallet) throw new Error('connecting a wallet isn’t available here')
+    const got = await actions!.connectWallet()
+    privyBridge.set({ connectedExternal: got.toLowerCase() })
+    return got
   },
   exportWallet(address: string) {
     if (!actions?.exportWallet || !privyBridge.has(address)) return Promise.reject(new Error('sign in with x or email to use this wallet'))
@@ -180,7 +192,15 @@ export const privyBridge = {
     return privyBridge.tokens()
   },
   /** Logging out also clears a Privy session that was never loaded this visit. */
-  async logout() { if (!actions && hasPrivyTrace()) { wantPrivy(); await until(() => !!actions && state.ready, 8000).catch(() => {}) } if (actions && state.authenticated) await actions.logout().catch(() => {}) },
+  async logout() {
+    try {
+      if (!actions && hasPrivyTrace()) { wantPrivy(); await until(() => !!actions && state.ready, 8000).catch(() => {}) }
+      if (actions) await actions.logout().catch(() => {})
+    } finally {
+      clearPrivySessionStorage()
+      privyBridge.set({ authenticated: false, identityToken: null, xUsername: null, linkedWallet: null, activeWallet: null, wallets: '', connectedExternal: null, embeddedWallet: null, smartWallet: null })
+    }
+  },
 }
 
 function until(ok: () => boolean, ms = 15_000) {
@@ -215,5 +235,6 @@ export function useAnyAccount(): { address: `0x${string}` | undefined } {
   // 11.8.5: the wallet the user picked to pay (wallet menu) leads, so every balance and allowance read follows it
   const payer = usePayerState().address
   if (payer) return { address: payer as `0x${string}` }
-  return { address: address ?? (p.authenticated && p.activeWallet ? p.activeWallet as `0x${string}` : undefined) }
+  const privyAddr = (p.authenticated && p.activeWallet) ? p.activeWallet : p.connectedExternal
+  return { address: address ?? (privyAddr ? privyAddr as `0x${string}` : undefined) }
 }

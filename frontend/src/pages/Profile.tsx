@@ -196,7 +196,7 @@ function ProfileOf({ handle }: { handle: string }) {
               {me ? <>
                 <button className="btn btn--ghost pro-act" onClick={() => openSheet({ type: 'profile' })}>edit profile</button>
                 <button className="btn btn--ghost btn--icon pro-act" aria-label="share profile" title="share" onClick={share}><Icon name="share" size={17} /></button>
-                <Link className="btn btn--ghost btn--icon pro-act" to="/settings" aria-label="settings" title="settings"><Icon name="more" size={18} /></Link>
+                <Link className="btn btn--ghost btn--icon pro-act" to="/settings" aria-label="settings" title="settings"><Icon name="settings" size={18} /></Link>
               </> : <>
                 {live && <FollowButton handle={u.handle} />}
                 {canDm && <button className="btn btn--ghost btn--icon pro-act" aria-label={`message ${at(u.handle)}`} title="message" data-testid="profile-message" onClick={message}><Icon name="mail" size={17} /></button>}

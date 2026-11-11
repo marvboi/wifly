@@ -9,6 +9,7 @@ import { pickWalletAccount } from './WalletProofs'
 import { privyEnabled } from '../auth/privyBridge'
 import { useStore } from '../state/store'
 import { Icon } from './Icon'
+import { connectBrowserWallet } from '../lib/connectBrowserWallet'
 
 const short = (a: string) => `${a.slice(0, 6)}…${a.slice(-4)}`
 
@@ -29,7 +30,7 @@ export function useLinker({ keptErrors = true }: { keptErrors?: boolean } = {}) 
       else {
         let a = isConnected ? address : undefined
         let conn = connector
-        if (!a) { const c = connectors[0]; if (!c) throw new Error('no wallet found in this browser'); a = (await connectAsync({ connector: c })).accounts[0]; conn = c }
+        if (!a) a = await connectBrowserWallet({ connectors, connectAsync })
         // the connected wallet is already here: let the person pick another account in their wallet
         const have = new Set((me?.links?.wallets ?? []).map(w => w.toLowerCase()))
         if (a && have.has(a.toLowerCase())) {
