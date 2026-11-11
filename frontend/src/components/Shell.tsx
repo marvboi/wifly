@@ -1,3 +1,4 @@
+import { ErrorBoundary } from './ErrorBoundary'
 import { profilePath } from '../lib/paths'
 import { FEED_PATH } from '../lib/hosts'
 import { Companion } from '../companion/Companion'
@@ -49,12 +50,6 @@ function DockLink({ n, badge = 0 }: { n: DockItem; badge?: number }) {
   )
 }
 
-/** Truly private pages: logged out, they show their own calm card and open the sign-in sheet (no hard redirect). */
-const PRIVATE: Record<string, string> = {
-  notifications: 'sign in to see your notifications', messages: 'sign in to see your messages',
-  settings: 'sign in to open your settings', bookmarks: 'sign in to see your saved drops', drafts: 'sign in to see your drafts',
-}
-
 /** Slim calm bar for logged-out visitors, like x: read everything, join or sign in when you want to do something. */
 function JoinBar() {
   const { openSheet } = useStore()
@@ -67,8 +62,7 @@ function JoinBar() {
           <span className="joinbar__line">people on wifly are the first to know.</span>
         </div>
         <div className="joinbar__actions">
-          <button className="joinbar__btn joinbar__btn--ghost" onClick={() => openSheet({ type: 'signin' })}>sign in</button>
-          <button className="joinbar__btn joinbar__btn--main" onClick={() => openSheet({ type: 'signin', reason: 'join wifly' })}>join wifly</button>
+          <button className="joinbar__btn joinbar__btn--main" onClick={() => openSheet({ type: 'signin' })}>sign in</button>
         </div>
       </div>
     </motion.aside>
@@ -85,7 +79,7 @@ export function AppShell() {
   const dmCount = dms.inbox + dms.requests
   useDmStream(!!me && !guest && !me.needsHandle)
   const { pathname } = useLocation()
-  const { openSheet, sheet } = useStore()
+  const { openSheet } = useStore()
   const outlet = useOutlet()
   const [more, setMore] = useState(false)
   useEffect(() => { setMore(false) }, [pathname])
@@ -96,17 +90,15 @@ export function AppShell() {
     </button>
   )
   useEffect(() => { window.scrollTo(0, 0) }, [pathname])
-  const seg = pathname.split('/')[1] || ''
-  // a sign-in sheet that's already open with its own reason (a switch to the login that owns a wallet) keeps it
-  useEffect(() => { if (out && PRIVATE[seg] && !(sheet?.type === 'signin' && sheet.reason)) openSheet({ type: 'signin', reason: PRIVATE[seg] }) }, [out, seg]) // eslint-disable-line react-hooks/exhaustive-deps
   // public pages are open to everyone, like x. an account without a picked @name browses freely and is
   // sent to the name step only when it acts (useNeedLink / gated sheets); private pages show their own sign-in card.
+  // the sign-in sheet never auto-opens on load.
   return (
     <div className={`app${out ? ' app--out' : ''}`} data-route={pathname.split('/')[1] || 'home'}>
       <header className="topbar">
         <div className="topbar__inner">
           <Wordmark to={FEED_PATH} size="sm" />
-          <span className="topbar__tag">the world is fair</span>
+          <span className="topbar__tag">tips, straight to you</span>
           <div className={`topbar__right${me?.needsHandle ? ' topbar__right--pick' : ''}`}>
             {me ? <>
               <NavLink to="/notifications" className="topbar__btn" aria-label={`notifications${unread ? `, ${unread} new` : ''}`}>
@@ -133,7 +125,7 @@ export function AppShell() {
             transition={{ type: 'spring', stiffness: 300, damping: 32 }}
             onAnimationStart={() => window.scrollTo(0, 0)}>
             <GuestBanner />
-            {outlet}
+            <ErrorBoundary label="page">{outlet}</ErrorBoundary>
           </motion.div>
         </AnimatePresence>
       </main>

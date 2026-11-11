@@ -13,6 +13,7 @@ import { compact, at } from '../lib/format'
 import { Avatar } from './Bits'
 import { PlusMark } from './BrandSlots'
 import { Icon } from './Icon'
+import { userError } from '../lib/txError'
 
 const TOKEN = /(#[\p{L}\p{N}_]{1,50})|(@[A-Za-z0-9_]{3,20})|(https?:\/\/[^\s]+)/gu
 
@@ -117,7 +118,7 @@ export function FollowButton({ handle, size = 'md' }: { handle: string; size?: '
   const on = !!u.youFollow
   return (
     <motion.button whileTap={{ scale: 0.95 }} className={`btn ${size === 'sm' ? 'btn--sm' : ''} ${on ? 'btn--ghost' : 'btn--dark'} follow-btn`}
-      onClick={e => { e.preventDefault(); e.stopPropagation(); need(() => { followUser(handle, !on).catch(err => toast('couldn’t update follow', err.message)) }, 'sign in to follow people') }}>
+      onClick={e => { e.preventDefault(); e.stopPropagation(); need(() => { followUser(handle, !on).catch(err => toast('couldn’t update follow', userError(err))) }, 'sign in to follow people') }}>
       {on ? <span className="follow-btn__on">following</span> : 'follow'}
     </motion.button>
   )
@@ -236,7 +237,7 @@ export function Sentinel({ onMore, active, done }: { onMore: () => void; active:
     io.observe(el)
     return () => io.disconnect()
   }, [active])
-  return <div ref={ref} className="sentinel">{active ? <span className="spinner" aria-label="loading more" /> : done}</div>
+  return <div ref={ref} className="sentinel">{active ? <span className="skel skel--line" style={{ width: 120 }} aria-label="loading more" /> : done}</div>
 }
 
 export function NewPill({ count, avatars, onClick }: { count: number; avatars: string[]; onClick: () => void }) {

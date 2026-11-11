@@ -60,8 +60,8 @@ export function Token({ size = 16, className = '' }: { size?: number; className?
 
 /** A WIF amount. Shows its live USD value ("≈ $x.xx") unless usd={false}. */
 /**
- * PriceTag: the one way to show a WIF amount with its USD value. Coin, number and "WIF" on one baseline, then
- * "≈ $x" (hidden while the price is unknown or stale). `align="end"` right-aligns it in a row.
+ * PriceTag: the one way to show a WIF amount with its USD value. Coin, number and "wif" on one baseline, then
+ * "≈ $x" (hidden only while there is no rate; a last-known price stays on screen quietly). `align="end"` right-aligns it in a row.
  */
 export function Amount({ value, size = 14, decimals, usd = true, align }: { value: number; size?: number; decimals?: number; usd?: boolean; align?: 'start' | 'end' }) {
   const d = decimals ?? (value >= 100 || Number.isInteger(value) ? 0 : 2)

@@ -1,7 +1,8 @@
 import { plusOpen } from './plusOpen'
 import { sendRoute, shortA } from './payer'
 import { openWalletMenu, usePayerState } from './payerStore'
-import { CANCELLED_LINE, GAS_LINE, PENDING_LINE, classifyTxError, shortOnGas, txErrorLine } from './txError'
+import { CANCELLED_LINE, GAS_LINE, PENDING_LINE, classifyTxError, shortOnGas, userError } from './txError'
+export { userError }
 import { useAnyAccount } from '../auth/privyBridge'
 import { privyBridge, usePrivyState } from '../auth/privyBridge'
 /**
@@ -375,8 +376,7 @@ const errorText: Record<string, string> = {
   NotNameOwner: 'only the holder can change this name',
 }
 export function explainError(e: unknown): string {
-  // our own contract errors keep their calm text; everything else (gas, cancelled, pending, raw viem/rpc dumps) goes
-  // through txErrorLine, so no raw text ever reaches the screen (11.8.5)
+  // our own contract errors keep their calm text; everything else goes through userError (speed.12.4)
   let known: string | null = null
   if (e instanceof BaseError) {
     const rev = e.walk(x => x instanceof ContractFunctionRevertedError) as ContractFunctionRevertedError | null
@@ -387,7 +387,7 @@ export function explainError(e: unknown): string {
       if (raw) { try { const d = decodeErrorResult({ abi: wiflyAbi, data: raw }); known = errorText[d.errorName] ?? null } catch { /* not ours */ } }
     }
   }
-  return txErrorLine(e, known).line
+  return userError(e, known)
 }
 
 /** Why a plan didn't go through: nothing sent (preview, no wallet, dry-run failed), the wallet said no, or it reverted on chain. */
@@ -401,7 +401,7 @@ function isRejection(e: unknown): boolean {
 }
 /** A failed send, mapped to one calm line (gas / cancelled / pending / generic). */
 function failFrom(e: unknown, address?: Address): SendFail {
-  if (isRejection(e)) return { sent: false, kind: 'rejected', reason: 'nothing was sent.' }
+  if (isRejection(e)) return { sent: false, kind: 'rejected', reason: CANCELLED_LINE }
   const k = classifyTxError(e)
   if (k === 'gas') return { sent: false, kind: 'gas', reason: GAS_LINE, address }
   if (k === 'pending') return { sent: false, kind: 'pending', reason: PENDING_LINE }

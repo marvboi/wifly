@@ -2,6 +2,8 @@
    step lighter, the same lime used sparingly. html[data-theme="dark"] only; light mode is untouched. */
 html[data-themed][data-theme="dark"] {
   --raise: #161511; --raise-2: #1E1C18; --surface: var(--raise); --soft: rgba(244, 242, 236, .05); --bg-2: rgba(244, 242, 236, .05);
+  /* speed.12.5: raise muted contrast to >= 4.5:1 on --bg (and at 0.7 opacity on raised surfaces) */
+  --muted: #C4BFB4;
   --ok: #6FD39B; --ok-bg: rgba(111, 211, 155, .12); --warn-ink: #E9BE78; --warn-bg: rgba(233, 190, 120, .1); --warn-line: rgba(233, 190, 120, .32);
   --scrim: rgba(0, 0, 0, .62);
 }
@@ -88,6 +90,12 @@ html[data-themed][data-theme="dark"] :is(.tier__current, .toast__icon, .toast--o
 html[data-themed][data-theme="dark"] .btn--neon { box-shadow: inset 0 0 0 1.5px rgba(17, 14, 8, .55); }
 html[data-themed][data-theme="dark"] .dx-search__clear:hover { background: var(--paper); color: #110E08; }
 
+/* 11.8.10: keep the hero dark when off too. .agent-hero.is-off used paper and washed out the light "turn on" pill. */
+[data-theme="dark"] .agent-hero.is-off { background: #1A1915; color: #F4F2EC; border-color: transparent; }
+[data-theme="dark"] .agent-hero.is-off .eyebrow { color: rgba(244, 242, 236, .6); }
+[data-theme="dark"] .agent-hero.is-off .muted { color: rgba(244, 242, 236, .62); }
+[data-theme="dark"] .agent-hero.is-off .display { color: #F4F2EC; }
+
 /* 11.8.8: the agent power button in dark. the hero is the dark ink panel whether on or off, so "turn on" (var(--ink))
    had no fill and read as bare text. "turn on" is the main action: a solid light pill. "turn off" is a quiet raised fill. */
 [data-theme="dark"] .agent-hero .power:not(.is-on) { background: #F4F2EC; color: #110E08; box-shadow: 0 1px 0 rgba(255, 255, 255, .2) inset, 0 6px 18px rgba(0, 0, 0, .35); }
@@ -95,3 +103,10 @@ html[data-themed][data-theme="dark"] .dx-search__clear:hover { background: var(-
 [data-theme="dark"] .agent-hero .power.is-on { background: rgba(244, 242, 236, .1); color: #F4F2EC; box-shadow: inset 0 0 0 1px rgba(244, 242, 236, .16); }
 [data-theme="dark"] .agent-hero .power.is-on:hover { background: rgba(244, 242, 236, .16); }
 [data-theme="dark"] .agent-hero .power:disabled { opacity: .7; }
+
+/* speed.12.4 */
+html[data-themed][data-theme="dark"] .btn--danger { color: #110E08; }
+html[data-themed][data-theme="dark"] .locked__frost { background: color-mix(in srgb, var(--bg) 68%, transparent); }
+html[data-themed][data-theme="dark"] .cmp-card__status.is-sent { background: #1A2A1A; color: #B7E0B2; }
+html[data-themed][data-theme="dark"] .cmp-card__status.is-failed,
+html[data-themed][data-theme="dark"] .cmp-card__status.is-refused { background: #2A1614; color: #FF9A8C; }

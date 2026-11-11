@@ -12,10 +12,13 @@ import { useStore } from '../state/store'
 import { compact } from '../lib/format'
 import { Amount, Avatar, DisplayName, FlatDisc, Sparkline, Token } from './Bits'
 import { Icon } from './Icon'
+import { MetaItem } from './Meta'
 import { useQueryClient } from '@tanstack/react-query'
 import { api, deleteDrop, toggleDrop } from '../api/client'
 import { useLive, useSession, useUser } from '../api/session'
 import { DropImage, QuoteEmbed, RichText, useGate, useNeedLink } from './Social'
+import { useConfirm } from './ConfirmDialog'
+import { userError } from '../lib/txError'
 
 export function PostMedia({ post }: { post: Post }) {
   const m = post.media
@@ -54,10 +57,14 @@ export function PostBody({ post }: { post: Post }) {
       <>
         <RichText text={post.text} />
         <div className="locked">
-          <div className="locked__veil" aria-hidden="true"><FlatDisc /></div>
+          <div className="locked__preview" aria-hidden="true">
+            {post.image ? <img className="locked__blur" src={post.image} alt="" /> : <div className="locked__fall" />}
+            <div className="locked__frost" />
+          </div>
           <div className="locked__body">
             <span className="locked__icon"><Icon name="lock" size={18} /></span>
             <div className="locked__teaser">{post.locked.teaser}</div>
+            <div className="locked__price"><Amount value={post.locked.price} size={18} /></div>
             <button className="btn btn--dark" onClick={e => { e.stopPropagation(); openSheet({ type: 'unlock', postId: post.id }) }}>
               unlock for <Amount value={post.locked.price} size={16} />
             </button>
@@ -70,10 +77,11 @@ export function PostBody({ post }: { post: Post }) {
   if (post.supportersOnly && !subs[post.author]) {
     return (
       <div className="locked locked--subs">
+        <div className="locked__preview" aria-hidden="true"><div className="locked__fall" /><div className="locked__frost" /></div>
         <div className="locked__body">
           <span className="locked__icon"><Icon name="star" size={18} /></span>
           <div className="locked__teaser">for {post.supportersOnly} supporters</div>
-          <button className="btn btn--dark" onClick={e => { e.stopPropagation(); openSheet({ type: 'subscribe', handle: post.author }) }}>see tiers</button>
+          <button className="btn btn--dark" onClick={e => { e.stopPropagation(); openSheet({ type: 'subscribe', handle: post.author }) }}>subscribe</button>
         </div>
       </div>
     )
@@ -84,7 +92,7 @@ export function PostBody({ post }: { post: Post }) {
       {post.text && <RichText text={post.text} />}
       {post.image && <DropImage src={post.image} />}
       {(post.quote || post.quoteMissing) && <QuoteEmbed post={post.quote} missing={post.quoteMissing} />}
-      {post.locked && <div className="tagline"><Icon name="unlock" size={12} /> unlocked</div>}
+      {post.locked && <div className="drop__unlocked"><Icon name="unlock" size={12} /> unlocked</div>}
       <PostMedia post={post} />
     </>
   )
@@ -146,11 +154,12 @@ function DropMenu({ post }: { post: Post }) {
   const { toast } = useStore()
   const qc = useQueryClient()
   const gate = useGate()
+  const confirmIn = useConfirm()
   const [open, setOpen] = useState(false)
   const ref = useRef<HTMLDivElement>(null)
   const close = useCallback(() => setOpen(false), [])
   const pick = (fn: () => void) => (e: React.MouseEvent) => { e.stopPropagation(); setOpen(false); fn() }
-  const fail = (e: Error) => toast('that didn’t go through', e.message)
+  const fail = (e: Error) => toast('that didn’t go through', userError(e))
   const server = !!post.server
   return (
     <div className="dmenu" ref={ref} onClick={e => e.stopPropagation()}>
@@ -166,8 +175,10 @@ function DropMenu({ post }: { post: Post }) {
           api(`/users/${post.author}/mute`, { method: 'POST' }).then(() => { toast(`muted @${post.author}`); qc.invalidateQueries({ queryKey: ['feed'] }) }).catch(fail)
         })}><Icon name="mute" size={16} /> mute @{post.author}</button>}
         {server && post.mine && <button role="menuitem" className="is-danger" onClick={pick(() => {
-          if (!confirm('delete this drop? this can’t be undone.')) return
-          deleteDrop(post.id).then(() => { toast('drop deleted'); qc.invalidateQueries({ queryKey: ['feed'] }) }).catch(fail)
+          void (async () => {
+            if (!await confirmIn({ title: 'delete this drop?', hint: 'this can’t be undone.', confirmLabel: 'delete', cancelLabel: 'cancel', danger: true })) return
+            deleteDrop(post.id).then(() => { toast('drop deleted'); qc.invalidateQueries({ queryKey: ['feed'] }) }).catch(fail)
+          })()
         })}><Icon name="trash" size={16} /> delete</button>}
       </Pop>
     </div>
@@ -215,7 +226,7 @@ export function PostActions({ post: p0 }: { post: Post; big?: boolean }) {
   const closePass = useCallback(() => setPassOpen(false), [])
   const [burst, setBurst] = useState(0)
   const stop = (fn: () => void) => (e: React.MouseEvent) => { e.preventDefault(); e.stopPropagation(); fn() }
-  const fail = (e: Error) => toast('that didn’t go through', e.message)
+  const fail = (e: Error) => toast('that didn’t go through', userError(e))
   const toggle = (kind: 'like' | 'pass' | 'bookmark') => {
     if (!server) { if (kind === 'like') store.toggleLike(post.id); else if (kind === 'pass') store.toggleRepost(post.id); return }
     if (kind !== 'bookmark') { need(() => { toggleDrop(post.id, kind).catch(fail) }, kind === 'like' ? 'sign in to like drops' : 'sign in to pass drops on'); return }
@@ -275,7 +286,7 @@ function Byline({ post, big }: { post: Post; big?: boolean }) {
       <Avatar handle={post.author} size={big ? 48 : 40} />
       <span className="drop__byline">
         <span className="drop__name"><span className="clamp-1">{u ? <DisplayName user={u} /> : post.author}</span>{u?.plus && <PlusMark size={14} />}</span>
-        <span className="drop__when">@{post.author}{big ? '' : ` · ${ago(post.time)}`}</span>
+        <span className="drop__when">@{post.author}{big ? '' : <> · <MetaItem icon="clock">{ago(post.time)}</MetaItem></>}</span>
       </span>
     </Link>
   )
@@ -321,7 +332,7 @@ export function PostCard({ post: p0, rank, passedBy, variant = 'feed', showReply
       <div className={`drop__body ${focal ? 'drop__body--lg' : ''}`}><PostBody post={post} /></div>
       {focal && post.createdAt && (
         <div className="drop__stamp muted small">
-          {new Date(post.createdAt).toLocaleString('en-GB', { hour: '2-digit', minute: '2-digit', day: 'numeric', month: 'short', year: 'numeric' }).toLowerCase()}
+          <MetaItem icon="calendar">{new Date(post.createdAt).toLocaleString('en-GB', { hour: '2-digit', minute: '2-digit', day: 'numeric', month: 'short', year: 'numeric' }).toLowerCase()}</MetaItem>
         </div>
       )}
       {focal && (post.likes + post.reposts + (post.quotes ?? 0)) > 0 && (

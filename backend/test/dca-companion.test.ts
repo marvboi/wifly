@@ -12,7 +12,7 @@ process.env.DATABASE_URL = `file:${join(dir, 'test.db')}`
 process.env.SESSION_SECRET = 'test-secret-test-secret-test-secret'
 process.env.NEW_ACCOUNT_COOLDOWN_MIN = '0'
 process.env.SIGNUP_PER_IP_HOUR = '1000'
-for (const k of ['NAMES_CONTRACT_ADDRESS', 'BADGES_CONTRACT_ADDRESS', 'WIFLY_CONTRACT_ADDRESS', 'DCA_CONTRACT_ADDRESS', 'REDIS_URL', 'AGENT_PRIVATE_KEY', 'AGENT_TX_ENABLED', 'OPENROUTER_API_KEY', 'ZAI_API_KEY', 'FREE_AI_MSGS_PER_DAY']) delete process.env[k]
+for (const k of ['NAMES_CONTRACT_ADDRESS', 'BADGES_CONTRACT_ADDRESS', 'WIFLY_CONTRACT_ADDRESS', 'DCA_CONTRACT_ADDRESS', 'REDIS_URL', 'AGENT_PRIVATE_KEY', 'AGENT_TX_ENABLED', 'OPENROUTER_API_KEY', 'ZAI_API_KEY', 'EXPLABS_API_KEY', 'EXPLABS_MODEL', 'FREE_AI_MSGS_PER_DAY']) delete process.env[k]
 
 const { app } = await import('../src/app')
 const { migrate, db } = await import('../src/db')

@@ -88,7 +88,7 @@ export function StoreProvider({ children, initialSheet = null }: { children: Rea
   const toast = useCallback((title: string, body?: string, tone?: ToastTone, copy?: string) => {
     if (LINK_LINE.test(title) || LINK_LINE.test(body ?? '')) return // the link sheet already says it
     // 11.8.5: never a raw wall of text (it goes to the console), and each message shows once: a repeat replaces the old one
-    if (body && looksRaw(body)) { console.warn('[wifly] toast', body); body = GENERIC_LINE }
+    if (body && looksRaw(body)) { console.debug('[wifly] toast', body); body = GENERIC_LINE }
     const id = nextId.current++
     const tn = tone ?? toneOf(title, body)
     setToasts(t => [...t.filter(x => !(x.title === title && x.body === body)).slice(-2), { id, title, body, tone: tn, copy }])

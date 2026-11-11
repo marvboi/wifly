@@ -55,6 +55,8 @@ export const SESSION_SECRET = sessionSecret()
 // ------------------------------------------------------------------ chain + Privy (all optional; read at call time so tests can set them)
 /** Robinhood Chain JSON-RPC, used only for reads (ERC-1271/6492 signature checks, handleNonce). Never sends transactions. */
 export const rpcUrl = () => process.env.RPC_URL || 'https://rpc.mainnet.chain.robinhood.com'
+/** Comma-separated extra public RPCs; the read client tries RPC_URL first, then these, then built-in public defaults. */
+export const rpcUrlList = () => process.env.RPC_URLS || ''
 /** Privy app ID (public) and secret (server only). Both empty = Privy sign-in is off and wallet sign-in stays the default. */
 export const privyConfig = () => ({
   appId: process.env.PRIVY_APP_ID || '',

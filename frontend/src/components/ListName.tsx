@@ -21,8 +21,8 @@ const fmt = (n: number) => n.toLocaleString('en-US', { maximumFractionDigits: 2 
 const LIVE = !!NAMES_ADDRESS
 
 function UsdOf({ wif }: { wif: number }) {
-  const { usd, stale } = useWifPrice()
-  if (!(wif > 0) || usd === undefined || stale) return null
+  const { usd } = useWifPrice()
+  if (!(wif > 0) || usd === undefined) return null
   return <span className="muted">≈ ${usdText(wif * usd)}</span>
 }
 

@@ -44,11 +44,16 @@ const compact = (n: number) => n >= 10_000 ? `${Math.round(n / 1000)}k` : n.toLo
 
 const isReduced = () => typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches
 
-/** Fades and lifts a block once as it scrolls into view. Transform + opacity only, so nothing around it moves. */
+/** Fades and lifts a block once as it scrolls into view. Transform + opacity only, so nothing around it moves.
+ *  Reduced-motion: show immediately (no opacity-0 hold). MotionConfig also skips the tween for those users. */
 function Reveal({ children, className, delay = 0, style }: { children: ReactNode; className?: string; delay?: number; style?: CSSProperties }) {
+  const reduce = isReduced()
   return (
-    <motion.div className={className} style={style} initial={{ opacity: 0, y: 24 }} whileInView={{ opacity: 1, y: 0 }}
-      viewport={{ once: true, margin: '0px 0px -60px 0px' }} transition={{ duration: 0.7, ease, delay }}>
+    <motion.div className={className} style={style}
+      initial={reduce ? false : { opacity: 0, y: 24 }}
+      whileInView={{ opacity: 1, y: 0 }}
+      viewport={{ once: true, amount: 0.12, margin: '0px 0px -8% 0px' }}
+      transition={{ duration: reduce ? 0 : 0.55, ease, delay: reduce ? 0 : delay }}>
       {children}
     </motion.div>
   )

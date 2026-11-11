@@ -1,8 +1,9 @@
 /**
  * Light / dark / auto theme for the whole app. index.html's inline script (theme-init.mjs) sets html[data-theme]
  * before first paint; this module keeps it in sync with the settings switch, the more-sheet toggle, the system
- * setting (live, on auto) and other tabs. Switching is a soft cross-fade (a View Transition where supported, a short
- * colour transition otherwise) and instant under reduced motion.
+ * setting (live, on auto) and other tabs. Switching is a soft cross-fade by default (a View Transition where
+ * supported, a short colour transition otherwise). Landing / docs can pass an origin for a circular wipe from
+ * the toggle. Instant under reduced motion.
  */
 import { useEffect, useSyncExternalStore } from 'react'
 import { flushSync } from 'react-dom'
@@ -10,6 +11,7 @@ import { THEME_KEY, THEME_PICKED_KEY, themePrefFrom } from '../../theme-init.mjs
 
 export type ThemePref = 'light' | 'dark' | 'system'
 export type Theme = 'light' | 'dark'
+export type ThemeOrigin = { x: number; y: number }
 
 const BG: Record<Theme, string> = { light: '#FFFFFF', dark: '#0D0C0A' }
 const html = () => document.documentElement
@@ -43,12 +45,27 @@ function apply(t: Theme) {
 
 type StartVT = (cb: () => void) => { ready: Promise<void>; finished: Promise<void> }
 
-/** Switch to `t` with a calm cross-fade. */
-function switchTo(t: Theme) {
+/** Switch to `t`. With `from`, a circular wipe from that point; otherwise a calm cross-fade. */
+function switchTo(t: Theme, from?: ThemeOrigin) {
   const d = html()
   if (d.dataset.theme === t) { flushSync(emit); return }
   if (mq('(prefers-reduced-motion: reduce)') || document.visibilityState === 'hidden') { apply(t); flushSync(emit); return }
   const start = (document as Document & { startViewTransition?: StartVT }).startViewTransition
+  if (start && from) {
+    const r = Math.hypot(Math.max(from.x, innerWidth - from.x), Math.max(from.y, innerHeight - from.y))
+    d.classList.add('theme-vt-circle')
+    try {
+      const vt = start.call(document, () => { apply(t); flushSync(emit) })
+      vt.ready.then(() => {
+        d.animate(
+          { clipPath: [`circle(0px at ${from.x}px ${from.y}px)`, `circle(${r}px at ${from.x}px ${from.y}px)`] },
+          { duration: 620, easing: 'cubic-bezier(.22,1,.36,1)', pseudoElement: '::view-transition-new(root)' },
+        )
+      }).catch(() => {})
+      vt.finished.finally(() => d.classList.remove('theme-vt-circle')).catch(() => {})
+      return
+    } catch { d.classList.remove('theme-vt-circle') }
+  }
   if (start) {
     d.classList.add('theme-vt')
     try {
@@ -64,11 +81,11 @@ function switchTo(t: Theme) {
   window.setTimeout(() => d.classList.remove('theme-fade'), 380)
 }
 
-export function setThemePref(next: ThemePref) {
+export function setThemePref(next: ThemePref, from?: ThemeOrigin) {
   pref = next
   // every pick is saved with the marker, so an explicit auto is told apart from an old default
   try { localStorage.setItem(THEME_KEY, next); localStorage.setItem(THEME_PICKED_KEY, '1') } catch { /* ignore */ }
-  switchTo(resolve(next))
+  switchTo(resolve(next), from)
 }
 
 if (typeof window !== 'undefined') {

@@ -45,33 +45,91 @@ export function epochSignal(own?: AbortSignal | null): AbortSignal {
   return any ? any([own, inflight.signal]) : own
 }
 
+/** speed.12: GET reads time out, retry once with backoff, and keep a last-good copy in sessionStorage. */
+const GET_TIMEOUT_MS = 12_000
+const GET_RETRY_WAIT_MS = 450
+const SWR_PREFIX = 'wifly:swr:v1:'
+const friendlyHttp = (status: number, msg: string) => {
+  if (status === 0) return (typeof navigator !== 'undefined' && navigator.onLine === false) ? 'you’re offline. check your connection.' : 'that took too long. try again.'
+  if (status === 502 || status === 503 || status === 504) return 'wifly is waking up. try again in a moment.'
+  if (status >= 500) return 'something broke on our side. try again.'
+  // never surface stack-ish or HTML bodies
+  const clean = String(msg || '').replace(/\s+/g, ' ').trim()
+  if (!clean || /internal server error|stack|exception|ECONN|ETIMEDOUT|<!doctype/i.test(clean)) return 'couldn’t load that. try again.'
+  return clean.length > 160 ? 'couldn’t load that. try again.' : clean
+}
+function swrGet<T>(path: string): T | undefined {
+  try { const raw = sessionStorage.getItem(SWR_PREFIX + path); return raw ? JSON.parse(raw) as T : undefined } catch { return undefined }
+}
+function swrSet(path: string, body: unknown) {
+  try { sessionStorage.setItem(SWR_PREFIX + path, JSON.stringify(body)) } catch { /* quota / private */ }
+}
+function withTimeout(parent: AbortSignal, ms: number) {
+  const ctl = new AbortController()
+  const onAbort = () => ctl.abort()
+  parent.addEventListener('abort', onAbort, { once: true })
+  const t = setTimeout(() => ctl.abort(), ms)
+  return { signal: ctl.signal, clear: () => { clearTimeout(t); parent.removeEventListener('abort', onAbort) } }
+}
+
 export async function api<T>(path: string, init: RequestInit & { json?: unknown } = {}): Promise<T> {
   const { json, headers, ...rest } = init
   const method = (rest.method ?? 'GET').toUpperCase()
   const started = epoch
-  const res = await fetch(`/api${path}`, {
-    credentials: 'same-origin',
-    ...rest,
-    signal: epochSignal(rest.signal),
-    headers: {
-      ...(json !== undefined ? { 'content-type': 'application/json' } : {}),
-      ...(method !== 'GET' ? { 'x-wifly': '1' } : {}),
-      ...headers,
-    },
-    body: json !== undefined ? JSON.stringify(json) : rest.body,
-  }).catch(e => { checkEpoch(started); throw e })
-  checkEpoch(started)
-  if (!res.ok) {
-    let msg = res.statusText, code: string | undefined
-    try { const b = await res.json(); msg = b.error ?? msg; code = typeof b.code === 'string' ? b.code : undefined } catch { /* not json */ }
-    if (res.status === 502 || res.status === 504) msg = 'the wifly api isn’t running (cd backend && npm run dev)'
-    if (code === 'link_required' && typeof window !== 'undefined') window.dispatchEvent(new CustomEvent(LINK_REQUIRED_EVENT))
-    checkEpoch(started)
-    throw new ApiError(res.status, msg, code)
+  const isGet = method === 'GET' && json === undefined && rest.body === undefined
+  const attempt = async (retrying: boolean): Promise<T> => {
+    const base = epochSignal(rest.signal)
+    const timed = isGet ? withTimeout(base, GET_TIMEOUT_MS) : null
+    try {
+      const res = await fetch(`/api${path}`, {
+        credentials: 'same-origin',
+        ...rest,
+        signal: timed?.signal ?? base,
+        headers: {
+          ...(json !== undefined ? { 'content-type': 'application/json' } : {}),
+          ...(method !== 'GET' ? { 'x-wifly': '1' } : {}),
+          ...headers,
+        },
+        body: json !== undefined ? JSON.stringify(json) : rest.body,
+      }).catch(e => { checkEpoch(started); throw e })
+      checkEpoch(started)
+      if (!res.ok) {
+        let msg = res.statusText, code: string | undefined
+        try { const b = await res.json(); msg = b.error ?? msg; code = typeof b.code === 'string' ? b.code : undefined } catch { /* not json */ }
+        if (code === 'link_required' && typeof window !== 'undefined') window.dispatchEvent(new CustomEvent(LINK_REQUIRED_EVENT))
+        checkEpoch(started)
+        // GET: one retry on 5xx / 429 before giving up (and prefer last-good below)
+        if (isGet && !retrying && (res.status >= 500 || res.status === 429)) {
+          await new Promise(r => setTimeout(r, GET_RETRY_WAIT_MS))
+          checkEpoch(started)
+          return attempt(true)
+        }
+        throw new ApiError(res.status, friendlyHttp(res.status, msg), code)
+      }
+      const body = await res.json() as T
+      checkEpoch(started)
+      if (isGet) swrSet(path, body)
+      return body
+    } catch (e) {
+      checkEpoch(started)
+      if (e instanceof StaleSessionError || e instanceof ApiError) throw e
+      // network / abort: retry GET once, then serve last-good if we have it
+      if (isGet && !retrying) {
+        await new Promise(r => setTimeout(r, GET_RETRY_WAIT_MS))
+        checkEpoch(started)
+        return attempt(true)
+      }
+      if (isGet) {
+        const cached = swrGet<T>(path)
+        if (cached !== undefined) return cached
+      }
+      const aborted = (e as { name?: string })?.name === 'AbortError'
+      throw new ApiError(0, friendlyHttp(0, aborted ? 'timeout' : 'network'), aborted ? 'timeout' : 'network')
+    } finally {
+      timed?.clear()
+    }
   }
-  const body = await res.json() as T
-  checkEpoch(started)
-  return body
+  return attempt(false)
 }
 
 export async function uploadImage(file: File): Promise<string> {

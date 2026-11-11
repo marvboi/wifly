@@ -2,9 +2,11 @@
  * Companion chat model, server-side only. Free models only, everywhere.
  *
  * - ZAI_API_KEY: Z.ai GLM (OpenAI-compatible), model glm-4.7-flash (free). Fixed in code, no env picks the model.
- *   When set it answers first; a 429, timeout or any error moves on to OpenRouter.
- * - OPENROUTER_API_KEY: the fallback (or the only model when ZAI_API_KEY is unset). Both keys: set in Railway,
- *   never in code, never sent to the browser, never logged. Neither set = chat off.
+ *   When set it answers first; a 429, timeout or any error moves on to Experimental Labs (if keyed) then OpenRouter.
+ * - EXPLABS_API_KEY: Experimental Labs fallback (OpenAI-compatible, model EXPLABS_MODEL or gpt-6-luna). Tried once
+ *   after a GLM error, non-2xx or timeout. Unset = today's chain (GLM then OpenRouter). 10s timeout.
+ * - OPENROUTER_API_KEY: the last fallback (or the only model when ZAI_API_KEY is unset). Keys: set in Railway,
+ *   never in code, never sent to the browser, never logged. Neither ZAI nor OpenRouter set = chat off.
  * - AI_MODELS: comma-separated OpenRouter models, tried in order. FREE MODELS ONLY: anything that isn't a
  *   "<vendor>/<model>:free" id is dropped, for Plus users too. Default:
  *   google/gemma-4-31b-it:free, nvidia/nemotron-3.5-super-vl:free
@@ -28,6 +30,30 @@ export interface LlmProvider {
 export type ChatOpts = { maxTokens?: number; deadline?: number }
 
 export class LlmBusy extends Error { constructor() { super('busy') } }
+
+/** Drop think / reasoning tags so the user only sees the answer. Used for GLM and the fallback. */
+export function cleanLlmContent(s: string): string {
+  return String(s ?? '')
+    .replace(/<think\b[^>]*>[\s\S]*?<\/think>/gi, '')
+    .replace(/<reasoning\b[^>]*>[\s\S]*?<\/reasoning>/gi, '')
+    .replace(/<\/?(?:think|reasoning)\b[^>]*>/gi, '')
+    .trim()
+}
+/** Short failure class for logs. Never include keys, prompts, or bodies. */
+export function llmReasonClass(e: unknown): string {
+  if (!e) return 'error'
+  const name = (e as { name?: string }).name
+  if (name === 'AbortError') return 'timeout'
+  if (e instanceof LlmBusy) return 'busy'
+  const m = String((e as Error).message ?? '')
+  if (/\b429\b/.test(m)) return 'http_429'
+  if (/\b5\d\d\b/.test(m)) return 'http_5xx'
+  if (/\b4\d\d\b/.test(m)) return 'http_4xx'
+  if (/no answer/i.test(m)) return 'empty'
+  return 'error'
+}
+const logLlm = (provider: string, event: string) => { try { console.info(`[llm] provider=${provider} ${event}`) } catch { /* ignore */ } }
+
 
 /** Free models only (no paid AI for now). */
 export const DEFAULT_MODELS = ['google/gemma-4-31b-it:free', 'nvidia/nemotron-3.5-super-vl:free']
@@ -135,7 +161,44 @@ export class ZaiGlm implements LlmProvider {
       if (!r.ok) throw new Error(`zai ${r.status}`)
       const { msg: m, error } = await readMessage(r)
       if (error || !m) throw new Error('zai: no answer')
-      return { content: String(m.content ?? '').trim(), toolCalls: normCalls(m.tool_calls), model: ZAI_MODEL }
+      return { content: cleanLlmContent(String(m.content ?? '')), toolCalls: normCalls(m.tool_calls), model: ZAI_MODEL }
+    } finally { clearTimeout(t) }
+  }
+}
+
+/** Experimental Labs: OpenAI-compatible fallback after GLM. One try, 10s timeout. Key from env only. */
+export const EXPLABS_ENDPOINT = 'https://api.experientiallabs.ai/v1/chat/completions'
+export const EXPLABS_DEFAULT_MODEL = 'gpt-6-luna'
+export const EXPLABS_TIMEOUT_MS = 10_000
+export class Explabs implements LlmProvider {
+  readonly name = 'explabs'
+  constructor(
+    private key: string,
+    private model = EXPLABS_DEFAULT_MODEL,
+    private doFetch: typeof fetch = fetch,
+    private timeoutMs = EXPLABS_TIMEOUT_MS,
+    private url = EXPLABS_ENDPOINT,
+  ) {}
+  async chat(messages: ChatMsg[], tools: ToolDef[], o: ChatOpts = {}): Promise<LlmReply> {
+    const ms = budget(this.timeoutMs, o)
+    if (ms <= 0) throw new LlmBusy()
+    const ctl = new AbortController(), t = setTimeout(() => ctl.abort(), ms)
+    try {
+      const r = await this.doFetch(this.url, {
+        method: 'POST', signal: ctl.signal,
+        headers: { 'content-type': 'application/json', authorization: `Bearer ${this.key}` },
+        body: JSON.stringify({
+          model: this.model, messages,
+          ...(tools.length ? { tools, tool_choice: 'auto' } : {}),
+          stream: false, max_tokens: o.maxTokens ?? 400, temperature: 0.3,
+          reasoning_effort: 'low',
+        }),
+      })
+      if (r.status === 429 || r.status === 408 || r.status >= 500) throw new LlmBusy()
+      if (!r.ok) throw new Error(`explabs ${r.status}`)
+      const { msg: m, error } = await readMessage(r)
+      if (error || !m) throw new Error('explabs: no answer')
+      return { content: cleanLlmContent(String(m.content ?? '')), toolCalls: normCalls(m.tool_calls), model: this.model }
     } finally { clearTimeout(t) }
   }
 }
@@ -147,7 +210,15 @@ export class LlmChain implements LlmProvider {
   async chat(messages: ChatMsg[], tools: ToolDef[], o?: ChatOpts): Promise<LlmReply> {
     let busy = false, last: unknown = null
     for (const p of this.list) {
-      try { return await p.chat(messages, tools, o) } catch (e) { last = e; busy = busy || e instanceof LlmBusy || (e as Error)?.name === 'AbortError' }
+      try {
+        const r = await p.chat(messages, tools, o)
+        logLlm(p.name, 'ok')
+        return r
+      } catch (e) {
+        last = e
+        logLlm(p.name, llmReasonClass(e))
+        busy = busy || e instanceof LlmBusy || (e as Error)?.name === 'AbortError'
+      }
     }
     throw busy ? new LlmBusy() : (last ?? new Error('no model answered'))
   }
@@ -160,8 +231,11 @@ export function setLlmProvider(p: LlmProvider | null | undefined) { override = p
 export function llmProvider(): LlmProvider | null {
   if (override !== undefined) return override
   const zai = process.env.ZAI_API_KEY, or = process.env.OPENROUTER_API_KEY
+  const explabs = process.env.EXPLABS_API_KEY?.trim() || ''
   const list: LlmProvider[] = []
   if (zai) list.push(new ZaiGlm(zai))
+  // Experimental Labs is a fallback after GLM only; unset key keeps today's chain.
+  if (zai && explabs) list.push(new Explabs(explabs, (process.env.EXPLABS_MODEL || '').trim() || EXPLABS_DEFAULT_MODEL))
   if (or) list.push(new OpenRouter(or, aiModels()))
   return list.length === 0 ? null : list.length === 1 ? list[0] : new LlmChain(list)
 }

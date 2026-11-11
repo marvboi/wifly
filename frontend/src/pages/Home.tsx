@@ -70,13 +70,15 @@ export function Home() {
           {tab === 'crowd' && (
             <div className="crowd-note">
               <Icon name="vote" size={18} />
-              <p><b>the crowd decides what rises, not an algorithm.</b> every vote costs wif: {FEE_SPLIT.pot}% to the weekly community pot, {FEE_SPLIT.burn}% burned.</p>
+              <p><b>the crowd decides what rises.</b> each vote costs wif — {FEE_SPLIT.pot}% to the weekly pot, {FEE_SPLIT.burn}% burned.</p>
             </div>
           )}
 
           {feed.isError && (
-            <div className="empty">
-              <p>{(feed.error as Error).message}</p>
+            <div className="empty empty--card">
+              <Mascot size={56} mood="oops" />
+              <p className="strong">couldn’t load the feed.</p>
+              <p className="muted small">check your connection, then try again.</p>
               <button className="btn btn--ghost btn--sm" onClick={() => feed.refetch()}>try again</button>
             </div>
           )}

@@ -2,10 +2,10 @@
 import { afterEach, test } from 'node:test'
 import assert from 'node:assert/strict'
 
-for (const k of ['ZAI_API_KEY', 'OPENROUTER_API_KEY', 'AI_MODELS']) delete process.env[k]
+for (const k of ['ZAI_API_KEY', 'OPENROUTER_API_KEY', 'EXPLABS_API_KEY', 'EXPLABS_MODEL', 'AI_MODELS']) delete process.env[k]
 const { ZaiGlm, OpenRouter, LlmChain, LlmBusy, llmProvider, aiModels, isFreeModel, DEFAULT_MODELS, ZAI_ENDPOINT, ZAI_MODEL } = await import('../src/llm')
 
-afterEach(() => { for (const k of ['ZAI_API_KEY', 'OPENROUTER_API_KEY', 'AI_MODELS']) delete process.env[k] })
+afterEach(() => { for (const k of ['ZAI_API_KEY', 'OPENROUTER_API_KEY', 'EXPLABS_API_KEY', 'EXPLABS_MODEL', 'AI_MODELS']) delete process.env[k] })
 const ok = (content: string) => new Response(JSON.stringify({ choices: [{ message: { content } }] }), { status: 200 })
 type Hit = { url: string; model: string; auth: string }
 function fake(answer: (h: Hit, init: RequestInit) => Response | Promise<Response>) {

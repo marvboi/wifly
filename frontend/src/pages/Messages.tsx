@@ -24,8 +24,9 @@ import { Mascot } from '../components/Mascot'
 import { PageHead } from '../components/Shell'
 import { RichText, useNeedLink } from '../components/Social'
 import { Sheet } from '../sheets/Sheets'
+import { userError } from '../lib/txError'
 
-const GUEST_LINE = 'message people on wifly directly. you’ll need an account to send one.'
+const GUEST_LINE = 'message people on wifly. sign up to send one.'
 
 export function Inbox() { return <Messages /> }
 export function Thread() { const { handle = '' } = useParams(); return <Messages handle={handle} /> }
@@ -206,7 +207,7 @@ function ThreadPane({ handle }: { handle: string }) {
 
   if (q.isError) {
     const gone = q.error instanceof ApiError && q.error.status === 404
-    return <div className="dmx__pick"><Mascot size={56} mood="oops" /><p className="strong">{gone ? 'no one here by that name.' : 'couldn’t open this chat'}</p><p className="muted small">{gone ? 'maybe a typo, or they changed their name.' : (q.error as Error).message.toLowerCase()}</p><Link to="/messages" className="btn btn--ghost btn--sm">back to messages</Link></div>
+    return <div className="dmx__pick"><Mascot size={56} mood="oops" /><p className="strong">{gone ? 'no one here by that name.' : 'couldn’t open this chat'}</p><p className="muted small">{gone ? 'maybe a typo, or they changed their name.' : 'check your connection, then try again.'}</p><Link to="/messages" className="btn btn--ghost btn--sm">back to messages</Link></div>
   }
   if (!first || !peer) return <div className="dmx__pick" aria-busy="true"><span className="skel skel--av" /></div>
 
@@ -215,17 +216,17 @@ function ThreadPane({ handle }: { handle: string }) {
       await api(`/users/${peer.handle}/block`, { method: on ? 'POST' : 'DELETE' })
       qc.invalidateQueries({ queryKey: ['dms'] }); qc.invalidateQueries({ queryKey: ['me'] }); qc.invalidateQueries({ queryKey: ['user', peer.handle] })
       toast(on ? `blocked ${at(peer.handle)}. neither of you will see this chat.` : `unblocked ${at(peer.handle)}`)
-    } catch (e) { toast('that didn’t go through', (e as Error).message) }
+    } catch (e) { toast('that didn’t go through', userError(e)) }
   }
   const accept = async () => {
     try { await api(`/dms/${peer.handle}/accept`, { method: 'POST' }); qc.invalidateQueries({ queryKey: ['dms'] }); qc.invalidateQueries({ queryKey: ['me'] }) }
-    catch (e) { toast('that didn’t go through', (e as Error).message) }
+    catch (e) { toast('that didn’t go through', userError(e)) }
   }
   const remove = async (m: DmMessage) => {
     setPicked(null)
     dropMessage(qc, peer.handle, m.id)
     try { await api(`/dms/messages/${m.id}`, { method: 'DELETE' }); qc.invalidateQueries({ queryKey: ['dms', 'list'] }) }
-    catch (e) { toast('that didn’t go through', (e as Error).message); qc.invalidateQueries({ queryKey: threadKey(peer.handle) }) }
+    catch (e) { toast('that didn’t go through', userError(e)); qc.invalidateQueries({ queryKey: threadKey(peer.handle) }) }
   }
   const lastMine = [...msgs].reverse().find(m => m.mine && m.id > 0)
   const seen = !!lastMine && first.peerRead >= lastMine.id && !first.pending
@@ -354,7 +355,7 @@ function Composer({ handle, onSent }: { handle: string; onSent: () => void }) {
     const local = URL.createObjectURL(f)
     setImg({ url: null, local, busy: true })
     try { const url = await uploadDmImage(f); setImg(s => s && s.local === local ? { ...s, url, busy: false } : s) }
-    catch (e) { setImg(null); toast('that photo didn’t upload', (e as Error).message) }
+    catch (e) { setImg(null); toast('that photo didn’t upload', userError(e)) }
   }
   const send = async (e?: FormEvent) => {
     e?.preventDefault()
@@ -402,7 +403,7 @@ function ReportSheet({ handle, messageId, onClose }: { handle: string; messageId
   const go = async () => {
     setBusy(true)
     try { await api(`/dms/${handle}/report`, { method: 'POST', json: { reason, note, messageId } }); toast('thanks. we’ll take a look.'); onClose() }
-    catch (e) { toast('that didn’t go through', (e as Error).message) } finally { setBusy(false) }
+    catch (e) { toast('that didn’t go through', userError(e)) } finally { setBusy(false) }
   }
   return (
     <Sheet title={messageId ? 'report this message' : `report ${at(handle)}`} onClose={onClose} size="sm"

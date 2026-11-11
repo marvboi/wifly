@@ -319,9 +319,13 @@ function ConfirmCard({ p, st, result, busy, onConfirm, onTopUp }: { p: Planned; 
   const cur = st ?? p.state
   const remainingAfter = Math.max(0, cur.remaining - (p.amount ?? 0))
   const done = !!result
+  const [dismissed, setDismissed] = useState(false)
+  if (dismissed && !done) return null
+  const title = FN_WORDS[p.call?.fn ?? ''] ?? p.kind
   return (
-    <motion.div className={`cmp-card ${done ? `is-${result!.status}` : ''}`} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ type: 'spring', stiffness: 420, damping: 30 }}>
-      <div className="cmp-card__row"><span className="muted small">action</span><span className="strong">{FN_WORDS[p.call?.fn ?? ''] ?? p.kind}</span></div>
+    <motion.div className={`cmp-card cmp-confirm ${done ? `is-${result!.status}` : ''}`} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ type: 'spring', stiffness: 420, damping: 30 }}>
+      <div className="cmp-confirm__title">{title}</div>
+      <div className="cmp-card__row"><span className="muted small">action</span><span className="strong">{title}</span></div>
       {p.recipient && (
         <div className="cmp-card__row cmp-card__row--to">
           <span className="muted small">to</span>
@@ -348,7 +352,10 @@ function ConfirmCard({ p, st, result, busy, onConfirm, onTopUp }: { p: Planned; 
       ) : p.needsTopUp ? (
         <button className="btn btn--dark btn--block btn--sm" onClick={() => onTopUp(p.needsTopUp!.shortfall)}>top up {n(p.needsTopUp.shortfall)} wif</button>
       ) : p.ok ? (
-        <button className="btn btn--dark btn--block btn--sm" onClick={onConfirm} disabled={busy}>{busy ? 'sending…' : `confirm ${FN_WORDS[p.call?.fn ?? ''] ?? ''}`}</button>
+        <div className="cmp-confirm__foot">
+          <button type="button" className="btn btn--ghost btn--sm" onClick={() => setDismissed(true)} disabled={busy}>cancel</button>
+          <button type="button" className="btn btn--dark btn--sm" onClick={onConfirm} disabled={busy}>{busy ? 'sending…' : 'confirm'}</button>
+        </div>
       ) : null}
     </motion.div>
   )
@@ -361,7 +368,7 @@ const errOf = (r: SendFail): TxErr => ({ line: failLine(r), address: r.kind === 
 function calmText(s?: string | null): string | undefined {
   if (!s) return undefined
   if (!looksRaw(s)) return s
-  try { console.warn('[wifly] raw reason', s) } catch { /* no console */ }
+  try { console.debug('[wifly] raw reason', s) } catch { /* no console */ }
   return GENERIC_LINE
 }
 

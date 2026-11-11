@@ -115,8 +115,8 @@ const GasPill = ({ eth }: { eth: bigint | undefined }) => {
 }
 
 /**
- * The gas note: for a wallet with no eth, "this wallet needs a little eth for gas"; for the embedded wallet always
- * "fund your embedded wallet with a little eth for gas" (privy wallets aren't gas-sponsored). Address + copy either way.
+ * The gas note: one short line plus the address and copy. Linked + empty: PAYER_GAS_LINE; embedded always
+ * gets EMBEDDED_FUND_LINE (privy wallets aren't gas-sponsored).
  */
 export function PayerGas({ o, empty = true }: { o: PayerOption; empty?: boolean }) {
   return (
@@ -203,7 +203,7 @@ export function WalletMenuPayer() {
             <Usd value={wifUsd(b?.wif, usd)} className="wm-usd" />
             <GasPill eth={b?.eth} />
           </div>
-          {gasNote && <p className={`wm-note tiny ${b?.eth === 0n ? 'is-warn' : ''}`} data-testid={o.kind === 'embedded' ? 'embedded-fund' : 'payer-gas'}>{o.kind === 'embedded' ? EMBEDDED_FUND_LINE : PAYER_GAS_LINE}. copy the address above to send some.</p>}
+          {gasNote && <PayerGas o={o} empty={b?.eth === 0n} />}
           {!o.ready && o.kind === 'linked' && (
             <button type="button" className="btn btn--dark btn--sm payer__connect" disabled={sw.busy === o.address} onClick={() => void sw.use(o)}>{sw.busy === o.address ? 'connecting…' : `connect ${shortA(o.address)}`}</button>
           )}

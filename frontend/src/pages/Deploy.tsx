@@ -19,6 +19,7 @@ import { ADMIN_ADDRESSES, DEPLOY_PAGE_ON, EXPLORER, robinhoodChain, TREASURY, UN
 import { NotFound } from './NotFound'
 import { PageHead } from '../components/Shell'
 import { explainError } from '../lib/wifly'
+import { useConfirm } from '../components/ConfirmDialog'
 
 type Art = { abi: Abi; bytecode: Hex }
 type ArtName = 'ERC1967Proxy' | 'Wifly' | 'WiflyNames' | 'WiflyGlyphs' | 'WiflyNameRenderer' | 'WiflyBadges' | 'WiflyDCA'
@@ -65,6 +66,7 @@ export default function Deploy() {
   const [inp, setInp] = useState<Inputs>({ owner: TREASURY, attester: '', treasury: TREASURY, keeper: '' })
   const [busy, setBusy] = useState<Key | null>(null)
   const [err, setErr] = useState('')
+  const confirmIn = useConfirm()
   const [checks, setChecks] = useState<{ wif: boolean; uni: boolean } | null>(null)
 
   useEffect(() => { if (!DEPLOY_PAGE_ON) return; const m = document.createElement('meta'); m.name = 'robots'; m.content = 'noindex,nofollow'; document.head.appendChild(m); return () => { m.remove() } }, [])
@@ -243,7 +245,7 @@ export default function Deploy() {
           <span className="muted">on Blockscout, verify each implementation as its contract from contracts/src (no constructor args), and each proxy as OpenZeppelin ERC1967Proxy with the constructor args above, then mark it as a proxy. compiler: solc 0.8.28, optimizer on, 200 runs, evm cancun (contracts/foundry.toml).</span>
           <div className="cmp-row"><button className="btn btn--dark btn--sm" disabled={!anyDeployed} onClick={download}>download deployments.json</button><Copy text={deploymentsJson} label="copy JSON" /></div>
         </details>
-        {(a.wiflyImpl || a.wifly) && <button className="btn btn--ghost btn--sm" onClick={() => { if (confirm('forget the saved progress in this browser? the contracts stay deployed.')) setSaved({ addr: {}, tx: {} }) }}>clear saved progress</button>}
+        {(a.wiflyImpl || a.wifly) && <button className="btn btn--ghost btn--sm" onClick={() => { void (async () => { if (await confirmIn({ title: 'clear saved progress?', hint: 'the contracts stay deployed.', confirmLabel: 'clear', cancelLabel: 'keep' })) setSaved({ addr: {}, tx: {} }) })() }}>clear saved progress</button>}
       </div>
     </>
   )

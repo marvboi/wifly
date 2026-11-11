@@ -35,6 +35,8 @@ export function useWifQuote(ethIn: number) {
     queryKey: ['wif-quote', amount],
     enabled: !!client && amount > 0,
     refetchInterval: 15_000,
+    placeholderData: prev => prev,
+    retry: 2,
     queryFn: async () => {
       // the api's shared quote cache first (one RPC call per amount every 20s for everyone); direct RPC only as a fallback
       const amt = amount.toFixed(18).replace(/\.?0+$/, '')

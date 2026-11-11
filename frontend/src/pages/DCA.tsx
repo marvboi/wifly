@@ -17,6 +17,8 @@ import { call } from '../companion/agentApi'
 import { utcLabel } from '../lib/tzLabel'
 import { useWifPrice } from '../lib/price'
 import { explainError, failArgs, useSendPlan, type Plan } from '../lib/wifly'
+import { useConfirm } from '../components/ConfirmDialog'
+import { userError } from '../lib/txError'
 import { PREVIEW_NOTE, useStore } from '../state/store'
 import { useSession } from '../api/session'
 
@@ -51,6 +53,7 @@ export function DCA() {
   const [q] = useSearchParams()
   const qc = useQueryClient()
   const { toast } = useStore()
+  const confirmIn = useConfirm()
   const send = useSendPlan()
   const { ethUsd, stale } = useWifPrice()
   const { me, guest } = useSession()
@@ -122,7 +125,7 @@ export function DCA() {
         txHash = r.hash
       }
       const s = await call<State>(`/dca/plans/${p.id}/${action}`, 'POST', { ...extra, txHash })
-      if (s.error) { toast('not done', s.error); return }
+      if (s.error) { toast('not done', userError(s.error)); return }
       refresh(s); toast(action === 'edit' ? 'plan updated' : action === 'topup' ? 'topped up' : action === 'withdraw' ? 'withdrawn' : action === 'cancel' ? 'plan cancelled' : action === 'pause' ? 'paused' : 'resumed', live ? 'confirmed onchain.' : PREVIEW_NOTE)
     } catch (e) { toast('not done', explainError(e)) } finally { setBusy(null) }
   }
@@ -133,7 +136,7 @@ export function DCA() {
       <PageHead title="recurring buys" back />
       <section className="soon-card card">
         <h2 className="soon-card__title">buy wif on a schedule.</h2>
-        <p className="muted">sign in to set up a plan, like $5 of wif every monday.</p>
+        <p className="muted">sign in to set a plan — like a little wif every monday.</p>
         <div className="soon-card__actions"><button className="btn btn--dark" onClick={() => openSheet({ type: 'signin' })}>sign in</button></div>
       </section>
     </>
@@ -189,7 +192,7 @@ export function DCA() {
                 <span className="field__input dca__amt"><input inputMode="decimal" placeholder="eth" value={amt[p.id] ?? ''} onChange={e => setAmt(v => ({ ...v, [p.id]: e.target.value }))} /></span>
                 <button className="btn btn--ghost btn--sm" disabled={!!busy || !(Number(amt[p.id]) > 0)} onClick={() => act(p, 'topup', { amountEth: Number(amt[p.id]) })}>top up</button>
                 <button className="btn btn--ghost btn--sm" disabled={!!busy || !(p.balanceEth > 0)} onClick={() => act(p, 'withdraw', Number(amt[p.id]) > 0 ? { amountEth: Number(amt[p.id]) } : {})}>{Number(amt[p.id]) > 0 ? 'withdraw' : 'withdraw all'}</button>
-                <button className="btn btn--ghost btn--sm" disabled={!!busy} onClick={() => { if (confirm('cancel this plan? the eth left comes back to your wallet.')) void act(p, 'cancel') }}>cancel</button>
+                <button className="btn btn--ghost btn--sm" disabled={!!busy} onClick={() => { void (async () => { if (await confirmIn({ title: 'cancel this plan?', hint: 'the eth left comes back to your wallet.', confirmLabel: 'cancel', cancelLabel: 'keep', danger: true })) void act(p, 'cancel') })() }}>cancel</button>
               </div>
             </div>
           ))}

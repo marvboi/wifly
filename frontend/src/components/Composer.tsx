@@ -10,6 +10,7 @@ import { users } from '../state/registry'
 import { Avatar } from './Bits'
 import { Icon } from './Icon'
 import { QuoteEmbed } from './Social'
+import { userError } from '../lib/txError'
 
 export const DROP_CHARS = 400
 const count = (s: string) => [...s].length
@@ -93,7 +94,7 @@ export function Composer({ replyTo, quoteOf, onDone, autoFocus, placeholder, com
     if (!f) return
     if (f.size > 5 * 1024 * 1024) { toast('that image is over 5 mb'); return }
     setUploading(true)
-    try { setImage(await uploadImage(f)) } catch (e) { toast('upload failed', (e as Error).message) } finally { setUploading(false); if (file.current) file.current.value = '' }
+    try { setImage(await uploadImage(f)) } catch (e) { toast('upload failed', userError(e)) } finally { setUploading(false); if (file.current) file.current.value = '' }
   }
 
   const submit = async () => {
@@ -116,7 +117,7 @@ export function Composer({ replyTo, quoteOf, onDone, autoFocus, placeholder, com
       setText(''); setImage(null); setFocused(false)
       toast(replyTo ? 'reply sent' : quoteOf ? 'quote dropped' : 'dropped. it’s live now')
       onDone?.(p)
-    } catch (e) { toast('couldn’t drop that', (e as Error).message) } finally { setBusy(false) }
+    } catch (e) { toast('couldn’t drop that', userError(e)) } finally { setBusy(false) }
   }
   submitRef.current = submit
 

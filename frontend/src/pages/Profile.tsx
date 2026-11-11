@@ -20,6 +20,7 @@ import { PostCard } from '../components/PostCard'
 import { Amount, Avatar, FlatDisc } from '../components/Bits'
 import { PageHead } from '../components/Shell'
 import { Icon } from '../components/Icon'
+import { MetaItem } from '../components/Meta'
 import { GuestWall } from '../components/GuestWall'
 import { Mascot } from '../components/Mascot'
 import { FollowButton, RichText, Sentinel, UserRow, useNeedLink } from '../components/Social'
@@ -31,6 +32,7 @@ import { NAMES_ADDRESS, robinhoodChain } from '../config'
 import { namesAbi } from '../contracts/namesAbi'
 import { CopyBtn } from '../components/WalletsSection'
 import { shortAddr } from '../components/WalletProofs'
+import { userError } from '../lib/txError'
 
 /** the wallet that holds the .wif onchain (ownerOfName), else the profile's main wallet. */
 function NameHolder({ name, fallback }: { name: string; fallback?: string | null }) {
@@ -169,7 +171,7 @@ function ProfileOf({ handle }: { handle: string }) {
     try {
       const r = await api<{ user: ApiUser }>(`/users/${u.handle}/mute`, { method: u.muted ? 'DELETE' : 'POST' })
       adoptUser(r.user); qc.invalidateQueries({ queryKey: ['feed'] }); toast(r.user.muted ? `muted @${u.handle}. you won’t see their drops.` : `unmuted @${u.handle}`)
-    } catch (e) { toast('that didn’t go through', (e as Error).message) }
+    } catch (e) { toast('that didn’t go through', userError(e)) }
   }
   const message = () => need(() => nav(`/messages/${u.handle}`), 'sign in to message')
   const canDm = live && !u.blocked && !u.blocksYou
@@ -222,8 +224,8 @@ function ProfileOf({ handle }: { handle: string }) {
               <Link className="pro__stat" to={followPath(u.handle, 'followers')}>{stat(u.followers, u.followers === 1 ? 'follower' : 'followers')}</Link>
               <Link className="pro__stat" to={followPath(u.handle, 'following')}>{stat(u.following, 'following')}</Link>
               {u.supporters !== undefined && <span className="pro__stat">{stat(u.supporters, 'supporters')}</span>}
-              <span className="pro__stat pro__stat--quiet">joined {u.joined.toLowerCase()}</span>
-              {u.location && <span className="pro__stat pro__stat--quiet">{u.location}</span>}
+              <MetaItem icon="calendar" className="pro__stat pro__stat--quiet">joined {u.joined.toLowerCase()}</MetaItem>
+              {u.location && <MetaItem icon="mapPin" className="pro__stat pro__stat--quiet">{u.location}</MetaItem>}
             </div>
           </div>
           {me && <KeepNudge />}

@@ -16,7 +16,13 @@ export function ThemeToggle({ className = '', labeled = false }: { className?: s
       <span className="tt__pill" aria-hidden="true" />
       {OPTS.map(o => (
         <button key={o.v} type="button" role="radio" aria-checked={pref === o.v} aria-label={labeled ? undefined : `${o.label} theme`} title={labeled ? undefined : o.label}
-          className={`tt__b${pref === o.v ? ' is-on' : ''}`} data-theme-opt={o.label} onClick={() => setPref(o.v)}>
+          className={`tt__b${pref === o.v ? ' is-on' : ''}`} data-theme-opt={o.label}
+          onClick={e => {
+            // Landing / docs (icon-only): circular wipe from the clicked button. Settings (labeled): soft fade.
+            if (labeled) { setPref(o.v); return }
+            const r = e.currentTarget.getBoundingClientRect()
+            setPref(o.v, { x: r.left + r.width / 2, y: r.top + r.height / 2 })
+          }}>
           <Icon name={o.icon} size={15} />
           {labeled && <span className="tt__l">{o.label}</span>}
         </button>
@@ -25,7 +31,7 @@ export function ThemeToggle({ className = '', labeled = false }: { className?: s
   )
 }
 
-/** More sheet: one tap between light and dark. On auto it shows what the device picked; a tap pins the other one. */
+/** More sheet: one tap between light and dark. On auto it shows what the device picked; a tap pins the other one. Soft fade (no origin). */
 export function ThemeQuickRow() {
   const { pref, theme, setPref } = useTheme()
   const dark = theme === 'dark'

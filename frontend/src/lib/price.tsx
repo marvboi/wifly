@@ -47,7 +47,7 @@ export function useWifPrice() {
   const p = useSyncExternalStore(subscribe, () => price)
   const [now, setNow] = useState(() => Date.now())
   useEffect(() => { const t = setInterval(() => setNow(Date.now()), 15_000); return () => clearInterval(t) }, [])
-  return { price: p, usd: p?.usd, ethUsd: p?.ethUsd, stale: !p || p.stale || now - p.updatedAt > STALE_MS }
+  return { price: p, usd: p?.usd, ethUsd: p?.ethUsd, stale: !!p && (p.stale || now - p.updatedAt > STALE_MS) }
 }
 
 /** $ amounts: 1,234 · 12.34 · 0.42 · 0.0013 (two significant digits under a cent). */
@@ -63,8 +63,8 @@ export function Usd({ value, className = '' }: { value: number | undefined; clas
   const [shown, setShown] = useState(value ?? 0)
   useMotionValueEvent(mv, 'change', v => setShown(v))
   useEffect(() => { if (value === undefined) return; const c = animate(mv, value, { duration: 0.6, ease: [0.2, 0.8, 0.2, 1] }); return () => c.stop() }, [value, mv])
-  // Unknown or stale price: show nothing rather than a placeholder or an old number.
-  if (value === undefined || stale) return null
-  return <span className={`usd num ${className}`} title="live price">≈ ${usdText(shown)}</span>
+  // No rate at all: show nothing. A last-known rate stays on screen quietly while a refresh runs in the background.
+  if (value === undefined) return null
+  return <span className={`usd num ${stale ? 'usd--quiet' : ''} ${className}`} title={stale ? 'price may be a little old' : 'live price'}>≈ ${usdText(shown)}</span>
 }
 

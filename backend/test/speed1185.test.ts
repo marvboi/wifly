@@ -21,7 +21,7 @@ Request Arguments:
 Details: insufficient funds for gas * price + value: balance 0, tx cost 31200000000000
 Version: viem@2.57.11`
 
-const quiet = <T>(fn: () => T): T => { const w = console.warn; console.warn = () => {}; try { return fn() } finally { console.warn = w } }
+const quiet = <T>(fn: () => T): T => { const w = console.warn, d = console.debug; console.warn = () => {}; console.debug = () => {}; try { return fn() } finally { console.warn = w; console.debug = d } }
 
 test('insufficient funds: real viem errors, wrapped errors and the raw string all map to the gas line', () => {
   const inner = new InsufficientFundsError({ cause: new BaseError('insufficient funds for gas * price + value') })
@@ -39,13 +39,13 @@ test('user rejected = cancelled, nonce / replacement = pending, anything else = 
   assert.equal(classifyTxError(new NonceTooLowError({ nonce: 3 })), 'pending')
   assert.equal(classifyTxError(new Error('replacement transaction underpriced')), 'pending')
   assert.equal(txErrorLine(new Error('replacement transaction underpriced')).line, PENDING_LINE)
-  assert.equal(CANCELLED_LINE, 'cancelled')
+  assert.equal(CANCELLED_LINE, 'you cancelled in your wallet')
   let logged = 0
-  const w = console.warn; console.warn = () => { logged++ }
+  const d = console.debug; console.debug = () => { logged++ }
   try {
     const r = txErrorLine(new BaseError('execution reverted: 0xdeadbeef', { details: 'Request Arguments: from: 0x…' }))
     assert.equal(r.line, GENERIC_LINE)
-  } finally { console.warn = w }
+  } finally { console.debug = d }
   assert.ok(logged >= 1, 'raw text goes to the console')
 })
 

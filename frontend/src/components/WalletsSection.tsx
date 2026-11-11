@@ -22,6 +22,7 @@ import { InfoTip } from './InfoTip'
 import { Avatar } from './Bits'
 import { Qr } from './Qr'
 import { gateCopy, walletAccess, type Access } from '../lib/walletAccess'
+import { userError } from '../lib/txError'
 
 type Bal = { wif: bigint; eth: bigint }
 const fmt = (v: bigint | undefined, max = 4) => v === undefined ? '…' : Number(formatUnits(v, 18)).toLocaleString('en-US', { maximumFractionDigits: max })
@@ -91,8 +92,8 @@ export function WalletsSection() {
     if (busy) return
     setBusy(key); setErr(null)
     try { await fn() } catch (e) {
-      const m = (e as Error).message || 'that didn’t go through'
-      if (!/reject|denied|closed|exited/i.test(m)) setErr(m.toLowerCase())
+      const m = userError(e) || 'that didn’t go through'
+      if (!/reject|denied|closed|exited/i.test(m)) setErr(m)
     } finally { setBusy(null) }
   }
   const makeMain = (a: string) => act(`main:${a}`, async () => {
@@ -298,8 +299,8 @@ export function WithdrawSheet({ from, bal, onClose, onSent, initial }: { from: s
       setHash(h); setStep('sent'); onSent?.()
       toast('sent', undefined, 'ok')
     } catch (e) {
-      const m = (e as Error).message || 'that didn’t go through'
-      if (!/reject|denied|closed|exited/i.test(m)) setErr(m.toLowerCase())
+      const m = userError(e) || 'that didn’t go through'
+      if (!/reject|denied|closed|exited/i.test(m)) setErr(m)
     } finally { setBusy(false) }
   }
 
@@ -307,7 +308,7 @@ export function WithdrawSheet({ from, bal, onClose, onSent, initial }: { from: s
     <Sheet title={step === 'confirm' ? 'confirm withdraw' : step === 'sent' ? 'sent' : 'withdraw'} onClose={onClose} size="sm">
       <div className="wd" data-testid={`withdraw-${step}`}>
         {step === 'form' && <>
-          <p className="small muted wd__from">from embedded <span className="mono">{shortAddr(from)}</span></p>
+          <p className="small muted wd__from">from embedded <span className="mono" title={from}>{shortAddr(from)}</span><CopyBtn text={from} label="copy address" /></p>
           <div className="seg wd__seg" role="tablist" aria-label="what to send">
             {(['WIF', 'ETH'] as Asset[]).map(a => <button key={a} type="button" role="tab" aria-selected={asset === a} className={asset === a ? 'is-on' : ''} onClick={() => { setAsset(a); setAmount('') }}>{a.toLowerCase()}</button>)}
           </div>
@@ -357,5 +358,5 @@ export function WithdrawSheet({ from, bal, onClose, onSent, initial }: { from: s
 
 /** Small explainer for the section title. */
 export function WalletsTip() {
-  return <InfoTip label="about wallets">every wallet on this account. main is the one shown on your profile; tips land on the receiving one. changing either needs a signature from that wallet.</InfoTip>
+  return <InfoTip label="about wallets">main shows on your profile. tips go to the receiving one.</InfoTip>
 }

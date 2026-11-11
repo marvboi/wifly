@@ -12,7 +12,7 @@ import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { api, type ApiUser } from '../api/client'
 import { useSession } from '../api/session'
 import { CLAIM_SPLIT, FEE_SPLIT, NAMES_ADDRESS, NAME_FEE_BPS, claimFeeOf } from '../config'
-import { failArgs, plans, useSendPlan, type Plan } from '../lib/wifly'
+import { userError, failArgs, plans, useSendPlan, type Plan } from '../lib/wifly'
 import { namePlans, normalizeName, useNameCheck } from '../lib/names'
 import { companion } from '../lib/companion'
 import { useWifBalance } from '../lib/chain'
@@ -114,7 +114,7 @@ export function useNameTx() {
       await qc.invalidateQueries({ queryKey: ['me'] })
       toast(done, LIVE ? 'confirmed onchain' : PREVIEW_NOTE)
       return true
-    } catch (e) { toast('that didn’t go through', (e as Error).message); return false } finally { setBusy(null) }
+    } catch (e) { toast('that didn’t go through', userError(e)); return false } finally { setBusy(null) }
   }
   return { run, busy }
 }
@@ -209,8 +209,8 @@ export function ClaimBox({ initial = '', onClaimed, onState, compact, andPrimary
 
 /** " (about $1.30)" when the live price is known; nothing otherwise. */
 function WifUsdNote({ wif }: { wif: number }) {
-  const { usd, stale } = useWifPrice()
-  if (usd === undefined || stale) return null
+  const { usd } = useWifPrice()
+  if (usd === undefined) return null
   return <span className="muted"> ≈ ${usdText(wif * usd)}</span>
 }
 

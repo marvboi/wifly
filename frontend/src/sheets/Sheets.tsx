@@ -21,7 +21,7 @@ import { FEE_SPLIT, LIVE, TOPSPOT_FEE_SHARE, TOPSPOT_HOLDER_SHARE, TOPSPOT_MIN_R
 import { posts, users } from '../state/registry'
 import { PREVIEW_NOTE, useStore, type SheetState } from '../state/store'
 import { FEE_SPLIT_LABEL, topSpotMinBid, topSpotSplit } from '../lib/fees'
-import { failArgs, plans, useQuoteFee, useHasUnlocked, useIsSubscribed, useSendPlan, useTopSpotRules, id32, type Plan } from '../lib/wifly'
+import { userError, failArgs, plans, useQuoteFee, useHasUnlocked, useIsSubscribed, useSendPlan, useTopSpotRules, id32, type Plan } from '../lib/wifly'
 import { Amount, Avatar, DisplayName, Name, Token, WifUsd } from '../components/Bits'
 import { BurnSheet, BadgeSheet, TiersSheet } from './NewSheets'
 import { HumanCheck } from '../components/HumanCheck'
@@ -406,23 +406,36 @@ function SubscribeSheet({ handle, tierId }: { handle: string; tierId?: string })
         </button>
         <PreviewNote />
       </>}>
-      <div className="tiers">
-        {u.tiers.map(t => (
-          <button key={t.id} className={`tier ${pick === t.id ? 'is-on' : ''}`} onClick={() => setPick(t.id)} aria-pressed={pick === t.id}>
-            <div className="tier__top">
-              <span className="tier__name">{t.name}</span>
-              <span className="tier__price"><Amount value={t.price} size={16} /><span className="muted small">/mo</span></span>
-            </div>
-            <ul>{t.perks.map(p => <li key={p}><Icon name="check" size={14} /> {p}</li>)}</ul>
-            {currentTier === t.id && <span className="tier__current">current</span>}
-          </button>
-        ))}
+      <div className="subpay">
+        <div className="subpay__who">
+          <Avatar handle={handle} size={56} />
+          <div>
+            <Name handle={handle} />
+            <div className="muted small">@{handle}</div>
+          </div>
+        </div>
+        <div className="subpay__price">
+          <Amount value={tier.price} size={28} />
+          <span className="muted">/ 30 days</span>
+        </div>
+        <div className="tiers">
+          {u.tiers.map(t => (
+            <button key={t.id} className={`tier ${pick === t.id ? 'is-on' : ''}`} onClick={() => setPick(t.id)} aria-pressed={pick === t.id}>
+              <div className="tier__top">
+                <span className="tier__name">{t.name}</span>
+                <span className="tier__price"><Amount value={t.price} size={16} /><span className="muted small">/mo</span></span>
+              </div>
+              <ul>{t.perks.map(p => <li key={p}><Icon name="check" size={14} /> {p}</li>)}</ul>
+              {currentTier === t.id && <span className="tier__current">current</span>}
+            </button>
+          ))}
+        </div>
+        <p className={`small ${current && current.id !== pick ? 'warn' : 'muted'}`}>{note}</p>
+        {self && <SelfNote what="subscribe to" />}
+        <FeeSplit amount={tier.price} />
+        <LowBalance need={tier.price} />
+        <p className="muted small">your agent can renew this for you each month, within the daily cap you set.</p>
       </div>
-      <p className={`small ${current && current.id !== pick ? 'warn' : 'muted'}`}>{note}</p>
-      {self && <SelfNote what="subscribe to" />}
-      <FeeSplit amount={tier.price} />
-      <LowBalance need={tier.price} />
-      <p className="muted small">your agent can renew this for you each month, within the daily cap you set.</p>
     </Sheet>
   )
 }
@@ -770,10 +783,10 @@ function ProfileSheet() {
       const r = await api<{ me: typeof me }>('/me', { method: 'PATCH', json: f })
       adoptUser({ ...r.me, you: true }); setMe(r.me)
       qc.invalidateQueries(); closeSheet(); toast(first ? `welcome, @${r.me.handle}` : 'profile saved')
-    } catch (e) { toast('couldn’t save', (e as Error).message) } finally { setBusy(false) }
+    } catch (e) { toast('couldn’t save', userError(e)) } finally { setBusy(false) }
   }
   const pick = async (fl: File) => {
-    try { const url = await uploadAvatar(fl); setF(v => ({ ...v, avatar: url })) } catch (e) { toast('couldn’t add that photo', (e as Error).message) }
+    try { const url = await uploadAvatar(fl); setF(v => ({ ...v, avatar: url })) } catch (e) { toast('couldn’t add that photo', userError(e)) }
   }
   const bioLeft = 160 - [...f.bio].length
   return (
@@ -781,7 +794,7 @@ function ProfileSheet() {
       <div className="compose__foot"><span className="muted small">{first ? 'you can change all of this later.' : ''}</span><button className="btn btn--dark" disabled={busy || !f.name.trim() || bioLeft < 0} onClick={save}>{busy ? 'saving…' : first ? 'let’s go' : 'save'}</button></div>
     }>
       <div className="pform">
-        <AvatarPicker src={f.avatar || null} name={f.name} handle={me.handle} size={80} onPick={pick} onRemove={() => setF(v => ({ ...v, avatar: null }))} onError={m => toast('couldn’t add that photo', m)} />
+        <AvatarPicker src={f.avatar || null} name={f.name} handle={me.handle} size={80} onPick={pick} onRemove={() => setF(v => ({ ...v, avatar: null }))} onError={m => toast('couldn’t add that photo', userError(m))} />
         <label className="field"><span>name</span><input value={f.name} maxLength={40} onChange={e => setF({ ...f, name: e.target.value })} /></label>
         <label className="field"><span>handle</span><div className="field__pre"><b>@</b><input value={f.handle} maxLength={20} disabled={!!me.wifName} onChange={e => setF({ ...f, handle: e.target.value.replace(/[^A-Za-z0-9_]/g, '') })} /></div></label>
         {me.wifName
@@ -822,8 +835,8 @@ function LinkSheet({ then }: { then?: () => void }) {
       } else if (kind === 'x') await linkX()
       else await linkEmail()
     } catch (e) {
-      const m = (e as Error).message || 'that didn’t go through'
-      if (!/rejected|denied|closed/i.test(m)) setErr(m.toLowerCase())
+      const m = userError(e) || 'that didn’t go through'
+      if (!/rejected|denied|closed/i.test(m)) setErr(m)
     } finally { setBusy(null) }
   }
   return (

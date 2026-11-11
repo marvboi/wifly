@@ -19,6 +19,7 @@ import { useStore } from '../state/store'
 import { ClaimBox, ClaimSoon, NAMES_LIVE, type ClaimState } from './Names'
 import { UseMyWif } from '../components/WalletProofs'
 import { followLabel, followPayload, seedFollow, toggleFollow } from './onboardFollow'
+import { userError } from '../lib/txError'
 
 type Onb = { suggestedHandle: string | null; ownedWif?: string | null; notice?: string | null; x: { username: string } | null; wallet: string | null; email: boolean; users: ApiUser[]; tags: string[] }
 const STEPS = ['you', 'wif', 'follow', 'link'] as const
@@ -95,7 +96,7 @@ export function Welcome() {
       await onb.refetch()
       toast(kind === 'twitter' ? 'x linked' : 'wallet linked', undefined, 'ok')
     } catch (e) {
-      toast((e as Error).message || 'couldn’t link right now. try again in a moment', undefined, 'warn')
+      toast(userError(e) || 'couldn’t link right now. try again in a moment', undefined, 'warn')
     } finally { setLinking(null) }
   }
   const walletAddr = privy.embeddedWallet ?? me?.address ?? null
@@ -141,7 +142,7 @@ export function Welcome() {
       if (r.me) setMe({ ...r.me, onboarded: true })
       refresh()
       nav(FEED_PATH, { replace: true })
-    } catch (e) { toast('couldn’t save', (e as Error).message); setStep(0) } finally { setBusy(false) }
+    } catch (e) { toast('couldn’t save', userError(e)); setStep(0) } finally { setBusy(false) }
   }
   const saveName = async () => {
     setBusy(true)
@@ -149,10 +150,10 @@ export function Welcome() {
       const r = await api<{ me: ApiUser & { onboarded?: boolean } }>('/me', { method: 'PATCH', json: { handle, ...(name.trim() ? { name: name.trim() } : {}), ...(avatar ? { avatar } : {}) } })
       setMe(r.me); refresh(); toast(`you’re @${r.me.handle} now`, undefined, 'ok')
       nav(FEED_PATH, { replace: true })
-    } catch (e) { toast('couldn’t save', (e as Error).message) } finally { setBusy(false) }
+    } catch (e) { toast('couldn’t save', userError(e)) } finally { setBusy(false) }
   }
   const pick = async (f: File) => {
-    try { setAvatar(await uploadAvatar(f)) } catch (e) { toast('couldn’t add that photo', (e as Error).message) }
+    try { setAvatar(await uploadAvatar(f)) } catch (e) { toast('couldn’t add that photo', userError(e)) }
   }
   const toggle = (set: Set<string>, v: string, put: (s: Set<string>) => void) => { const n = new Set(set); n.has(v) ? n.delete(v) : n.add(v); put(n) }
 
@@ -174,7 +175,7 @@ export function Welcome() {
               {onb.data?.notice ? <p className="welcome__sub welcome__notice" data-testid="handle-notice">@{onb.data.notice} now goes with {onb.data.notice}.wif, held by another wallet. pick a new @name; your posts stay.</p>
                 : renaming && <p className="welcome__sub">pick the @name you want. everything else stays.</p>}
               <div className="welcome__profile">
-                <AvatarPicker size={72} src={avatar} name={name} handle={handle} onPick={pick} onRemove={() => setAvatar(null)} onError={m => toast('couldn’t add that photo', m)} />
+                <AvatarPicker size={72} src={avatar} name={name} handle={handle} onPick={pick} onRemove={() => setAvatar(null)} onError={m => toast('couldn’t add that photo', userError(m))} />
                 <label className="field"><span className="field__label">display name</span>
                   <input className="field__input" value={name} maxLength={50} placeholder="your name" autoComplete="name" {...watchProps}
                     onChange={e => { setName(e.target.value); watchInput(e) }} onKeyUp={watchInput} onSelect={watchInput} />
@@ -269,7 +270,10 @@ function WalletRow({ address }: { address: string }) {
   return (
     <div className="walletrow">
       <span className="walletrow__icon"><Icon name="wallet" size={16} /></span>
-      <div className="walletrow__copy"><span className="small strong">your wifly wallet</span><span className="tiny muted mono">{address.slice(0, 6)}…{address.slice(-4)} · no seed phrase</span></div>
+      <div className="walletrow__copy">
+        <span className="small strong">your wifly wallet</span>
+        <span className="tiny muted mono" title={address}>{address.slice(0, 6)}…{address.slice(-4)} · no seed phrase</span>
+      </div>
       <button className="btn btn--ghost btn--sm" onClick={copy} aria-label="copy wallet address"><Icon name={copied ? 'check' : 'copy'} size={14} /> {copied ? 'copied' : 'copy'}</button>
     </div>
   )

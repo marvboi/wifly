@@ -21,7 +21,7 @@ export function PostDetail() {
 
   if (q.isError) return (q.error as { status?: number }).status === 404
     ? <><PageHead title="drop" back /><NotFound kind="post" /></>
-    : <><PageHead title="drop" back /><p className="empty">{(q.error as Error).message}</p></>
+    : <><PageHead title="drop" back /><div className="empty empty--card"><p className="strong">couldn’t open this drop.</p><p className="muted small">check your connection, then go back and try again.</p></div></>
   if (!q.data) return <><PageHead title="drop" back /><PostSkel n={1} media={false} /><div className="section-label">replies</div><div className="feed"><PostSkel n={2} media={false} /></div></>
 
   const { drop, ancestors } = q.data

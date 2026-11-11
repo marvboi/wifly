@@ -6,7 +6,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { api } from '../api/client'
 import { useSession } from '../api/session'
 import { BADGE_LEVELS, LIVE } from '../config'
-import { plans, useSendPlan } from '../lib/wifly'
+import { userError, plans, useSendPlan } from '../lib/wifly'
 import { useStore } from '../state/store'
 import { WifAmount, WifUsd } from '../components/Bits'
 import { BadgeArt } from '../components/Badges'
@@ -163,7 +163,7 @@ export function TiersSheet() {
         }
       }
       closeSheet(); toast('tiers saved', LIVE ? 'prices set onchain' : 'prices are saved to your profile. nothing was sent')
-    } catch (e) { toast('couldn’t save tiers', (e as Error).message) } finally { setBusy(false) }
+    } catch (e) { toast('couldn’t save tiers', userError(e)) } finally { setBusy(false) }
   }
 
   return (

@@ -14,10 +14,13 @@ html[data-themed], html[data-themed] body { background: var(--bg); color: var(--
 html.theme-fade, html.theme-fade *, html.theme-fade *::before, html.theme-fade *::after {
   transition: background-color .3s var(--ease), color .3s var(--ease), border-color .3s var(--ease), fill .3s var(--ease), stroke .3s var(--ease), box-shadow .3s var(--ease) !important;
 }
-/* the switch: a soft cross-fade of the whole page (view transitions), or a short colour fade (theme-fade) */
+/* the switch: soft cross-fade (theme-vt) by default; circular wipe (theme-vt-circle) when an origin is given */
 html.theme-vt::view-transition-old(root), html.theme-vt::view-transition-new(root) { animation-duration: .42s; animation-timing-function: cubic-bezier(.4, 0, .2, 1); }
 html.theme-vt::view-transition-group(*) { animation-duration: .42s; }
 @media (prefers-reduced-motion: reduce) { html.theme-vt::view-transition-old(root), html.theme-vt::view-transition-new(root) { animation: none; } }
+/* circle wipe from the toggle (landing / docs): kill the default VT fade so the clip-path animate can drive it */
+html.theme-vt-circle::view-transition-old(root), html.theme-vt-circle::view-transition-new(root) { animation: none; mix-blend-mode: normal; }
+html.theme-vt-circle::view-transition-new(root) { z-index: 2; }
 
 /* theme toggle */
 .tt { position: relative; display: inline-grid; grid-template-columns: repeat(3, 30px); height: 34px; padding: 2px; border-radius: 999px;

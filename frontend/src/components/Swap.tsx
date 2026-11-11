@@ -114,6 +114,8 @@ export function SwapPanel({ compact = false, preset, onDone }: { compact?: boole
     queryKey: ['swapq', side, exactOut, units.toString()],
     enabled: !!pub && units > 0n && phase !== 'sending' && phase !== 'done',
     refetchInterval: REQUOTE_MS,
+    placeholderData: prev => prev,
+    retry: 2,
     queryFn: async () => {
       if (exactOut) { const r = await quoteBuyExactOut(pub!, units); return { inWei: r.amountIn, outWei: units } }
       const r = await quote(pub!, side, units)
@@ -127,6 +129,8 @@ export function SwapPanel({ compact = false, preset, onDone }: { compact?: boole
     queryKey: ['swapq-backend', side, units.toString()],
     enabled: !exactOut && units > 0n,
     refetchInterval: REQUOTE_MS * 3,
+    placeholderData: prev => prev,
+    retry: 1,
     queryFn: async () => {
       const r = await fetch(`/api/swap/quote?dir=${side === 'buy' ? 'eth2wif' : 'wif2eth'}&amount=${amt}`)
       if (!r.ok) throw new Error('no backend quote')
@@ -245,7 +249,7 @@ export function SwapPanel({ compact = false, preset, onDone }: { compact?: boole
           <div className="swapcard">
             <div className="swapcard__leg">
               <div className="swap__row-head">
-                <span>{exactOut ? 'pay, about' : 'pay'}</span>
+                <span>{exactOut ? 'pay about' : 'pay'}</span>
                 {isConnected && <span className="num">{balIn === undefined ? '…' : side === 'buy' ? fmtEth(balIn) : fmt(balIn)} {inSym}{!exactOut && <> · <button className="linkbtn" onClick={setMax}>max</button></>}</span>}
               </div>
               <div className="swap__field">
@@ -260,7 +264,7 @@ export function SwapPanel({ compact = false, preset, onDone }: { compact?: boole
             <motion.button className="swap__arrow" onClick={flip} disabled={exactOut} aria-label="flip direction" whileTap={{ scale: 0.88 }}
               animate={{ rotate: side === 'buy' ? 0 : 180 }} transition={{ type: 'spring', stiffness: 320, damping: 18 }}><Icon name="swap" size={16} /></motion.button>
             <div className="swapcard__leg">
-              <div className="swap__row-head"><span>{exactOut ? 'get' : 'get, about'}</span>{isConnected && balOut !== undefined && <span className="num">{side === 'buy' ? fmt(balOut) : fmtEth(balOut)} {outSym}</span>}</div>
+              <div className="swap__row-head"><span>{exactOut ? 'get' : 'get about'}</span>{isConnected && balOut !== undefined && <span className="num">{side === 'buy' ? fmt(balOut) : fmtEth(balOut)} {outSym}</span>}</div>
               <div className="swap__field">
                 <output className={`swap__out num ${q.isFetching ? 'is-loading' : ''}`} aria-live="polite">
                   {exactOut ? fmt(amount) : amount <= 0 ? '0' : outN !== undefined ? (side === 'buy' ? fmt(outN) : fmtEth(outN)) : q.isError ? '—' : '…'}

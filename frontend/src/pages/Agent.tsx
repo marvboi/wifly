@@ -92,7 +92,7 @@ export function Agent() {
       <div className="empty empty--card">
         <Mascot size={64} />
         <p className="strong">your agent lives here.</p>
-        <p className="muted small">it tips and renews your memberships, inside a daily cap you set. sign up to set it up.</p>
+        <p className="muted small">it can tip and renew memberships for you, inside a daily cap you set. sign up to turn it on.</p>
         <button className="btn btn--dark btn--sm" onClick={() => openSheet({ type: 'signin', reason: 'sign up to set up your agent' })}>sign up</button>
       </div>
     </>
@@ -104,7 +104,7 @@ export function Agent() {
       <div className="empty empty--card" data-testid="agent-guest">
         <Mascot size={64} />
         <p className="strong">link an account to chat with your agent.</p>
-        <p className="muted small">add a wallet, x or email first. it keeps your chats and caps with you.</p>
+        <p className="muted small">link a wallet, x or email first — so chats and caps stay with you.</p>
         <button className="btn btn--dark btn--sm" onClick={() => openSheet({ type: 'link', then: chat })}>link an account</button>
       </div>
     </>

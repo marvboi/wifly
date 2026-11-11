@@ -18,7 +18,8 @@ import { rpcCached, store } from './cache'
 import { envInt, Lru } from './lru'
 import { wiflyContract } from './config'
 import { chainClient } from './chain'
-import { fail } from './util'
+import { fail, rateLimit } from './util'
+import { clientIp } from './abuse'
 
 export const UNI = {
   stateView: '0xf3334192d15450cdd385c8b70e03f9a6bd9e673b' as Address,   // Uniswap deployments/4663.md, code checked on chain
@@ -32,13 +33,15 @@ export const UNI = {
 }
 export const CHAINLINK_ETH_USD = (process.env.CHAINLINK_ETH_USD || '0x78F3556b67E17Df817D51Ef5a990cDaF09E8d3A9') as Address
 const DEXSCREENER = `https://api.dexscreener.com/latest/dex/pairs/robinhood/${UNI.poolId}`
-const TTL = Number(process.env.PRICE_TTL_MS || 12_000)
+export const priceTtl = () => Math.max(1_000, Number(process.env.PRICE_TTL_MS || 12_000))
+export const quoteTtl = () => Math.max(1_000, Number(process.env.QUOTE_TTL_MS || 20_000))
+/** Per-IP cap on price and quote HTTP reads (window 60s). */
+export const pricePerIp = () => Math.max(1, Number(process.env.PRICE_PER_IP_MIN || 120))
 const KEY = 'price:wif:v1'
 const KYBER_WAIT_MS = 250
-/** Quotes move with the pool; 20s keeps the swap box instant while typing without going stale. */
-const QUOTE_TTL_MS = Number(process.env.QUOTE_TTL_MS || 20_000)
-/** Without Redis, quotes get their own bounded LRU so a flood of distinct amounts can't push feed entries out of the shared store. */
-const quoteMem = new Lru<string, string>({ max: envInt('QUOTE_MAX_ENTRIES', 1000), ttlMs: QUOTE_TTL_MS })
+/** Without Redis, quotes get their own bounded LRU so a flood of distinct amounts can't push feed entries out of the shared store. Keep last-good well past the fresh TTL. */
+const quoteKeep = () => Math.max(quoteTtl() * 50, 10 * 60_000)
+const quoteMem = new Lru<string, string>({ max: envInt('QUOTE_MAX_ENTRIES', 1000), ttlMs: quoteKeep() })
 const CH = 'price:wif'
 
 export type WifPrice = {
@@ -98,16 +101,22 @@ export async function fetchPrice(): Promise<WifPrice> {
   return { usd: ethUsd / wifPerEth, eth: 1 / wifPerEth, wifPerEth, ethUsd, source: src, updatedAt: Date.now(), stale: false, poolId: UNI.poolId }
 }
 
+let priceSource: (() => Promise<WifPrice>) | null = null
+/** Tests inject a mocked upstream so nothing touches the network. */
+export function setPriceSource(fn: (() => Promise<WifPrice>) | null) { priceSource = fn }
+export function resetPriceState() { last = null; inflight = null }
+
 let inflight: Promise<WifPrice> | null = null
 let last: WifPrice | null = null
 /** How long a price may be served while a refresh runs behind it. */
-const KEEP = Math.max(TTL * 50, 10 * 60_000)
+const KEEP = () => Math.max(priceTtl() * 50, 10 * 60_000)
+const priceKeep = KEEP
 function refreshPrice(): Promise<WifPrice> {
   if (!inflight) inflight = (async () => {
     try {
-      const p = await fetchPrice()
+      const p = await (priceSource ?? fetchPrice)()
       last = p
-      await store.set(KEY, JSON.stringify(p), KEEP).catch(() => {})
+      await store.set(KEY, JSON.stringify(p), priceKeep()).catch(() => {})
       await store.publish(CH, JSON.stringify(p)).catch(() => {})
       return p
     } catch (e) {
@@ -128,7 +137,7 @@ export async function getPrice(): Promise<WifPrice> {
   if (cur) {
     last = cur
     const age = Date.now() - cur.updatedAt
-    if (age < TTL) return cur
+    if (age < priceTtl()) return cur
     void refreshPrice().catch(() => {})
     return { ...cur, stale: age > 60_000 }
   }
@@ -204,8 +213,56 @@ async function kyberQuote(zeroForOne: boolean, amountIn: bigint): Promise<bigint
   return r.data?.routeSummary ? BigInt(r.data.routeSummary.amountOut) : null
 }
 
+
+let quoteSource: ((dir: SwapDir, amountIn: bigint) => Promise<Awaited<ReturnType<typeof quote>>>) | null = null
+/** Tests inject a mocked quoter. */
+export function setQuoteSource(fn: typeof quoteSource) { quoteSource = fn }
+const quoteInflight = new Map<string, Promise<Awaited<ReturnType<typeof quote>>>>()
+
+async function readQuoteCache(key: string): Promise<(Awaited<ReturnType<typeof quote>>) | null> {
+  const raw = store.kind === 'memory' ? (quoteMem.get(key) ?? null) : await store.get(key).catch(() => null)
+  if (!raw) return null
+  try { return JSON.parse(raw) } catch { return null }
+}
+async function writeQuoteCache(key: string, q: Awaited<ReturnType<typeof quote>>) {
+  const raw = JSON.stringify(q)
+  if (store.kind === 'memory') quoteMem.set(key, raw)
+  else await store.set(key, raw, quoteKeep()).catch(() => {})
+}
+function refreshQuote(key: string, dir: SwapDir, amountIn: bigint) {
+  let p = quoteInflight.get(key)
+  if (!p) {
+    p = (async () => {
+      try {
+        const q = await (quoteSource ?? quote)(dir, amountIn)
+        await writeQuoteCache(key, q)
+        return q
+      } catch (e) {
+        const prev = await readQuoteCache(key)
+        if (prev) return prev
+        throw e
+      } finally { quoteInflight.delete(key) }
+    })()
+    quoteInflight.set(key, p)
+  }
+  return p
+}
+/** Cached swap quote, stale-while-revalidate + single-flight. Last good value is served if upstream fails. */
+export async function getQuote(dir: SwapDir, amountIn: bigint) {
+  const key = `q:${dir}:${amountIn}`
+  const cur = await readQuoteCache(key)
+  if (cur) {
+    const age = Date.now() - (cur.at ?? 0)
+    if (age < quoteTtl()) return cur
+    void refreshQuote(key, dir, amountIn).catch(() => {})
+    return cur
+  }
+  return refreshQuote(key, dir, amountIn)
+}
+
 export function registerPrice(app: Hono<Env>) {
   app.get('/api/price', async c => {
+    await rateLimit(`price:${clientIp(c)}`, pricePerIp(), 60_000)
     const p = await getPrice().catch(() => null)
     if (!p) return c.json({ error: 'price unavailable' }, 503)
     c.header('Cache-Control', 'public, max-age=5, stale-while-revalidate=30')
@@ -213,38 +270,37 @@ export function registerPrice(app: Hono<Env>) {
   })
   // Server-sent events: one push per new price. Each replica reads the shared cache on a timer; the
   // Redis pub/sub channel makes a fresh read on any replica reach every replica's clients at once.
-  app.get('/api/price/stream', c => streamSSE(c, async s => {
+  app.get('/api/price/stream', async c => {
+    await rateLimit(`price:${clientIp(c)}`, pricePerIp(), 60_000)
+    return streamSSE(c, async s => {
     let lastAt = 0, alive = true
     const send = async (p: WifPrice) => { if (p.updatedAt === lastAt) return; lastAt = p.updatedAt; await s.writeSSE({ event: 'price', data: JSON.stringify(p) }) }
     const off = store.subscribe(CH, m => { void send(JSON.parse(m)).catch(() => {}) })
     s.onAbort(() => { alive = false; off() })
     try { await send(await getPrice()) } catch { /* client keeps last */ }
     while (alive) {
-      await s.sleep(TTL)
+      await s.sleep(priceTtl())
       if (!alive) break
       try { await send(await getPrice()) } catch { /* retry next tick */ }
       await s.writeSSE({ event: 'ping', data: String(Date.now()) }).catch(() => { alive = false })
     }
-  }))
+  })
+  })
   // The burn counters on the landing page and the world strip: two chain reads, cached for everyone (SWR), so
   // browsers never make their own RPC calls for them and a slow RPC never holds the page.
   app.get('/api/burn', async c => {
+    await rateLimit(`price:${clientIp(c)}`, pricePerIp(), 60_000)
     c.header('Cache-Control', 'public, max-age=15, stale-while-revalidate=60')
     return c.json(await burnStats())
   })
   app.get('/api/swap/quote', async c => {
+    await rateLimit(`price:${clientIp(c)}`, pricePerIp(), 60_000)
     const dir = c.req.query('dir') === 'wif2eth' ? 'wif2eth' : 'eth2wif'
     const raw = c.req.query('amount') ?? ''
     if (!/^\d+(\.\d{1,18})?$/.test(raw)) fail(400, 'enter an amount')
     const amt = parseUnits(raw, 18)
     if (amt <= 0n || amt > parseUnits(dir === 'eth2wif' ? '1000' : '10000000000', 18)) fail(400, 'that amount is out of range')
-    const key = `q:${dir}:${amt}`
-    const mem = store.kind === 'memory'
-    const hit = mem ? quoteMem.get(key) : await store.get(key).catch(() => null)
-    if (hit) return c.json(JSON.parse(hit))
-    const q = await quote(dir, amt)
-    if (mem) quoteMem.set(key, JSON.stringify(q))
-    else await store.set(key, JSON.stringify(q), QUOTE_TTL_MS).catch(() => {})
+    const q = await getQuote(dir, amt)
     return c.json(q)
   })
 }

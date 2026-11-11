@@ -18,6 +18,7 @@ import { privyBridge, privyEnabled, privyUsable, wantPrivy, type PrivyTokens } f
 import { humanCheck, resetHumanCheck, waitForHumanCheck } from '../components/HumanCheck'
 import { adoptUser, api, endSessionEpoch, getVersion, getDrop, subscribe, type ApiUser } from './client'
 import { users, type Post, type User } from '../state/registry'
+import { userError } from '../lib/txError'
 
 /** links: what this account can sign in with besides a guest key (from /api/me). */
 export type MeWallet = { address: string; kind: 'main' | 'linked' | 'guest' | 'privy'; main: boolean; receiving: boolean; privy: boolean; owner?: { via: 'x' | 'email'; x: string | null } }
@@ -93,7 +94,7 @@ export function linkErrorText(e: unknown, kind: 'x' | 'wallet' | 'email'): strin
   if (/linked_to_another_user|already.*(linked|belongs)|account_already_linked/i.test(m))
     return kind === 'email' && !/wallet|different/i.test(m) ? 'that email already belongs to another wifly account' : /wallet/i.test(m) || kind === 'wallet' ? 'that wallet already belongs to another wifly account' : 'that x account already belongs to another wifly account'
   if (/different x or email/i.test(m)) return 'this account already has a different x or email sign-in linked'
-  return m.toLowerCase() || 'that didn’t go through'
+  return userError(e)
 }
 function guestAddress(): string | null {
   try { const pk = localStorage.getItem(GUEST) as Hex | null; return pk ? privateKeyToAccount(pk).address.toLowerCase() : null } catch { return null }

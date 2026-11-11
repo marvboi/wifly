@@ -9,6 +9,7 @@ import { useStore } from '../state/store'
 import { HandleField, useHandleCheck } from './HandleField'
 import { Amount } from './Bits'
 import { Icon } from './Icon'
+import { userError } from '../lib/txError'
 
 export type Identity = {
   handle: string; wifName: string | null
@@ -78,7 +79,7 @@ export function BumpNotice() {
       const r = await api<{ me: ApiUser }>('/me', { method: 'PATCH', json: { handle: to } })
       adoptUser({ ...r.me, you: true }); setMe(r.me as never)
       qc.invalidateQueries(); toast(`you’re @${r.me.handle} now`, 'your posts, followers and badges came with you')
-    } catch (e) { toast('couldn’t rename', (e as Error).message) } finally { setBusy(false) }
+    } catch (e) { toast('couldn’t rename', userError(e)) } finally { setBusy(false) }
   }
   return (
     <section className="idcard idcard--notice" aria-label="your @name is changing">

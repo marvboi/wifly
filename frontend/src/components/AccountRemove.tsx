@@ -2,6 +2,7 @@
 import { useState } from 'react'
 import { Sheet } from '../sheets/Sheets'
 import { Icon } from './Icon'
+import { userError } from '../lib/txError'
 
 export function RemoveAccountSheet({ handle, mode, onClose, onConfirm }: {
   handle: string | null; mode: 'self' | 'admin'; onClose: () => void; onConfirm: (typed: string) => Promise<void>
@@ -16,7 +17,7 @@ export function RemoveAccountSheet({ handle, mode, onClose, onConfirm }: {
   const self = mode === 'self'
   const go = async () => {
     setBusy(true); setErr(null)
-    try { await onConfirm(clean) } catch (e) { setErr((e as Error).message) } finally { setBusy(false) }
+    try { await onConfirm(clean) } catch (e) { setErr(userError(e)) } finally { setBusy(false) }
   }
   return (
     <Sheet title={self ? 'delete my account' : `remove ${handle ? `@${handle}` : 'this account'}`} onClose={onClose}

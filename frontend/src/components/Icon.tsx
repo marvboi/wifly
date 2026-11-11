@@ -58,6 +58,8 @@ const paths = {
   at: <><circle cx="12" cy="12" r="3.6" /><path d="M15.6 8.5v4.6a2.4 2.4 0 0 0 4.8 0V12a8.5 8.5 0 1 0-3.3 6.7" /></>,
   camera: <><path d="M4.5 8.5a1.5 1.5 0 0 1 1.5-1.5h2.2l1.4-2h4.8l1.4 2H18a1.5 1.5 0 0 1 1.5 1.5v9A1.5 1.5 0 0 1 18 19H6a1.5 1.5 0 0 1-1.5-1.5z" /><circle cx="12" cy="12.75" r="3.25" /></>,
   image: <><rect x="3.5" y="4.5" width="17" height="15" rx="2" /><circle cx="9" cy="10" r="1.75" /><path d="m4 18 5-5 4 4 2.5-2.5L20 19" /></>,
+  mapPin: <><path d="M12 21s-7-5.8-7-11a7 7 0 1 1 14 0c0 5.2-7 11-7 11Z" /><circle cx="12" cy="10" r="2.4" /></>,
+  clock: <><circle cx="12" cy="12" r="8.5" /><path d="M12 7.5V12l3.4 2.1" /></>,
 } satisfies Record<string, JSX.Element>
 
 export type IconName = keyof typeof paths

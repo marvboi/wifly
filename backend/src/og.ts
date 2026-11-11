@@ -236,7 +236,7 @@ export function previewPage(m: ReturnType<typeof metaFor>): string {
     <title>${esc(m.title)}</title>
     <meta name="description" content="${esc(m.desc)}" />
     ${headHtml(m)}
-    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <link rel="icon" href="/favicon.svg?v=12.4" type="image/svg+xml" />
   </head>
   <body>
     <h1>${esc(m.title)}</h1>

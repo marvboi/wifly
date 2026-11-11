@@ -127,7 +127,9 @@ test('frontend: no uppercase WIF / ETH / USD / UTC left in any UI string', () =>
     for (const m of s.matchAll(/(['"`])((?:(?!\1)[^\n\\]|\\.)*?)\1/g)) {
       const t = m[2]
       if (/^(WIF|ETH)$/.test(t) || /WIF Par/.test(t)) continue // code values ('WIF' | 'ETH') and the font
-      if (/\b(WIF|ETH|USD|UTC)\b/.test(t) && /\s/.test(t)) bad.push(`${rel}: ${t.slice(0, 60)}`)
+      // $WIF is the token ticker in the short error line (speed.12.4)
+      const shown = t.replace(/\$WIF/g, '')
+      if (/\b(WIF|ETH|USD|UTC)\b/.test(shown) && /\s/.test(t)) bad.push(`${rel}: ${t.slice(0, 60)}`)
     }
     for (const m of s.matchAll(/>([^<>{}\n]*\b(WIF|ETH|USD|UTC)\b[^<>{}\n]*)</g)) bad.push(`${rel}: jsx ${m[1].trim().slice(0, 60)}`)
   }

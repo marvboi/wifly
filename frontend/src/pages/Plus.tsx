@@ -13,7 +13,7 @@ import { useWifBalance } from '../lib/chain'
 import { motion } from 'motion/react'
 import { PLUS_NAME } from '../brand'
 import { PREVIEW_NOTE, useStore } from '../state/store'
-import { failArgs, plans, useNeedsApprove, usePlusStatus, useSendPlan, type PlusPlanId } from '../lib/wifly'
+import { userError, failArgs, plans, useNeedsApprove, usePlusStatus, useSendPlan, type PlusPlanId } from '../lib/wifly'
 import { PriceTag, Token } from '../components/Bits'
 import { FeeSplit } from '../components/FeeSplit'
 import { PageHead } from '../components/Shell'
@@ -135,7 +135,7 @@ export function Plus() {
       } else if (me) await api('/plus/auto-renew', { method: 'POST', json: { on, agreedPrice: agreed, plan } })
       await qc.invalidateQueries({ queryKey: ['plus'] })
       toast(on ? `auto-renew on, up to ${agreed.toLocaleString()} wif` : 'auto-renew off', chain.live ? 'saved onchain' : PREVIEW_NOTE)
-    } catch (e) { toast('couldn’t change auto-renew', (e as Error).message) } finally { setAutoUi(null); setBusy(null) }
+    } catch (e) { toast('couldn’t change auto-renew', userError(e)) } finally { setAutoUi(null); setBusy(null) }
   }
   const getWif = () => { const n = plusTopUp(price); openSheet({ type: 'swap', wifOut: n, reason: `get ${n.toLocaleString()} wif for ${name} (${price.toLocaleString()} + a small buffer)` }) }
 
@@ -200,7 +200,7 @@ export function Plus() {
             adds {addsLabel} from {fmtDate(base)} · new end <b>{fmtDate(newEnd)}</b>. no proration: every day you paid for stays.
             {extend && !switching && <> <button className="plusx-link" onClick={() => setExtend(false)}>cancel</button></>}</p>}
           <div className="plusx-wallet">
-            <span className="small muted"><Token size={16} /> {wif === undefined ? 'connect a wallet to see your wif' : <>you have <b className="num">{Math.floor(wif).toLocaleString()} wif</b></>}</span>
+            <span className="small muted"><Token size={16} /> {wif === undefined ? 'connect a wallet to see your balance' : <>you have <b className="num">{Math.floor(wif).toLocaleString()} wif</b></>}</span>
             {open && (shortBy || wif === undefined) && <button className="btn btn--ghost btn--sm" onClick={getWif}>get wif</button>}
           </div>
           {isTeam && <p className="small muted plusx-note"><Icon name="shield" size={14} /> this is the team wallet. it can’t subscribe to itself.</p>}

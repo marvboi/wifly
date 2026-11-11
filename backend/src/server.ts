@@ -13,7 +13,12 @@ import { startVerifier } from './verify'
 import { runStartupMaintenance } from './maint'
 import { reconcileAll } from './reconcile'
 import { warmPrice } from './price'
+import { store } from './cache'
 import { errLine } from './errline'
+
+// speed.12: never let a stray rejection take the process down quietly
+process.on('unhandledRejection', (e) => console.error('[unhandledRejection]', errLine(e)))
+process.on('uncaughtException', (e) => console.error('[uncaughtException]', errLine(e)))
 
 await migrate()
 // one-time data maintenance (marker in maint_runs), before the server listens
@@ -34,7 +39,10 @@ app.use('/uploads/*', async (c, next) => {
 })
 app.use('/uploads/*', serveStatic({ root: relative(process.cwd(), ROOT) || '.', rewriteRequestPath: p => p }))
 
-serve({ fetch: app.fetch, port: PORT }, i => console.log(`wifly api on http://localhost:${i.port}`))
+serve({ fetch: app.fetch, port: PORT }, i => {
+  console.log(`wifly api on http://localhost:${i.port}`)
+  console.log(`[cache] using ${store.kind}`)
+})
 // take the cold price read now so no visitor waits on the chain for it
 warmPrice()
 // Weekly keeper (finalizeEpoch). Off unless WEEK_KEEPER_ENABLED=true.
