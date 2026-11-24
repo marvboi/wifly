@@ -108,7 +108,7 @@ test('names: paying-from sits above the buy button (name page, listing) and the 
   const n = src('pages/Names.tsx')
   const buy = n.indexOf('`buy for ${fmt(l.price)} wif`'), steps = n.indexOf('<TxSteps pull={l.price}')
   assert.ok(steps > 0 && steps < buy, 'TxSteps (payer + steps) before the buy button')
-  const claim = n.indexOf('data-testid="claim-go"'), payer = n.indexOf('<PayingFrom className="names-claim__payer" />')
+  const claim = n.indexOf('data-testid="claim-go"'), payer = n.indexOf('className="names-claim__payer"')
   assert.ok(payer > 0 && payer < claim, 'payer before the claim button')
 })
 
