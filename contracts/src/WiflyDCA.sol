@@ -33,6 +33,8 @@ contract WiflyDCA is
     uint32 public constant MIN_INTERVAL = 1 hours;
     uint16 public constant MAX_SLIPPAGE_BPS = 1_000; // 10%
     uint256 public constant BPS = 10_000;
+    uint256 public constant MAX_RUN_FEE_BPS = 100; // per-run fee cap: 1% of the buy
+    address public constant DEAD = 0x000000000000000000000000000000000000dEaD;
 
     uint8 internal constant V4_SWAP = 0x10; // Universal Router command
     uint8 internal constant SWAP_EXACT_IN_SINGLE = 0x06; // v4 router actions
@@ -104,8 +106,16 @@ contract WiflyDCA is
     uint256 public nextPlanId;
     uint256 public totalDeposits;
 
-    /// @dev Reserved storage for future upgrades.
-    uint256[50] private __gap;
+    // ---------------------------------------------------------------- v2 per-run fee (appended; 1 gap slot). OFF by default.
+    /// @notice ETH fee per buy, bps of amountPerBuy, paid on top from the plan. 0 = off.
+    uint16 public runFeeBps;
+    /// @notice Share of the run fee swapped to WIF and burned, bps of the fee.
+    uint16 public runFeeBurnBps;
+    /// @notice Gets the rest of the run fee (ETH).
+    address public runFeeRecipient;
+
+    /// @dev Reserved storage for future upgrades (50 - 1).
+    uint256[49] private __gap;
 
     // ---------------------------------------------------------------- events
 
@@ -148,6 +158,9 @@ contract WiflyDCA is
     event KeeperSet(address indexed keeper, bool allowed);
     event ExcessEthSwept(address indexed to, uint256 amount);
     event TokenRescued(address indexed token, address indexed to, uint256 amount);
+    event RunFeeSet(uint256 feeBps, uint256 burnBps, address recipient);
+    /// @notice `burnedEth` was swapped to WIF and burned (0 if that swap failed; then it went to the recipient).
+    event RunFeeTaken(uint256 indexed planId, uint256 fee, uint256 burnedEth, uint256 wifBurned);
 
     // ---------------------------------------------------------------- errors
 
@@ -321,6 +334,21 @@ contract WiflyDCA is
 
     // ================================================================ admin
 
+    /// @notice Per-run fee, OFF until set. Capped at 1% of each buy.
+    function setRunFee(uint256 feeBps, uint256 burnBps, address recipient) external onlyOwner {
+        if (feeBps > MAX_RUN_FEE_BPS || burnBps > BPS) revert BadParams();
+        if (feeBps != 0 && recipient == address(0)) revert ZeroAddress();
+        runFeeBps = uint16(feeBps);
+        runFeeBurnBps = uint16(burnBps);
+        runFeeRecipient = recipient;
+        emit RunFeeSet(feeBps, burnBps, recipient);
+    }
+
+    /// @notice ETH fee charged on the plan's next buy (0 while the fee is off).
+    function runFee(uint256 planId) public view returns (uint256) {
+        return (uint256(_plans[planId].amountPerBuy) * runFeeBps) / BPS;
+    }
+
     function setKeeper(address keeper, bool allowed) external onlyOwner {
         if (keeper == address(0)) revert ZeroAddress();
         isKeeper[keeper] = allowed;
@@ -383,7 +411,7 @@ contract WiflyDCA is
         if (pl.paused) return Skip.PlanPaused;
         if (pl.maxBuys != 0 && pl.buysDone >= pl.maxBuys) return Skip.Finished;
         if (block.timestamp < nextBuyAt(planId)) return Skip.NotDue;
-        if (pl.balance < uint256(pl.amountPerBuy) + pl.keeperTip) return Skip.LowBalance;
+        if (pl.balance < uint256(pl.amountPerBuy) + pl.keeperTip + runFee(planId)) return Skip.LowBalance;
         return Skip.None;
     }
 
@@ -397,7 +425,7 @@ contract WiflyDCA is
     function buysLeft(uint256 planId) external view returns (uint256 n) {
         Plan storage pl = _plans[planId];
         if (pl.cancelled || pl.owner == address(0)) return 0;
-        n = pl.balance / (uint256(pl.amountPerBuy) + pl.keeperTip);
+        n = pl.balance / (uint256(pl.amountPerBuy) + pl.keeperTip + runFee(planId));
         if (pl.maxBuys != 0) {
             uint256 cap = pl.buysDone >= pl.maxBuys ? 0 : pl.maxBuys - pl.buysDone;
             if (cap < n) n = cap;
@@ -461,7 +489,8 @@ contract WiflyDCA is
         Plan storage pl = _plans[planId];
         address planOwner = pl.owner;
         uint128 amountIn = pl.amountPerBuy;
-        uint256 cost = uint256(amountIn) + pl.keeperTip;
+        uint256 fee = runFee(planId);
+        uint256 cost = uint256(amountIn) + pl.keeperTip + fee;
         uint40 prevLastBuy = pl.lastBuyAt;
         pl.balance -= uint128(cost);
         totalDeposits -= cost;
@@ -483,6 +512,26 @@ contract WiflyDCA is
         }
 
         _settle(planId, wifOut);
+        if (fee != 0) _takeRunFee(planId, fee, minWifOut, amountIn);
+    }
+
+    /// @dev Burn slice: swap ETH -> WIF to 0xdEaD at the same min rate as the buy; the rest (or a failed swap) to the recipient.
+    function _takeRunFee(uint256 planId, uint256 fee, uint256 minWifOut, uint256 amountIn) internal {
+        uint256 burnEth = (fee * runFeeBurnBps) / BPS;
+        uint256 wifBurned;
+        if (burnEth != 0) {
+            uint256 minOut = Math.mulDiv(minWifOut, burnEth, amountIn);
+            uint256 before = wif.balanceOf(DEAD);
+            (bytes memory commands, bytes[] memory inputs) = _swapCall(uint128(burnEth), uint128(minOut), DEAD);
+            try router.execute{value: burnEth}(commands, inputs, block.timestamp) {
+                wifBurned = wif.balanceOf(DEAD) - before;
+            } catch {
+                burnEth = 0; // swap failed: whole fee to the recipient, the buy still stands
+            }
+        }
+        uint256 rest = fee - burnEth;
+        if (rest != 0) _sendEth(runFeeRecipient, rest);
+        emit RunFeeTaken(planId, fee, burnEth, wifBurned);
     }
 
     /// @dev Stats, keeper tip, event.

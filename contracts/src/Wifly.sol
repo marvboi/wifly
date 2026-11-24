@@ -30,6 +30,10 @@ contract Wifly is
     /// @notice Fee split: 90% to the community pot, 10% burned.
     uint256 public constant POT_BPS = 9_000;
     uint256 public constant BURN_BPS = 1_000;
+    // Flat split caps (bps of a platform fee); pot always gets the rest
+    uint256 public constant MAX_FEE_TREASURY_BPS = 3_000; // treasury at most 30%
+    uint256 public constant MIN_FEE_BURN_BPS = 500; // burn never below 5%, keeps the flywheel
+    uint256 public constant MAX_FEE_BURN_BPS = 5_000;
     uint256 public constant TOP_SPOT_PREV_BPS = 9_000; // 90% to the previous holder, 10% through _splitFee
     uint256 public constant TOP_SPOT_STEP_BPS = 11_000; // next bid >= 110% of current
     uint256 public constant MAX_TOP_SPOT_HOLD = 1 days;
@@ -149,8 +153,16 @@ contract Wifly is
     uint256 public potInCurrent;
     uint256 public potInEpoch;
 
-    /// @dev Reserved storage for future upgrades.
-    uint256[48] private __gap;
+    // ---------------------------------------------------------------- Flat split (v2, appended; uses 1 gap slot)
+    /// @notice Treasury share of each platform fee, bps of the fee (live only once feeSplitSet).
+    uint16 public feeTreasuryBps;
+    /// @notice Burn share of each platform fee, bps of the fee (live only once feeSplitSet).
+    uint16 public feeBurnBps;
+    /// @notice false = legacy 90% pot / 10% burn split.
+    bool public feeSplitSet;
+
+    /// @dev Reserved storage for future upgrades (48 - 1).
+    uint256[47] private __gap;
 
     // ------------------------------------------------------------------ events
     event Deposited(address indexed user, uint256 amount);
@@ -208,6 +220,10 @@ contract Wifly is
     event VoterRewardClaimed(uint256 indexed epoch, address indexed voter, uint256 amount);
     event EpochSharesSet(uint256 winnerShareBps, uint256 voterShareBps);
     event Rescued(address indexed token, address indexed to, uint256 amount);
+    /// @notice Platform fee shares changed (bps of the fee).
+    event FeeSharesSet(uint256 treasuryBps, uint256 burnBps, uint256 potBps);
+    /// @notice Treasury share of a platform fee, credited to the treasury's balance.
+    event TreasuryFee(address indexed treasury, uint256 amount);
 
     // ------------------------------------------------------------------ errors
     error ZeroAmount();
@@ -242,6 +258,7 @@ contract Wifly is
     error PriceAboveMax(uint256 price, uint256 maxPrice);
     error NotRenewable();
     error BadGrace();
+    error BadShares();
 
     /// @custom:oz-upgrades-unsafe-allow constructor
     constructor() {
@@ -281,6 +298,11 @@ contract Wifly is
         emit AttesterSet(attester_);
         emit TreasurySet(treasury_);
         emit TopSpotParamsSet(topSpotFloor_, topSpotMinHold);
+    }
+
+    /// @notice v2 (Flat): turn on the proposed split, 70% pot / 10% burn / 20% treasury. Run once via upgradeToAndCall.
+    function initializeFlat() external reinitializer(2) onlyOwner {
+        _setFeeShares(2_000, 1_000);
     }
 
     /// @dev UUPS: only the owner can upgrade.
@@ -567,6 +589,22 @@ contract Wifly is
         emit FeeSet(newFeeBps);
     }
 
+    /// @notice Set the platform fee split (bps of each fee); the pot gets the rest.
+    function setFeeShares(uint256 treasuryBps, uint256 burnBps) external onlyOwner {
+        _setFeeShares(treasuryBps, burnBps);
+    }
+
+    function _setFeeShares(uint256 treasuryBps, uint256 burnBps) internal {
+        // caps: treasury <= 30%, 5% <= burn <= 50%
+        if (treasuryBps > MAX_FEE_TREASURY_BPS || burnBps < MIN_FEE_BURN_BPS || burnBps > MAX_FEE_BURN_BPS) {
+            revert BadShares();
+        }
+        feeTreasuryBps = uint16(treasuryBps);
+        feeBurnBps = uint16(burnBps);
+        feeSplitSet = true;
+        emit FeeSharesSet(treasuryBps, burnBps, BPS - treasuryBps - burnBps);
+    }
+
     function setTreasury(address newTreasury) external onlyOwner {
         if (newTreasury == address(0)) revert ZeroAddress();
         treasury = newTreasury;
@@ -698,8 +736,23 @@ contract Wifly is
     /// @notice Fee preview: (fee, pot part, burned part, net to recipient).
     function quoteFee(uint256 amount) external view returns (uint256 fee, uint256 potPart, uint256 burnPart, uint256 net) {
         fee = (amount * feeBps) / BPS;
-        (potPart, burnPart) = quoteSplit(fee);
+        (potPart, burnPart,) = quotePlatformSplit(fee);
         net = amount - fee;
+    }
+
+    /// @notice Platform fee split of `amount`: (pot, burn, treasury). Pot takes rounding dust.
+    function quotePlatformSplit(uint256 amount)
+        public
+        view
+        returns (uint256 potPart, uint256 burnPart, uint256 treasuryPart)
+    {
+        if (!feeSplitSet) {
+            (potPart, burnPart) = quoteSplit(amount); // legacy 90/10
+            return (potPart, burnPart, 0);
+        }
+        burnPart = (amount * feeBurnBps) / BPS;
+        treasuryPart = (amount * feeTreasuryBps) / BPS;
+        potPart = amount - burnPart - treasuryPart;
     }
 
     /// @notice Split of `amount`: 10% burned (rounded down), the rest to the pot.
@@ -769,13 +822,26 @@ contract Wifly is
         topSpot = TopSpot({holder: user, takenAt: uint64(block.timestamp), postId: postId, amount: amount});
         if (toPrev != 0) _credit(prev, toPrev);
         emit TopSpotTaken(user, postId, amount, prev, toPrev);
-        _splitFee(amount - toPrev);
+        _splitPlatformFee(amount - toPrev); // promotion revenue: platform split
     }
 
     /// @dev Takes feeBps of `amount` and splits it. Returns the fee.
     function _takeFee(uint256 amount) internal returns (uint256 fee) {
         fee = (amount * feeBps) / BPS;
-        _splitFee(fee);
+        _splitPlatformFee(fee);
+    }
+
+    /// @dev Platform fee: pot / burn / treasury per quotePlatformSplit. Treasury share is credited, not sent.
+    function _splitPlatformFee(uint256 amount) internal {
+        if (amount == 0) return;
+        (uint256 toPot, uint256 toBurn, uint256 toTreasury) = quotePlatformSplit(amount);
+        _addToPot(toPot);
+        if (toTreasury != 0) {
+            _credit(treasury, toTreasury);
+            emit TreasuryFee(treasury, toTreasury);
+        }
+        emit FeeSplit(toPot, toBurn);
+        _burn(toBurn);
     }
 
     /// @dev 90% (+ dust) to `epochPot`, 10% burned. WIF must already be held here.

@@ -36,9 +36,9 @@ contract WiflyNames is
     /// @notice Sale fee split: 90% community pot, 10% burned.
     uint256 public constant SALE_POT_BPS = 9_000;
     uint256 public constant SALE_BURN_BPS = 1_000;
-    uint256 public constant MIN_LEN = 3;
+    uint256 public constant MIN_LEN = 2; // v2: 2-char names (open once claimFee2 is set)
     uint256 public constant MAX_LEN = 20;
-    uint256 public constant SHORT_LEN = 4; // names of 3-4 chars use `shortClaimFee`
+    uint256 public constant SHORT_LEN = 4; // short-name art for 2-4 chars; 4 chars use `shortClaimFee`
     address public constant DEAD = 0x000000000000000000000000000000000000dEaD;
     uint256 public constant MAX_KEY_LEN = 64; // text record key, bytes
     uint256 public constant MAX_TEXT_LEN = 256; // text record value, bytes
@@ -48,7 +48,7 @@ contract WiflyNames is
     bool public useBurnFunction;
 
     uint256 public claimFee; // 5+ chars
-    uint256 public shortClaimFee; // 3-4 chars
+    uint256 public shortClaimFee; // 4 chars (and 3 chars while claimFee3 is 0)
     uint256 public feeBps; // marketplace fee
     address public treasury;
     /// @notice Wifly community pot; if unset, the pot share goes to `treasury`.
@@ -78,8 +78,16 @@ contract WiflyNames is
     mapping(uint256 => mapping(uint256 => address)) internal _addrs; // tokenId => version => addr
     mapping(uint256 => mapping(uint256 => mapping(string => string))) internal _texts; // tokenId => version => key => value
 
-    /// @dev Reserved storage for future upgrades.
-    uint256[50] private __gap;
+    // ---------------------------------------------------------------- v2 (appended; uses 3 gap slots)
+    /// @notice 3-char claim fee; 0 = use shortClaimFee (legacy).
+    uint256 public claimFee3;
+    /// @notice 2-char claim fee; 0 = 2-char names closed.
+    uint256 public claimFee2;
+    /// @notice Multi-token checkout (WiflyPayments) allowed to mint via claimFor; 0 = off.
+    address public paymentRouter;
+
+    /// @dev Reserved storage for future upgrades (50 - 3).
+    uint256[47] private __gap;
 
     /// @notice `fee` is the claim fee paid (0 for reserved names).
     event NameClaimed(uint256 indexed tokenId, string name, address indexed owner, uint256 fee);
@@ -91,6 +99,9 @@ contract WiflyNames is
     event Delisted(uint256 indexed tokenId);
     event Sold(uint256 indexed tokenId, address indexed seller, address indexed buyer, uint256 price, uint256 fee);
     event ClaimFeesSet(uint256 claimFee, uint256 shortClaimFee);
+    /// @notice All four length tiers: 5+, 4, 3, 2 chars.
+    event TierFeesSet(uint256 fee5, uint256 fee4, uint256 fee3, uint256 fee2);
+    event PaymentRouterSet(address router);
     event FeeSet(uint256 feeBps);
     event TreasurySet(address treasury);
     event ReservationsLocked();
@@ -123,6 +134,8 @@ contract WiflyNames is
     error BadKey();
     error TextTooLong();
     error BadTheme();
+    error TierClosed();
+    error NotRouter();
 
     /// @custom:oz-upgrades-unsafe-allow constructor
     constructor() {
@@ -156,6 +169,11 @@ contract WiflyNames is
         emit ClaimFeesSet(claimFee_, shortClaimFee_);
     }
 
+    /// @notice v2: set all four tier fees at upgrade time (run once via upgradeToAndCall).
+    function initializeV2(uint256 fee5, uint256 fee4, uint256 fee3, uint256 fee2) external reinitializer(2) onlyOwner {
+        _setTierFees(fee5, fee4, fee3, fee2);
+    }
+
     /// @dev UUPS: only the owner can upgrade.
     function _authorizeUpgrade(address) internal override onlyOwner {}
 
@@ -171,6 +189,16 @@ contract WiflyNames is
             _payOut(toTreasury, toPot, 0);
         }
         emit NameClaimed(tokenId, label, msg.sender, fee);
+    }
+
+    /// @notice Checkout router mints a name it already charged for (USDG / ETH). Fee 0 here: paid in the router.
+    function claimFor(string calldata name, address to) external nonReentrant whenNotPaused returns (uint256 tokenId) {
+        if (msg.sender != paymentRouter || paymentRouter == address(0)) revert NotRouter();
+        if (to == address(0)) revert ZeroAddress();
+        string memory label = toLabel(name);
+        _feeOf(label); // validates, and keeps closed tiers closed
+        tokenId = _mintName(label, to);
+        emit NameClaimed(tokenId, label, to, 0);
     }
 
     /// @notice Owner mints a reserved name for free, until `lockReservations`.
@@ -259,6 +287,25 @@ contract WiflyNames is
         emit ClaimFeesSet(claimFee_, shortClaimFee_);
     }
 
+    /// @notice Set every length tier: 5+, 4, 3, 2 chars. fee2 = 0 closes 2-char names.
+    function setTierFees(uint256 fee5, uint256 fee4, uint256 fee3, uint256 fee2) external onlyOwner {
+        _setTierFees(fee5, fee4, fee3, fee2);
+    }
+
+    function _setTierFees(uint256 fee5, uint256 fee4, uint256 fee3, uint256 fee2) internal {
+        claimFee = fee5;
+        shortClaimFee = fee4;
+        claimFee3 = fee3;
+        claimFee2 = fee2;
+        emit ClaimFeesSet(fee5, fee4);
+        emit TierFeesSet(fee5, fee4, fee3, fee2);
+    }
+
+    function setPaymentRouter(address router) external onlyOwner {
+        paymentRouter = router;
+        emit PaymentRouterSet(router);
+    }
+
     function setFeeBps(uint256 newFeeBps) external onlyOwner {
         if (newFeeBps > MAX_FEE_BPS) revert FeeTooHigh();
         feeBps = newFeeBps;
@@ -316,7 +363,7 @@ contract WiflyNames is
         return name;
     }
 
-    /// @notice True if `name` is a bare label of 3-20 bytes of [a-z0-9_].
+    /// @notice True if `name` is a bare label of 2-20 bytes of [a-z0-9_].
     function isValidName(string memory name) public pure returns (bool) {
         bytes memory b = bytes(name);
         if (b.length < MIN_LEN || b.length > MAX_LEN) return false;
@@ -339,7 +386,8 @@ contract WiflyNames is
 
     function isAvailable(string calldata name) external view returns (bool) {
         string memory label = toLabel(name);
-        return isValidName(label) && _ownerOf(_id(label)) == address(0);
+        if (!isValidName(label) || _ownerOf(_id(label)) != address(0)) return false;
+        return bytes(label).length != 2 || claimFee2 != 0; // 2-char tier must be open
     }
 
     /// @notice Owner of a name, or address(0) if unclaimed.
@@ -428,15 +476,26 @@ contract WiflyNames is
         );
     }
 
-    /// @dev ERC-4906 (metadata update events).
+    /// @notice ERC-2981: outside marketplaces pay the same resale fee to the treasury.
+    function royaltyInfo(uint256, uint256 salePrice) external view returns (address, uint256) {
+        return (treasury, (salePrice * feeBps) / BPS);
+    }
+
+    /// @dev ERC-4906 (metadata update events) and ERC-2981 (royalties).
     function supportsInterface(bytes4 interfaceId) public view override returns (bool) {
-        return interfaceId == 0x49064906 || super.supportsInterface(interfaceId);
+        return interfaceId == 0x49064906 || interfaceId == 0x2a55205a || super.supportsInterface(interfaceId);
     }
 
     // =================================================================== internal
     function _feeOf(string memory label) internal view returns (uint256) {
         if (!isValidName(label)) revert InvalidName();
-        return bytes(label).length <= SHORT_LEN ? shortClaimFee : claimFee;
+        uint256 len = bytes(label).length;
+        if (len == 2) {
+            if (claimFee2 == 0) revert TierClosed(); // 2-char opens only once priced
+            return claimFee2;
+        }
+        if (len == 3 && claimFee3 != 0) return claimFee3;
+        return len <= SHORT_LEN ? shortClaimFee : claimFee;
     }
 
     function _id(string memory label) internal pure returns (uint256) {
