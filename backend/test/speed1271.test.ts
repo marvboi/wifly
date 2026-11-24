@@ -8,10 +8,10 @@ const root = join(dirname(fileURLToPath(import.meta.url)), '../..')
 const src = (rel: string) => readFileSync(join(root, 'frontend/src', rel), 'utf8')
 const css = () => src('styles/app.css')
 
-test('package and settings version is 0.12.6.13', () => {
-  assert.match(readFileSync(join(root, 'frontend/package.json'), 'utf8'), /"version": "0\.12\.6\.13"/)
-  assert.match(readFileSync(join(root, 'backend/package.json'), 'utf8'), /"version": "0\.12\.6\.13"/)
-  assert.match(src('pages/Settings.tsx'), />0\.12\.6\.13</)
+test('package and settings version is 0.12.6.17', () => {
+  assert.match(readFileSync(join(root, 'frontend/package.json'), 'utf8'), /"version": "0\.12\.6\.17"/)
+  assert.match(readFileSync(join(root, 'backend/package.json'), 'utf8'), /"version": "0\.12\.6\.17"/)
+  assert.match(src('pages/Settings.tsx'), />0\.12\.6\.17</)
 })
 
 test('Turnstile stays silent and off-layout: no widget, no retry line, no console noise', () => {

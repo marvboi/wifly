@@ -7,10 +7,10 @@ import { dirname, join } from 'node:path'
 const root = join(dirname(fileURLToPath(import.meta.url)), '../..')
 const src = (rel: string) => readFileSync(join(root, 'frontend/src', rel), 'utf8')
 
-test('package and settings version is 0.12.6.13', () => {
-  assert.match(readFileSync(join(root, 'frontend/package.json'), 'utf8'), /"version": "0\.12\.6\.13"/)
-  assert.match(readFileSync(join(root, 'backend/package.json'), 'utf8'), /"version": "0\.12\.6\.13"/)
-  assert.match(src('pages/Settings.tsx'), />0\.12\.6\.13</)
+test('package and settings version is 0.12.6.17', () => {
+  assert.match(readFileSync(join(root, 'frontend/package.json'), 'utf8'), /"version": "0\.12\.6\.17"/)
+  assert.match(readFileSync(join(root, 'backend/package.json'), 'utf8'), /"version": "0\.12\.6\.17"/)
+  assert.match(src('pages/Settings.tsx'), />0\.12\.6\.17</)
 })
 
 test('own-profile settings entry uses a gear icon, same link and labels', () => {

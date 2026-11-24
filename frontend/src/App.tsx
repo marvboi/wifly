@@ -30,7 +30,11 @@ import { DCA } from './pages/DCA'
 const Deploy = lazy(() => import('./pages/Deploy'))
 // docs: its own chunk, served on both hosts
 const Docs = lazy(() => import('./pages/Docs').then(m => ({ default: m.Docs })))
+const Terms = lazy(() => import('./pages/Legal').then(m => ({ default: m.Terms })))
+const Privacy = lazy(() => import('./pages/Legal').then(m => ({ default: m.Privacy })))
 const docs = <Suspense fallback={null}><Docs /></Suspense>
+const terms = <Suspense fallback={null}><Terms /></Suspense>
+const privacy = <Suspense fallback={null}><Privacy /></Suspense>
 
 /** Main host: every app path moves to the same path on the app host. */
 function ToAppHost() {
@@ -75,6 +79,8 @@ export function App() {
         <Routes>
           <Route path="/" element={<Landing />} />
           <Route path="/docs" element={docs} />
+          <Route path="/terms" element={terms} />
+          <Route path="/privacy" element={privacy} />
           <Route path="*" element={<ToAppHost />} />
         </Routes>
         <Sheets />
@@ -89,6 +95,8 @@ export function App() {
       <Routes>
         {!app && <Route path="/" element={<Landing />} />}
         <Route path="/docs" element={docs} />
+        <Route path="/terms" element={terms} />
+        <Route path="/privacy" element={privacy} />
         <Route path="/pay/:id" element={<PayLink />} />
         <Route path="/welcome" element={<Welcome />} />
         <Route path="/pot" element={<Navigate to="/vote#pot" replace />} />

@@ -173,6 +173,8 @@ const PAGE_TITLES: Record<string, [string, string]> = {
   swap: ['get $wif · wifly', 'swap for $wif onchain, right inside wifly.'],
   vote: ['vote · wifly', 'vote on the weekly pot with your $wif.'],
   docs: ['docs · wifly', 'how wifly works: tips, subscriptions, paid drops, .wif names and the weekly pot.'],
+  terms: ['terms of use · wifly', 'terms for using wifly, including rules against bots and abuse.'],
+  privacy: ['privacy policy · wifly', 'what wifly collects, what is public, and how to ask for deletion.'],
 }
 const OG_RENDER = 2 // bump when the drawing changes, so previews that cached a broken card fetch a new one
 const imgVersion = (t: Target) => createHash('sha256').update(OG_RENDER + JSON.stringify(t)).digest('hex').slice(0, 10)

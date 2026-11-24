@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { flushSync } from 'react-dom'
+import { Link } from 'react-router-dom'
 import { AppLink } from '../components/AppLink'
 import { CopyAddress, Wordmark } from '../components/Bits'
 import { Icon } from '../components/Icon'
@@ -317,6 +318,8 @@ export function Docs() {
           <footer className="dx-foot">
             <a href={SITE_URL || '/'}>wifly.fun</a>
             <AppLink to="/home">open the app</AppLink>
+            <Link to="/terms">terms</Link>
+            <Link to="/privacy">privacy</Link>
             <a href={LINKS.wifSite} target="_blank" rel="noreferrer">world is flat</a>
           </footer>
         </main>

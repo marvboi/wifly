@@ -521,7 +521,7 @@ export function Landing() {
               <p>get paid for what you post.</p>
             </div>
             <nav className="lp-foot__cols" aria-label="footer">
-              <div><span>product</span><AppLink to="/home">app</AppLink><Link to="/docs">docs</Link><a href="#fees">fees</a></div>
+              <div><span>product</span><AppLink to="/home">app</AppLink><Link to="/docs">docs</Link><a href="#fees">fees</a><Link to="/terms">terms</Link><Link to="/privacy">privacy</Link></div>
               <div><span>$wif</span><AppLink to="/swap">get $wif</AppLink><a href={LINKS.wifX} target="_blank" rel="noreferrer">$wif on x</a><a href={LINKS.wifSite} target="_blank" rel="noreferrer">world is flat</a></div>
             </nav>
           </div>

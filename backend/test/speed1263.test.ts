@@ -23,10 +23,10 @@ function memoryStore(init: Record<string, string> = {}) {
   return store
 }
 
-test('package and settings version is 0.12.6.13', () => {
-  assert.match(readFileSync(join(root, 'frontend/package.json'), 'utf8'), /"version": "0\.12\.6\.13"/)
-  assert.match(readFileSync(join(root, 'backend/package.json'), 'utf8'), /"version": "0\.12\.6\.13"/)
-  assert.match(src('pages/Settings.tsx'), />0\.12\.6\.13</)
+test('package and settings version is 0.12.6.17', () => {
+  assert.match(readFileSync(join(root, 'frontend/package.json'), 'utf8'), /"version": "0\.12\.6\.17"/)
+  assert.match(readFileSync(join(root, 'backend/package.json'), 'utf8'), /"version": "0\.12\.6\.17"/)
+  assert.match(src('pages/Settings.tsx'), />0\.12\.6\.17</)
   assert.doesNotMatch(src('pages/Settings.tsx'), /0\.12\.6\.2/)
 })
 

@@ -1,0 +1,18 @@
+/* legal pages reuse docs chrome; only the back control in the top bar is extra. */
+.dx-top__back {
+  flex: none;
+  width: 36px;
+  height: 36px;
+  display: grid;
+  place-items: center;
+  border-radius: 12px;
+  border: 1px solid var(--line-strong);
+  background: var(--bg);
+  color: var(--ink);
+}
+.dx-top__back:hover { border-color: var(--ink); }
+.dx--legal .dx-top__tag { max-width: 42vw; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dx--legal .dx-main { margin: 0 auto; }
+@media (max-width: 860px) {
+  .dx--legal .dx-top__tag { font-size: 12px; padding: 3px 8px; }
+}
