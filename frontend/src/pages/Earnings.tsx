@@ -21,7 +21,7 @@ const DEMO_EARNINGS: Earnings = {
   live: true,
   withdrawableWif: 12_450.25,
   split: FLAT_FEE_SPLIT,
-  paymentsLive: false,
+  paymentsLive: true,
   sources: [
     { label: 'tips', note: 'example local row' },
     { label: 'subscriptions', note: 'example local row' },
@@ -85,7 +85,7 @@ export function Earnings() {
             </ul>
             <p className="muted small"><Token size={16} /> withdraw from the wifly contract from any wallet that holds the balance.</p>
           </section>
-          {d?.paymentsLive && <p className="muted small center">plus, names and boosts can also settle in USDG or ETH on Wifly.</p>}
+          {d?.paymentsLive && <p className="muted small center">plus, names and boosts can also settle in USDG or eth on Wifly.</p>}
         </div>
       )}
     </>

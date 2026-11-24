@@ -280,6 +280,7 @@ contract Wifly is
     error SwapFailed();
     error InsufficientWif();
     error VoteTooLow(uint256 minimum);
+    error EthRefundFailed();
 
     /// @custom:oz-upgrades-unsafe-allow constructor
     constructor() {
@@ -558,10 +559,6 @@ contract Wifly is
         if (amount == 0) revert ZeroAmount();
         minVoteAmount = amount;
         emit MinVoteSet(amount);
-    }
-
-  function quoteUsdgForWif(uint256 wifWei) external view returns (uint256) {
-        return UsdMath.usdgForWif(wifWei, usdgPerWif);
     }
 
     function payPlusUsdg(address creator, uint8 tier, uint8 plan, uint256 usdgAmount)
@@ -1065,7 +1062,7 @@ contract Wifly is
         uint256 bal = address(this).balance;
         if (bal != 0) {
             (bool ok,) = msg.sender.call{value: bal}("");
-            require(ok, "eth");
+            if (!ok) revert EthRefundFailed();
         }
     }
 

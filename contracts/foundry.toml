@@ -7,6 +7,13 @@ solc_version = "0.8.28"
 evm_version = "cancun"
 optimizer = true
 optimizer_runs = 200
+# Wifly.sol only: EIP-170 headroom via via_ir + runs=1 (other contracts stay at 200 runs).
+additional_compiler_profiles = [
+  { name = "wifly-size", optimizer_runs = 1, via_ir = true },
+]
+compilation_restrictions = [
+  { paths = "src/Wifly.sol", optimizer_runs = 1, via_ir = true },
+]
 remappings = [
   "@openzeppelin/contracts/=lib/openzeppelin-contracts/contracts/",
   "@openzeppelin/contracts-upgradeable/=lib/openzeppelin-contracts-upgradeable/contracts/",

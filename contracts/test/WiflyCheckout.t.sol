@@ -72,7 +72,7 @@ contract WiflyCheckoutTest is Test {
     }
 
     function test_payPlus_usdg() public {
-        uint256 usdgDue = w.quoteUsdgForWif(1_500e18);
+        uint256 usdgDue = UsdMath.usdgForWif(1_500e18, w.usdgPerWif());
         vm.prank(alice);
         w.payPlusUsdg(team, 0, 0, usdgDue);
         (bool active,,,,,) = w.subStatus(alice, team);

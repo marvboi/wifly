@@ -653,7 +653,7 @@ contract WiflyNames is
         uint256 bal = address(this).balance;
         if (bal != 0) {
             (bool ok,) = msg.sender.call{value: bal}("");
-            require(ok, "eth");
+            if (!ok) revert SwapFailed();
         }
     }
 

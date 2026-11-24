@@ -170,7 +170,7 @@ export function Plus() {
           {v.state === 'expired' && <>it ended on {fmtDate(v.expiresAt)} and the grace period is over. renew anytime to get the check back.</>}
           {v.state === 'none' && <>a monthly or yearly pass, paid in wif.</>}
         </p>
-        {v.state === 'none' && showPay && altPayEnabled(rails) && <p className="plusx-paynote muted small">checkout can also settle in USDG or ETH on Wifly.</p>}
+        {v.state === 'none' && showPay && altPayEnabled(rails) && <p className="plusx-paynote muted small">checkout can also settle in USDG or eth on Wifly.</p>}
 
         {v.priceChanged && (
           <div className="plusx-alert" role="alert">

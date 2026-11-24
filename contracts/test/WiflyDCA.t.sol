@@ -315,12 +315,14 @@ contract WiflyDCATest is DCABase {
             vm.warp(block.timestamp + 1 hours);
         }
         assertEq(dca.buysLeft(id), 0);
+        vm.warp(dca.nextBuyAt(id));
         uint256 q8 = _quote(id);
         vm.prank(keeper);
         vm.expectRevert(abi.encodeWithSelector(WiflyDCA.NotExecutable.selector, WiflyDCA.Skip.LowBalance));
         dca.execute(id, q8);
         vm.prank(alice);
         dca.topUp{value: 0.005 ether}(id);
+        vm.warp(dca.nextBuyAt(id));
         uint256 q9 = _quote(id);
         vm.prank(keeper);
         dca.execute(id, q9);
