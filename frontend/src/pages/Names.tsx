@@ -25,7 +25,7 @@ import { LowBalance } from '../components/Swap'
 import { TxSteps } from '../components/TxSteps'
 import { PayTokenPicker } from '../components/PayTokenPicker'
 import { usePayRails } from '../api/usePayRails'
-import { altPayEnabled, formatPayLine, quotePayAmount, type PayToken } from '../lib/payToken'
+import { formatPayQuote, quotePayAmount, type PayToken } from '../lib/payToken'
 import { PayingFrom } from '../components/Payer'
 import { Mascot, type Mood } from '../components/Mascot'
 import { NameCard, ThemePicker, WifName, defaultThemeOf, nameArtUrl } from '../components/WifName'
@@ -70,8 +70,8 @@ export function Names() {
 /** "how .wif works": five short facts, two columns on desktop, stacked on mobile. Numbers come from config. */
 export function WifHow() {
   const items: { icon: IconName; label: string; body: string }[] = [
-    { icon: 'wallet', label: 'your name, your wallet', body: 'pick 3–20 characters (a–z, 0–9 and _). it ends in .wif, lives in your wallet as a transferable nft, and points to whichever wallet holds it.' },
-    { icon: 'tip', label: 'price', body: `${fmt(claimFeeOf('abcde'))} wif to claim, or ${fmt(claimFeeOf('abc'))} wif for short 3–4 character names. the claim fee goes ${CLAIM_SPLIT.treasury}% to the treasury and ${CLAIM_SPLIT.pot}% to the weekly community pot.` },
+    { icon: 'wallet', label: 'your name, your wallet', body: 'pick 2–20 characters (a–z, 0–9 and _). it ends in .wif, lives in your wallet as a transferable nft, and points to whichever wallet holds it.' },
+    { icon: 'tip', label: 'price', body: `${fmt(claimFeeOf('abcde'))} wif for 5+ characters, ${fmt(claimFeeOf('abcd'))} wif for 4, ${fmt(claimFeeOf('abc'))} wif for 3, or ${fmt(claimFeeOf('ab'))} wif for 2. the claim fee goes ${CLAIM_SPLIT.treasury}% to the treasury and ${CLAIM_SPLIT.pot}% to the weekly community pot.` },
     { icon: 'at', label: 'separate from your @username', body: 'your @name is free and always yours. a .wif is an optional upgrade you can trade.' },
     { icon: 'swap', label: 'selling', body: `sales carry a ${NAME_FEE_BPS / 100}% fee: ${FEE_SPLIT.pot}% goes to the weekly community pot and ${FEE_SPLIT.burn}% is burned.` },
     { icon: 'sparkle', label: 'fresh start on transfer', body: 'when a name is sold or sent, its address, avatar, x, link and bio are cleared for the new owner.' },
@@ -154,7 +154,7 @@ export function ClaimBox({ initial = '', onClaimed, onState, compact, andPrimary
   const ok = LIVE && !!check?.available
   const state: ClaimState = !LIVE ? 'soon' : claimed === name && name ? 'yours' : !name ? 'idle' : !check ? 'idle' : check.available ? 'available' : check.reason === 'reserved' ? 'reserved' : check.reason === 'yours' ? 'yours' : check.reason === 'invalid' ? 'idle' : 'taken'
   const valid = /^[a-z0-9_]{2,20}$/.test(name)
-  const mood: Mood = state === 'yours' || state === 'available' ? 'happy' : state === 'taken' || state === 'reserved' ? 'oops' : !name ? 'calm' : valid ? (LIVE ? 'think' : 'happy') : name.length < 3 ? 'think' : 'oops'
+  const mood: Mood = state === 'yours' || state === 'available' ? 'happy' : state === 'taken' || state === 'reserved' ? 'oops' : !name ? 'calm' : valid ? (LIVE ? 'think' : 'happy') : name.length < 2 ? 'think' : 'oops'
   const [hop, setHop] = useState(0)
   useEffect(() => { if (mood === 'happy') setHop(h => h + 1) }, [mood])
   useEffect(() => { onState?.(state, name) }, [state, name]) // eslint-disable-line react-hooks/exhaustive-deps
@@ -198,10 +198,10 @@ export function ClaimBox({ initial = '', onClaimed, onState, compact, andPrimary
           <PayTokenPicker value={payToken} onChange={setPayToken} rails={rails} className="names-claim__paytoken" />
           {(() => {
             const feeWif = name ? claimFee : claimFeeOf('abcde')
-            const shown = payToken === 'wif' ? `${fmt(feeWif)} wif` : formatPayLine(quotePayAmount(feeWif, payToken), payToken)
+            const shown = payToken === 'wif' ? `${fmt(feeWif)} wif` : formatPayQuote(quotePayAmount(feeWif, payToken), payToken)
             return (
           <p className="names-claim__price" data-testid="claim-price"><b>{shown}</b>{payToken === 'wif' && <WifUsdNote wif={feeWif} />}
-            <InfoTip label="about the claim fee">one-time. 3–4 letters {fmt(claimFeeOf('abc'))} wif, 5+ letters {fmt(claimFeeOf('abcde'))} wif. minted to your wallet.</InfoTip>
+            <InfoTip label="about the claim fee">one-time. 2 letters {fmt(claimFeeOf('ab'))} wif, 3 letters {fmt(claimFeeOf('abc'))} wif, 4 letters {fmt(claimFeeOf('abcd'))} wif, 5+ letters {fmt(claimFeeOf('abcde'))} wif. minted to your wallet.</InfoTip>
             <button type="button" className="linkbtn names-claim__more" aria-expanded={more} onClick={() => setMore(v => !v)}>details</button></p>
             )
           })()}
@@ -215,9 +215,9 @@ export function ClaimBox({ initial = '', onClaimed, onState, compact, andPrimary
           </div>}
           {ok && <PayingFrom className="names-claim__payer" />}
           {ok && wif !== undefined && wif < claimFee && <LowBalance need={claimFee} what={`claim ${name}.wif`} />}
-          <button className="btn btn--dark btn--lg btn--block" data-testid="claim-go" disabled={!ok || !!busy || (payToken !== 'wif' && !altPayEnabled(rails))} onClick={() => claim()}>{busy ? 'confirm in your wallet…' : ok ? (() => {
+          <button className="btn btn--dark btn--lg btn--block" data-testid="claim-go" disabled={!ok || !!busy} onClick={() => claim()}>{busy ? 'confirm in your wallet…' : ok ? (() => {
             const feeWif = claimFee
-            const line = payToken === 'wif' ? `claim ${name}.wif` : `claim ${name}.wif for ${formatPayLine(quotePayAmount(feeWif, payToken), payToken)}`
+            const line = payToken === 'wif' ? `claim ${name}.wif` : `claim ${name}.wif for ${formatPayQuote(quotePayAmount(feeWif, payToken), payToken)}`
             return line
           })() : 'claim'}</button>
         </>}

@@ -57,6 +57,8 @@ On-chain USDG amount for a WIF price: `quoteUsdgForWif(wifWei)` uses `usdgPerWif
 
 ## Placeholder checkout quotes (display only, not onchain)
 
+Checkout labels prefix alt-token amounts with **~** (config quotes only; not onchain swap rates). See `formatPayQuote` in `frontend/src/lib/payToken.ts`.
+
 Configured in frontend env until live swap quotes drive the UI. Defaults:
 
 | Config key | Default | Meaning |

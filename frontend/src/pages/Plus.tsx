@@ -17,7 +17,7 @@ import { userError, failArgs, plans, useNeedsApprove, usePlusStatus, useSendPlan
 import { PriceTag, Token } from '../components/Bits'
 import { PayTokenPicker } from '../components/PayTokenPicker'
 import { usePayRails } from '../api/usePayRails'
-import { altPayEnabled, formatPayLine, quotePayAmount, type PayToken } from '../lib/payToken'
+import { altPayEnabled, formatPayQuote, quotePayAmount, type PayToken } from '../lib/payToken'
 import { FeeSplit } from '../components/FeeSplit'
 import { PageHead } from '../components/Shell'
 import { Icon, type IconName } from '../components/Icon'
@@ -97,7 +97,7 @@ export function Plus() {
   const showPay = !has || switching || extend || v.state === 'grace'
   const shortBy = wif !== undefined && wif < price
   const quoted = quotePayAmount(price, payToken)
-  const payLabel = (verb: string) => `${verb} for ${formatPayLine(quoted, payToken)}`
+  const payLabel = (verb: string) => `${verb} for ${formatPayQuote(quoted, payToken)}`
 
   // auto-renew is set onchain by the wallet that holds the sub (the server tells which one after reading every wallet
   // on the account). from any other wallet it would land on a wallet with no plus, so ask to switch instead.
@@ -190,14 +190,14 @@ export function Plus() {
           </div>
           {showPay && <PayTokenPicker value={payToken} onChange={setPayToken} rails={rails} className="plusx-paytoken" />}
           {open ? <div className="plusx-price">
-            {payToken === 'wif' ? <PriceTag value={price} size={32} /> : <span className="plusx-price__alt num strong" style={{ fontSize: 32 }}>{formatPayLine(quoted, payToken)}</span>}
+            {payToken === 'wif' ? <PriceTag value={price} size={32} /> : <span className="plusx-price__alt num strong" style={{ fontSize: 32 }}>{formatPayQuote(quoted, payToken)}</span>}
             <span className="plusx-price__per">{plan === 'year' ? 'per year' : 'per month'}</span>
           </div> : <div className="plusx-price plusx-price--soon" data-testid="plus-soon">
             <b>{chain.pricesLoading ? 'checking the price…' : `${plan === 'year' ? 'yearly ' : ''}plus opens soon`}</b>
             {soon && <span className="small muted">the price isn’t set yet. this turns on by itself once it is.</span>}
           </div>}
           {showPay && <PayingFrom />}
-          {showPay ? <button className="btn btn--lg btn--dark btn--block" data-testid="plus-pay" disabled={!open || isTeam || !!busy || (payToken !== 'wif' && !altPayEnabled(rails))} onClick={() => pay(has ? 'renew' : 'buy')}>
+          {showPay ? <button className="btn btn--lg btn--dark btn--block" data-testid="plus-pay" disabled={!open || isTeam || !!busy} onClick={() => pay(has ? 'renew' : 'buy')}>
             {!open ? (chain.pricesLoading ? 'loading…' : 'opens soon') : busy === 'buy' || busy === 'renew' ? 'waiting for confirmation…'
               : switching ? (plan === 'year' ? payLabel('upgrade to yearly') : payLabel('switch to monthly'))
               : v.state === 'grace' ? payLabel('renew')

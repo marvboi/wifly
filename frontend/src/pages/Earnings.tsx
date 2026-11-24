@@ -30,6 +30,16 @@ const DEMO_EARNINGS: Earnings = {
   payouts: [{ label: 'withdraw', note: 'example local row' }],
 }
 
+function KvRow({ label, value, note }: { label: string; value?: string; note?: string }) {
+  return (
+    <li className="earnings-kv__row">
+      <span className="earnings-kv__label">{label}</span>
+      {value !== undefined ? <span className="earnings-kv__value num tabular-nums">{value}</span> : null}
+      {note ? <span className="earnings-kv__note muted small">{note}</span> : null}
+    </li>
+  )
+}
+
 export function Earnings() {
   const { me } = useSession()
   const { openSheet } = useStore()
@@ -54,38 +64,38 @@ export function Earnings() {
         </div>
       ) : loading ? <p className="muted center">loading…</p> : (
         <div className="stack gap-lg earnings-page">
-          <section className="card card--pad">
+          <section className="card card--pad earnings-hero">
             <p className="muted small">withdrawable now</p>
             <p className="hero-num"><Amount value={d?.withdrawableWif ?? 0} size={32} /></p>
             {!d?.live && !demoLocal && <p className="muted small">preview: the wifly contract is not linked in this build yet.</p>}
           </section>
-          <section className="card card--pad">
-            <h3 className="strong small">platform fee split (flat)</h3>
-            <ul className="fee-rows plain">
-              <li><span>community pot</span><span className="num">{FLAT_FEE_SPLIT.pot}%</span></li>
-              <li><span>burned</span><span className="num">{FLAT_FEE_SPLIT.burn}%</span></li>
-              <li><span>treasury</span><span className="num">{FLAT_FEE_SPLIT.treasury}%</span></li>
+          <section className="card card--pad earnings-card">
+            <h3 className="strong small earnings-card__title">platform fee split (flat)</h3>
+            <ul className="earnings-kv plain">
+              <KvRow label="community pot" value={`${FLAT_FEE_SPLIT.pot}%`} />
+              <KvRow label="burned" value={`${FLAT_FEE_SPLIT.burn}%`} />
+              <KvRow label="treasury" value={`${FLAT_FEE_SPLIT.treasury}%`} />
             </ul>
-            <p className="muted small">name claims keep their own 50/50 treasury and pot split.</p>
+            <p className="muted small earnings-card__foot">name claims keep their own 50/50 treasury and pot split.</p>
           </section>
-          <section className="card card--pad">
-            <h3 className="strong small">by source</h3>
-            <ul className="plain stack gap-sm">
+          <section className="card card--pad earnings-card">
+            <h3 className="strong small earnings-card__title">by source</h3>
+            <ul className="earnings-kv plain">
               {(d?.sources ?? []).map(s => (
-                <li key={s.label}><span className="strong">{s.label}</span><span className="muted small block">{s.note}</span></li>
+                <KvRow key={s.label} label={s.label} note={s.note} />
               ))}
             </ul>
           </section>
-          <section className="card card--pad">
-            <h3 className="strong small">payouts</h3>
-            <ul className="plain stack gap-sm">
+          <section className="card card--pad earnings-card">
+            <h3 className="strong small earnings-card__title">payouts</h3>
+            <ul className="earnings-kv plain">
               {(d?.payouts ?? []).map(p => (
-                <li key={p.label}><span className="strong">{p.label}</span><span className="muted small block">{p.note}</span></li>
+                <KvRow key={p.label} label={p.label} note={p.note} />
               ))}
             </ul>
-            <p className="muted small"><Token size={16} /> withdraw from the wifly contract from any wallet that holds the balance.</p>
+            <p className="muted small earnings-card__foot"><Token size={16} /> withdraw from the wifly contract from any wallet that holds the balance.</p>
           </section>
-          {d?.paymentsLive && <p className="muted small center">plus, names and boosts can also settle in USDG or eth on Wifly.</p>}
+          {d?.paymentsLive && <p className="muted small center earnings-page__foot">plus, names and boosts can also settle in USDG or eth on Wifly.</p>}
         </div>
       )}
     </>

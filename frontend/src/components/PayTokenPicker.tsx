@@ -25,7 +25,7 @@ export function PayTokenPicker({ value, onChange, rails, className }: {
             onClick={() => on && onChange(t)}
           >
             <span className="pay-token-seg__icon" aria-hidden="true">
-              {t === 'wif' ? <Token size={16} /> : meta.logo ? <img src={meta.logo} alt="" width={16} height={16} className="pay-token-seg__img" /> : null}
+              {t === 'wif' ? <Token size={16} /> : meta.logo ? <img src={meta.logo} alt="" width={16} height={16} className="pay-token-seg__img" loading="lazy" /> : <span className="pay-token-seg__dot" />}
             </span>
             <span>{meta.label}</span>
             {!on && <span className="pay-token-seg__soon">soon</span>}

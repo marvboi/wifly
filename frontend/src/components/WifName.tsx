@@ -17,7 +17,7 @@ export function WifName({ label, link = true, size = 'md' }: { label: string; ve
  * The animated name card: an ink card with the face, the name typing in, a shimmerless sheen sweep and the fee.
  * `state` drives the face and the stamp ("yours" plays the claim stamp).
  */
-const NAME_RE = /^[a-z0-9_]{3,20}$/
+const NAME_RE = /^[a-z0-9_]{2,20}$/
 /** URL of a name's card art, produced by the onchain WiflyNameRenderer (backend runs the same bytecode until it is deployed). */
 export const nameArtUrl = (label: string, theme?: number) => `/api/names/art/${encodeURIComponent(label)}.svg${theme === undefined ? '' : `?t=${theme}`}`
 
