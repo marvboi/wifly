@@ -244,7 +244,7 @@ export function Plus() {
       </ul>
 
       {open && <>
-      <h3 className="plusx-h">where your wif goes<InfoTip label="about plus payments">paid to the wifly team. the 2% burn is 100% burned — nothing to the pot or treasury (same for USDG and eth checkout after swap-to-WIF).</InfoTip></h3>
+      <h3 className="plusx-h">where your wif goes<InfoTip label="about plus payments">paid to the wifly team. the 2% burn is 100% burned — nothing to the pot or treasury (same for USDG and eth checkout after swap-to-wif).</InfoTip></h3>
       <section className="card plusx-card">
         <FeeSplit amount={price} recipientLabel="wifly team gets" kind="plus" />
       </section>

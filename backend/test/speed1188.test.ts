@@ -127,11 +127,15 @@ test('frontend: no uppercase WIF / ETH / USD / UTC left in any UI string', () =>
     for (const m of s.matchAll(/(['"`])((?:(?!\1)[^\n\\]|\\.)*?)\1/g)) {
       const t = m[2]
       if (/^(WIF|ETH)$/.test(t) || /WIF Par/.test(t)) continue // code values ('WIF' | 'ETH') and the font
-      // $WIF is the token ticker in the short error line (speed.12.4)
+      // $WIF is the token ticker in the short error line (speed.12.4); USDG is the only allowed all-caps ticker in UI copy
       const shown = t.replace(/\$WIF/g, '')
-      if (/\b(WIF|ETH|USD|UTC)\b/.test(shown) && /\s/.test(t)) bad.push(`${rel}: ${t.slice(0, 60)}`)
+      if (/\b(WIF|ETH|USD|UTC)\b/.test(shown) && !/\bUSDG\b/.test(t) && /\s/.test(t)) bad.push(`${rel}: ${t.slice(0, 60)}`)
     }
-    for (const m of s.matchAll(/>([^<>{}\n]*\b(WIF|ETH|USD|UTC)\b[^<>{}\n]*)</g)) bad.push(`${rel}: jsx ${m[1].trim().slice(0, 60)}`)
+    for (const m of s.matchAll(/>([^<>{}\n]*\b(WIF|ETH|USD|UTC)\b[^<>{}\n]*)</g)) {
+      const chunk = m[1].trim()
+      if (/\bUSDG\b/.test(chunk) && !/\bUSD\b/.test(chunk.replace(/USDG/g, ''))) continue
+      bad.push(`${rel}: jsx ${chunk.slice(0, 60)}`)
+    }
   }
   assert.deepEqual(bad, [])
   assert.match(src('components/TxSteps.tsx'), /allow/)
