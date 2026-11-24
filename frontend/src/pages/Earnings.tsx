@@ -1,4 +1,5 @@
 import { useQuery } from '@tanstack/react-query'
+import { useSearchParams } from 'react-router-dom'
 import { api } from '../api/client'
 import { useSession } from '../api/session'
 import { PageHead } from '../components/Shell'
@@ -15,30 +16,48 @@ type Earnings = {
   payouts: { label: string; note: string }[]
 }
 
+/** Local screenshot / demo only (not from the server). */
+const DEMO_EARNINGS: Earnings = {
+  live: true,
+  withdrawableWif: 12_450.25,
+  split: FLAT_FEE_SPLIT,
+  paymentsLive: false,
+  sources: [
+    { label: 'tips', note: 'example local row' },
+    { label: 'subscriptions', note: 'example local row' },
+    { label: 'top spot', note: 'example local row' },
+  ],
+  payouts: [{ label: 'withdraw', note: 'example local row' }],
+}
+
 export function Earnings() {
   const { me } = useSession()
   const { openSheet } = useStore()
+  const [sp] = useSearchParams()
+  const demoLocal = sp.get('demo') === 'earnings'
   const q = useQuery({
     queryKey: ['earnings', me?.handle],
     queryFn: () => api<Earnings>('/earnings'),
-    enabled: !!me,
+    enabled: !!me && !demoLocal,
   })
-  const d = q.data
+  const d = demoLocal ? DEMO_EARNINGS : q.data
+  const loading = !demoLocal && q.isLoading
   return (
     <>
       <PageHead title="creator earnings" back sub="what you earned on wifly" />
-      {!me ? (
+      {demoLocal && <p className="banner banner--demo small" role="status">local preview data for screenshots only</p>}
+      {!me && !demoLocal ? (
         <div className="empty empty--card">
           <p className="strong">sign in to see earnings</p>
           <p className="muted small">tips, subscriptions and promotion bids credit your onchain balance.</p>
           <button className="btn btn--dark btn--sm" onClick={() => openSheet({ type: 'signin' })}>sign in</button>
         </div>
-      ) : q.isLoading ? <p className="muted center">loading…</p> : (
-        <div className="stack gap-lg">
+      ) : loading ? <p className="muted center">loading…</p> : (
+        <div className="stack gap-lg earnings-page">
           <section className="card card--pad">
             <p className="muted small">withdrawable now</p>
             <p className="hero-num"><Amount value={d?.withdrawableWif ?? 0} size={32} /></p>
-            {!d?.live && <p className="muted small">preview: the wifly contract is not linked in this build yet.</p>}
+            {!d?.live && !demoLocal && <p className="muted small">preview: the wifly contract is not linked in this build yet.</p>}
           </section>
           <section className="card card--pad">
             <h3 className="strong small">platform fee split (flat)</h3>
@@ -66,7 +85,7 @@ export function Earnings() {
             </ul>
             <p className="muted small"><Token size={16} /> withdraw from the wifly contract from any wallet that holds the balance.</p>
           </section>
-          {d?.paymentsLive && <p className="muted small center">plus, names and boosts can also settle in usdg or eth through the payments router.</p>}
+          {d?.paymentsLive && <p className="muted small center">plus, names and boosts can also settle in USDG or ETH on Wifly.</p>}
         </div>
       )}
     </>

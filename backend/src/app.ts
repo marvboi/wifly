@@ -13,7 +13,7 @@ import type { Hex } from 'viem'
 import { csrf, endSession, needUser, session, startSession, verifySiwe, issueNonce, type Env, type LoginVia } from './auth'
 import {
   ALLOWED_ORIGINS, AVATAR_MAX_BYTES, AVATAR_TOO_BIG, FLAT_FEE_SPLIT, LIMITS, NAME_CLAIM_FEE, NAME_FEE_2, NAME_FEE_3, NAME_FEE_4,
-  UPLOAD_DIR, nameClaimFee, paymentsContract, usdgToken,
+  UPLOAD_DIR, nameClaimFee, usdgToken, wiflyContract,
 } from './config'
 import { all, one, run, writeTx } from './db'
 import { lazyPlusSync } from './plusSync'
@@ -159,7 +159,7 @@ app.get('/api/config', c => c.json({
   nameFees: { len5: NAME_CLAIM_FEE, len4: NAME_FEE_4, len3: NAME_FEE_3, len2: NAME_FEE_2, quote: nameClaimFee },
   flatSplit: FLAT_FEE_SPLIT,
   usdgConfigured: !!usdgToken(),
-  paymentsLive: !!paymentsContract(),
+  paymentsLive: !!usdgToken() && !!wiflyContract(),
 }))
 app.get('/api/health', c => c.json({ ok: true }))
 /** Railway health check: answers once the database responds. */

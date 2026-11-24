@@ -28,7 +28,7 @@ library Proxies {
         uint256 floor
     ) internal returns (Wifly) {
         bytes memory init = abi.encodeCall(Wifly.initialize, (wif, useBurn, owner, attester, treasury, floor));
-        return Wifly(address(new ERC1967Proxy(impl, init)));
+        return Wifly(payable(address(new ERC1967Proxy(impl, init))));
     }
 
     function names(address wif, bool useBurn, address owner, address treasury, uint256 fee, uint256 shortFee)
@@ -36,7 +36,7 @@ library Proxies {
         returns (WiflyNames)
     {
         bytes memory init = abi.encodeCall(WiflyNames.initialize, (wif, useBurn, owner, treasury, fee, shortFee));
-        return WiflyNames(address(new ERC1967Proxy(address(new WiflyNames()), init)));
+        return WiflyNames(payable(address(new ERC1967Proxy(address(new WiflyNames()), init))));
     }
 
     function badges(address wif, bool useBurn, address owner, string memory uri, uint256[] memory thresholds)

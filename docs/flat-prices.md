@@ -1,6 +1,6 @@
 # Flat price table (old vs new)
 
-Values are in WIF unless noted. **PROPOSED** rows are suggestions only; they are not changed in code on this branch except the name tiers below.
+Values are in WIF unless noted. **Marv-approved** rows are marked.
 
 ## .wif name claims (onchain)
 
@@ -27,9 +27,9 @@ Values are in WIF unless noted. **PROPOSED** rows are suggestions only; they are
 
 ## Votes
 
-| Item | Old | New |
-|------|-----|-----|
-| Per vote | 10 WIF | 10 WIF |
+| Item | Old | New (Marv approved) |
+|------|-----|---------------------|
+| Per vote | 10 WIF | **30 WIF** (`minVoteAmount` via `initializeV3`) |
 
 ## Marketplace / fees
 
@@ -42,14 +42,26 @@ Values are in WIF unless noted. **PROPOSED** rows are suggestions only; they are
 
 | Product | WIF | USDG | ETH |
 |---------|-----|------|-----|
-| Plus | yes | yes (router) | yes (router) |
-| Name claim | yes | yes (router) | yes (router) |
-| Post boost | yes | yes (router) | yes (router) |
+| Plus | yes | yes (`payPlusUsdg` on Wifly) | yes (`payPlusEth`) |
+| Name claim | yes | yes (`payClaimUsdg` on WiflyNames) | yes (`payClaimEth`) |
+| Post boost | yes | yes (`payBoostUsdg`) | yes (`payBoostEth`) |
 
-USDG token address is owner-set on `WiflyPayments`; not hardcoded (blocker until treasury publishes it).
+### USDG (Robinhood Chain, chain id 4663)
 
-## PROPOSED raises (not implemented)
+- **Token:** `0x5fc5360D0400a0Fd4f2af552ADD042D716F1d168`
+- **Decimals:** 6 (not 18)
+- **Sources:** [Robinhood Chain contracts](https://docs.robinhood.com/chain/contracts), [Paxos USDG mainnet](https://docs.paxos.com/guides/stablecoin/usdg/mainnet)
+- Default set in `initializeV3` on Wifly and WiflyNames; owner may override with `setUsdg`.
 
-| Item | Current | PROPOSED | Reason |
-|------|---------|----------|--------|
-| Vote price | 10 WIF | 15 WIF | Crowd votes are cheap versus name tiers; a small bump keeps spam down while staying accessible. |
+On-chain USDG amount for a WIF price: `quoteUsdgForWif(wifWei)` uses `usdgPerWif` (default `1e6` micro-USDG per `1e18` WIF wei). Swaps use `swapRouter` when set.
+
+## Placeholder checkout quotes (display only, not onchain)
+
+Configured in frontend env until live swap quotes drive the UI. Defaults:
+
+| Config key | Default | Meaning |
+|------------|---------|---------|
+| `VITE_PLACEHOLDER_USDG_PER_WIF` | `1` | 1 WIF shown as 1 USDG on labels (6 decimal display) |
+| `VITE_PLACEHOLDER_WIF_PER_ETH` | `1000000` | ETH checkout label: WIF amount / this = ETH shown |
+
+These values are for UI labels only; onchain checkout uses the swap router or `quoteUsdgForWif`.

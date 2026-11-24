@@ -44,7 +44,7 @@ export const LINKS = {
 }
 
 /** Crowd votes: each vote costs this much WIF; the whole vote is a fee (split like every fee, see FEE_SPLIT). */
-export const VOTE_PRICE = 10
+export const VOTE_PRICE = 30
 
 /**
  * Uniswap v4 on Robinhood Chain (from Uniswap's deployments list for chain 4663, checked on chain).
@@ -110,8 +110,16 @@ export const NAME_CLAIM_FEE = 200, NAME_FEE_4 = 2_000, NAME_FEE_3 = 4_000, NAME_
 export const NAME_SHORT_CLAIM_FEE = NAME_FEE_4
 export const NAME_FEE_BPS = 250
 export const RESERVED_NAMES = ['wifly', 'marv', 'wif']
-/** Placeholder until the official USDG logo is available (see docs/flat-new-strings.md). */
-export const USDG_LOGO = '/brand/usdg-token-flat.svg'
+/** Global Dollar (USDG) on Robinhood Chain — 6 decimals (see docs/flat-new-strings.md). */
+export const USDG_TOKEN: Address = '0x5fc5360D0400a0Fd4f2af552ADD042D716F1d168'
+export const USDG_DECIMALS = 6
+/** Official token logo from Paxos / Global Dollar brand kit (framerusercontent.com/assets/llo5qqG8OQbvOU2QpFJPTdUyn0.zip). */
+export const USDG_LOGO = '/brand/usdg-token.svg'
+/** PLACEHOLDER display quotes only (not onchain rates). See docs/flat-prices.md. */
+export const PLACEHOLDER_PAY_QUOTES = {
+  usdgPerWif: Number(import.meta.env.VITE_PLACEHOLDER_USDG_PER_WIF || 1),
+  wifPerEth: Number(import.meta.env.VITE_PLACEHOLDER_WIF_PER_ETH || 1_000_000),
+} as const
 export const claimFeeOf = (n: string) => {
   if (n.length === 2) return NAME_FEE_2
   if (n.length === 3) return NAME_FEE_3

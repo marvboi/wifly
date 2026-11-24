@@ -1,37 +1,27 @@
 # New user-facing strings (Flat upgrade)
 
-Only **new** copy introduced on this branch. Existing strings are unchanged.
+Only **new** copy introduced on this branch. **USDG** is always uppercase in UI.
 
 ## Plus (`frontend/src/pages/Plus.tsx`)
 
-- `a monthly or yearly pass, paid in wif, usdg or eth once the treasury sets the usdg address.`
-- Payment row labels: `wif`, `usdg`, `eth`
-- `usdg and eth go through the payments router when it is live.`
+- Lede (unchanged): `a monthly or yearly pass, paid in wif.`
+- `checkout can also settle in USDG or ETH on Wifly.` (when alt pay is live)
+- Pay-token picker: **USDG**, **ETH**, **wif**
 
-## Post boost (`frontend/src/pages/PostDetail.tsx`, `frontend/src/sheets/Sheets.tsx`)
+## Names claim (`frontend/src/pages/Names.tsx`)
 
-- `boost this post`
-- Sheet title: `boost this post`
-- `promote this drop to the top spot until someone outbids you.`
-- Button: `boost for {n} wif`
-- Guest gate: `sign up to boost a post`
-- Sign-in reason: `sign in to boost this drop`
+- CTA pattern: `claim {name}.wif for {amount} USDG` (or ETH via placeholder quote)
+
+## Post boost (`frontend/src/sheets/Sheets.tsx`)
+
+- `boost for {amount} USDG` / ETH variants via `formatPayLine`
 
 ## Creator earnings (`frontend/src/pages/Earnings.tsx`)
 
-- Page title: `creator earnings`
-- Subtitle: `what you earned on wifly`
-- `sign in to see earnings`
-- `tips, subscriptions and promotion bids credit your onchain balance.`
-- `withdrawable now`
-- `platform fee split (flat)`
-- Labels: `community pot`, `burned`, `treasury`
-- `name claims keep their own 50/50 treasury and pot split.`
-- Section headers: `by source`, `payouts`
-- Source notes (tips, subscriptions, top spot, treasury share)
-- Payout note for withdraw
-- `plus, names and boosts can also settle in usdg or eth through the payments router.`
+- `plus, names and boosts can also settle in USDG or ETH on Wifly.`
 
 ## USDG asset
 
-- Placeholder SVG at `frontend/public/brand/usdg-token-flat.svg` (not an official USDG brand asset).
+- Official token logo: `frontend/public/brand/usdg-token.svg`
+- Source: Global Dollar (USDG) brand resources — token logo download ZIP at `https://framerusercontent.com/assets/llo5qqG8OQbvOU2QpFJPTdUyn0.zip` (also linked from [globaldollar.com/brand](https://globaldollar.com/brand) and [paxos.com/brand-resources](https://www.paxos.com/brand-resources))
+- Token on Robinhood Chain: `0x5fc5360D0400a0Fd4f2af552ADD042D716F1d168`, **6 decimals**

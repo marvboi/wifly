@@ -1,14 +1,14 @@
-# Storage layout (Flat upgrade)
+# Storage layout — Flat upgrade
 
-Compared **main** vs **flat-upgrade** implementations for every upgraded proxy contract. New fields are appended before a reduced `__gap`; slot indices for all pre-upgrade variables are unchanged.
+Appended slots only (no relabeling of existing proxy storage).
 
-| Contract | New fields (appended) | Gap consumed |
-|----------|----------------------|--------------|
-| `Wifly` | `feeTreasuryBps`, `feeBurnBps`, `feeSplitSet` | 1 of 48 |
-| `WiflyNames` | `claimFee3`, `claimFee2`, `paymentRouter` | 3 of 50 |
-| `WiflyDCA` | `runFeeBps`, `runFeeBurnBps`, `runFeeRecipient` | 1 of 50 |
-| `WiflyBadges` | (none on this branch) | unchanged |
+| Contract | v2 append | v3 append | Gap left |
+|----------|-----------|-----------|----------|
+| `Wifly` | `feeTreasuryBps`, `feeBurnBps`, `feeSplitSet` (3) | `usdg`, `swapRouter`, `usdgPerWif`, `minVoteAmount` (4) | 43 of 48 |
+| `WiflyNames` | `claimFee3`, `claimFee2`, `paymentRouter` (3; router deprecated) | `usdg`, `swapRouter`, `usdgPerWif` (3) | 44 of 50 |
 
-`forge inspect <Contract> storageLayout` on flat-upgrade confirms no relabeling of existing slots. `WiflyPayments` is a new UUPS contract with its own layout (not an upgrade of an existing proxy).
+Verify: `cd contracts && forge inspect Wifly storageLayout` and `forge inspect WiflyNames storageLayout` on `flat-upgrade`.
 
-Test coverage: `WiflyUpgrade.t.sol` (state preserved), `WiflyFlat.t.sol` (`initializeFlat`, tier fees), `WiflyPayments.t.sol`.
+Multi-token checkout lives on the existing Wifly / WiflyNames implementations (`initializeV3`); there is no separate payments proxy.
+
+Tests: `WiflyUpgrade.t.sol`, `WiflyFlat.t.sol`, `WiflyCheckout.t.sol`, `UsdMath` via checkout tests.

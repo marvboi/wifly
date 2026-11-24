@@ -20,7 +20,12 @@ import {
 } from 'viem'
 import { useAccount, usePublicClient, useReadContract, useReadContracts, useSendTransaction } from 'wagmi'
 import { useQueryClient } from '@tanstack/react-query'
-import { BADGES_ADDRESS, LIVE, NAMES_ADDRESS, PLUS_PRICE_FALLBACK, PLUS_PRICE_YEAR_FALLBACK, PLUS_TIER, robinhoodChain, TX_ENABLED, WIF_DECIMALS, WIF_TOKEN, WIFLY_ADDRESS, WIFLY_TEAM_WALLET } from '../config'
+import {
+  BADGES_ADDRESS, LIVE, NAMES_ADDRESS, PLUS_PRICE_FALLBACK, PLUS_PRICE_YEAR_FALLBACK, PLUS_TIER, robinhoodChain, TX_ENABLED,
+  USDG_DECIMALS, USDG_TOKEN, WIF_DECIMALS, WIF_TOKEN, WIFLY_ADDRESS, WIFLY_TEAM_WALLET,
+} from '../config'
+import type { PayToken } from './payToken'
+import { quotePayAmount } from './payToken'
 import { namesAbi } from '../contracts/namesAbi'
 import { badgesAbi } from '../contracts/badgesAbi'
 import { wiflyAbi } from '../contracts/wiflyAbi'
@@ -32,7 +37,75 @@ const base = { address: W, abi: wiflyAbi, chainId } as const
 const on = (extra = true) => ({ query: { enabled: LIVE && extra } })
 
 export const toWei = (n: number) => parseUnits(String(Math.max(0, n || 0)), WIF_DECIMALS)
+export const toUsdgUnits = (n: number) => parseUnits(String(Math.max(0, n || 0)), USDG_DECIMALS)
 export const fromWei = (v: bigint) => Number(formatUnits(v, WIF_DECIMALS))
+
+const checkoutAbi = [
+  {
+    type: 'function',
+    name: 'payPlusUsdg',
+    inputs: [
+      { name: 'creator', type: 'address' },
+      { name: 'tier', type: 'uint8' },
+      { name: 'plan', type: 'uint8' },
+      { name: 'usdgAmount', type: 'uint256' },
+    ],
+    outputs: [],
+    stateMutability: 'nonpayable',
+  },
+  {
+    type: 'function',
+    name: 'payPlusEth',
+    inputs: [
+      { name: 'creator', type: 'address' },
+      { name: 'tier', type: 'uint8' },
+      { name: 'plan', type: 'uint8' },
+    ],
+    outputs: [],
+    stateMutability: 'payable',
+  },
+  {
+    type: 'function',
+    name: 'payBoostUsdg',
+    inputs: [
+      { name: 'postId', type: 'bytes32' },
+      { name: 'usdgAmount', type: 'uint256' },
+    ],
+    outputs: [],
+    stateMutability: 'nonpayable',
+  },
+  {
+    type: 'function',
+    name: 'payBoostEth',
+    inputs: [{ name: 'postId', type: 'bytes32' }],
+    outputs: [],
+    stateMutability: 'payable',
+  },
+] as const
+
+const nameCheckoutAbi = [
+  {
+    type: 'function',
+    name: 'payClaimUsdg',
+    inputs: [
+      { name: 'name', type: 'string' },
+      { name: 'to', type: 'address' },
+      { name: 'usdgAmount', type: 'uint256' },
+    ],
+    outputs: [],
+    stateMutability: 'nonpayable',
+  },
+  {
+    type: 'function',
+    name: 'payClaimEth',
+    inputs: [
+      { name: 'name', type: 'string' },
+      { name: 'to', type: 'address' },
+    ],
+    outputs: [],
+    stateMutability: 'payable',
+  },
+] as const
 
 /** Stable bytes32 ids for app objects. Posts, locked content and orders are namespaced so they never collide. */
 export const id32 = (kind: 'post' | 'content' | 'order' | 'dm' | 'paylink', id: string): Hex => keccak256(toBytes(`${kind}:${id}`))
@@ -283,14 +356,16 @@ export function useWiflyAllowance(owner?: Address) {
 
 export type Plan = {
   label: string
-  /** WIF the contract pulls with transferFrom. 0 means no approve step (from deposited balance, setAgent, withdraw…). */
+  /** ERC-20 pull (approve + transferFrom). 0 = no approve step. */
   pull: bigint
   data: Hex
   /** Contract to call (and the approve spender). Defaults to Wifly. */
   to?: Address
   /** Approve this much instead of `pull` (e.g. an auto-renew cap). Never unlimited. */
   approve?: bigint
-  /** ETH sent with the call (payable functions, e.g. a DCA deposit). */
+  /** Token for approve/pull; default WIF. */
+  pullToken?: Address
+  /** ETH sent with the call (payable functions). */
   value?: bigint
 }
 
@@ -313,8 +388,28 @@ export const plans = {
   subscribe: (creator: Address, tierId: string, price: number, plan: PlusPlanId = 'month'): Plan =>
     ({ label: 'subscribe', pull: toWei(price), data: enc({ abi: wiflyAbi, functionName: 'subscribePlan', args: [creator, tierIndex(tierId), planIdx(plan)] }) }),
   /** Wifly Plus = subscribePlan(PLUS creator, tier 0, plan). Also "renew now": it extends from the current expiry. */
-  plus: (team: Address, price: number, plan: PlusPlanId = 'month'): Plan =>
-    ({ label: 'get plus', pull: toWei(price), data: enc({ abi: wiflyAbi, functionName: 'subscribePlan', args: [team, PLUS_TIER, planIdx(plan)] }) }),
+  plus: (team: Address, price: number, plan: PlusPlanId = 'month', pay: PayToken = 'wif'): Plan => {
+    const p = planIdx(plan)
+    if (pay === 'usdg') {
+      const q = quotePayAmount(price, 'usdg')
+      return {
+        label: 'get plus',
+        pull: toUsdgUnits(q),
+        pullToken: USDG_TOKEN,
+        data: enc({ abi: checkoutAbi, functionName: 'payPlusUsdg', args: [team, PLUS_TIER, p, toUsdgUnits(q)] }),
+      }
+    }
+    if (pay === 'eth') {
+      const eth = quotePayAmount(price, 'eth')
+      return {
+        label: 'get plus',
+        pull: 0n,
+        value: parseUnits(String(eth), 18),
+        data: enc({ abi: checkoutAbi, functionName: 'payPlusEth', args: [team, PLUS_TIER, p] }),
+      }
+    }
+    return { label: 'get plus', pull: toWei(price), data: enc({ abi: wiflyAbi, functionName: 'subscribePlan', args: [team, PLUS_TIER, p] }) }
+  },
   /** Opt-in auto-renew with a price cap. The approve is capped at maxPrice (one renewal), never unlimited. maxPrice 0 = off. */
   plusAutoRenew: (team: Address, plan: PlusPlanId, maxPrice: number): Plan =>
     ({ label: maxPrice > 0 ? 'turn on auto-renew' : 'turn off auto-renew', pull: 0n, approve: maxPrice > 0 ? toWei(maxPrice) : undefined,
@@ -328,8 +423,30 @@ export const plans = {
   setYearlyPrice: (tier: number, price: number): Plan =>
     ({ label: 'set yearly price', pull: 0n, data: enc({ abi: wiflyAbi, functionName: 'setYearlyPrice', args: [tier, toWei(price)] }) }),
   // ---- WiflyNames: claim (CLAIM_SPLIT: 50% treasury / 50% pot), list / cancel, buy with a max price (2.5% fee, FEE_SPLIT)
-  nameClaim: (name: string, fee: number): Plan =>
-    ({ label: 'claim name', to: N, pull: toWei(fee), data: enc({ abi: namesAbi, functionName: 'claim', args: [name.toLowerCase()] }) }),
+  nameClaim: (name: string, fee: number, pay: PayToken = 'wif', to: Address = zeroAddress): Plan => {
+    const label = name.toLowerCase()
+    if (pay === 'usdg') {
+      const q = quotePayAmount(fee, 'usdg')
+      return {
+        label: 'claim name',
+        to: N,
+        pull: toUsdgUnits(q),
+        pullToken: USDG_TOKEN,
+        data: enc({ abi: nameCheckoutAbi, functionName: 'payClaimUsdg', args: [label, to, toUsdgUnits(q)] }),
+      }
+    }
+    if (pay === 'eth') {
+      const eth = quotePayAmount(fee, 'eth')
+      return {
+        label: 'claim name',
+        to: N,
+        pull: 0n,
+        value: parseUnits(String(eth), 18),
+        data: enc({ abi: nameCheckoutAbi, functionName: 'payClaimEth', args: [label, to] }),
+      }
+    }
+    return { label: 'claim name', to: N, pull: toWei(fee), data: enc({ abi: namesAbi, functionName: 'claim', args: [label] }) }
+  },
   nameList: (name: string, price: number): Plan =>
     ({ label: 'list name', to: N, pull: 0n, data: enc({ abi: namesAbi, functionName: 'list', args: [nameTokenId(name), toWei(price)] }) }),
   nameCancel: (name: string): Plan =>
@@ -344,8 +461,28 @@ export const plans = {
   /** Shop items, paid DMs and pay links all use pay(seller, amount, orderId). */
   pay: (seller: Address, amount: number, kind: 'order' | 'dm' | 'paylink', ref: string): Plan =>
     ({ label: 'pay', pull: toWei(amount), data: enc({ abi: wiflyAbi, functionName: 'pay', args: [seller, toWei(amount), id32(kind, ref)] }) }),
-  takeTopSpot: (postId: string, amount: number): Plan =>
-    ({ label: 'take the top spot', pull: toWei(amount), data: enc({ abi: wiflyAbi, functionName: 'takeTopSpot', args: [id32('post', postId), toWei(amount)] }) }),
+  takeTopSpot: (postId: string, amount: number, pay: PayToken = 'wif'): Plan => {
+    const pid = id32('post', postId)
+    if (pay === 'usdg') {
+      const q = quotePayAmount(amount, 'usdg')
+      return {
+        label: 'take the top spot',
+        pull: toUsdgUnits(q),
+        pullToken: USDG_TOKEN,
+        data: enc({ abi: checkoutAbi, functionName: 'payBoostUsdg', args: [pid, toUsdgUnits(q)] }),
+      }
+    }
+    if (pay === 'eth') {
+      const eth = quotePayAmount(amount, 'eth')
+      return {
+        label: 'take the top spot',
+        pull: 0n,
+        value: parseUnits(String(eth), 18),
+        data: enc({ abi: checkoutAbi, functionName: 'payBoostEth', args: [pid] }),
+      }
+    }
+    return { label: 'take the top spot', pull: toWei(amount), data: enc({ abi: wiflyAbi, functionName: 'takeTopSpot', args: [pid, toWei(amount)] }) }
+  },
   vote: (creator: Address, amount: number, postId = ''): Plan =>
     ({ label: 'vote', pull: toWei(amount), data: enc({ abi: wiflyAbi, functionName: 'vote', args: [postId ? id32('post', postId) : zeroHash, creator, toWei(amount)] }) }),
   deposit: (amount: number): Plan =>
@@ -454,8 +591,9 @@ export function useSendPlan() {
     if (!address) return { sent: false, kind: 'off', reason: 'connect a wallet first' }
     if (picked && route === 'none') return { sent: false, kind: 'off', reason: notConnectedReason(picked) }
     if (!client) return { sent: false, kind: 'error', reason: 'can’t reach the network right now' }
+    const pullToken = plan.pullToken ?? WIF_TOKEN
     const want = plan.approve ?? plan.pull
-    const have = want > 0n ? await client.readContract({ address: WIF_TOKEN, abi: erc20Abi, functionName: 'allowance', args: [address, to] }).catch(() => 0n) : 0n
+    const have = want > 0n ? await client.readContract({ address: pullToken, abi: erc20Abi, functionName: 'allowance', args: [address, to] }).catch(() => 0n) : 0n
     const needsApprove = want > 0n && have < want
     if (!needsApprove) {
       try { await client.call({ account: address, to, data: plan.data, value: plan.value }) } catch (e) { return failFrom(e, address) }
@@ -463,7 +601,7 @@ export function useSendPlan() {
     if (!TX_ENABLED) return { sent: false, kind: 'off', reason: 'sending isn’t switched on yet' }
     // gas pre-check (11.8.5): read the eth balance and an estimated cost first; short = say so and don't open the wallet
     {
-      const first = needsApprove ? { to: WIF_TOKEN, data: approveData(want, to), value: undefined } : { to, data: plan.data, value: plan.value }
+      const first = needsApprove ? { to: pullToken, data: approveData(want, to), value: undefined } : { to, data: plan.data, value: plan.value }
       const balance = await client.getBalance({ address }).catch(() => null)
       if (balance !== null) {
         let est: bigint | null = null
@@ -483,7 +621,7 @@ export function useSendPlan() {
     }
     try {
       if (needsApprove) {
-        const a = await confirm(WIF_TOKEN, approveData(want, to))
+        const a = await confirm(pullToken, approveData(want, to))
         if (!a.sent) return { ...a, reason: `the approval ${a.reason}` }
       }
       const r = await confirm(to, plan.data, plan.value)

@@ -171,7 +171,12 @@ export function Welcome() {
       <PlayfulMarksBg />
       <header className="welcome__top">
         <Wordmark to="/" size="sm" />
-        {!renaming && <ol className="welcome__dots" aria-label={`step ${step + 1} of ${STEPS.length}`}>{STEPS.map((s, i) => <li key={s} className={i < step ? 'is-done' : i === step ? 'is-current' : ''} aria-current={i === step ? 'step' : undefined} />)}</ol>}
+        {!renaming && (
+          <div className="welcome__progress">
+            <ol className="welcome__dots" aria-label={`step ${step + 1} of ${STEPS.length}`}>{STEPS.map((s, i) => <li key={s} className={i < step ? 'is-done' : i === step ? 'is-current' : ''} aria-current={i === step ? 'step' : undefined} />)}</ol>
+            <p className="welcome__stepnote muted small" aria-hidden="true">{`step ${step + 1} of ${STEPS.length} · ${TITLES[step]}`}</p>
+          </div>
+        )}
       </header>
       <div className="welcome__stage">
         <div className="welcome__host">

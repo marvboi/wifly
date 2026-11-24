@@ -123,9 +123,9 @@ export const nameClaimFee = (name: string) => {
   if (n === 4) return NAME_FEE_4
   return NAME_CLAIM_FEE
 }
-/** USDG token for WiflyPayments; unset until treasury lists the contract. */
-export const usdgToken = () => addr(process.env.USDG_TOKEN_ADDRESS)
-export const paymentsContract = () => addr(process.env.PAYMENTS_CONTRACT_ADDRESS)
+/** Global Dollar (USDG) on Robinhood Chain — 6 decimals. Override with USDG_TOKEN_ADDRESS. */
+export const USDG_ROBINHOOD = '0x5fc5360D0400a0Fd4f2af552ADD042D716F1d168'
+export const usdgToken = () => addr(process.env.USDG_TOKEN_ADDRESS) ?? USDG_ROBINHOOD
 /** WiflyBadges default thresholds (deploy script): 1k / 10k / 100k / 1M WIF burned, cumulative. Soulbound. */
 export const BADGE_TIERS = [
   { id: 'first-light', name: 'first light', min: 1_000 },

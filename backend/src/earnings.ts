@@ -6,7 +6,7 @@ import { parseAbi, type Address } from 'viem'
 import { walletsOfUser } from './accounts'
 import { needUser, type Env } from './auth'
 import { chainClient } from './chain'
-import { FLAT_FEE_SPLIT, FEE_SPLIT, paymentsContract, wiflyContract } from './config'
+import { FLAT_FEE_SPLIT, FEE_SPLIT, usdgToken, wiflyContract } from './config'
 
 const BAL_ABI = parseAbi(['function balances(address) view returns (uint256)'])
 
@@ -36,7 +36,7 @@ export async function earningsFor(uid: number): Promise<EarningsView> {
     withdrawableWif: Number(raw) / 1e18,
     split: FLAT_FEE_SPLIT,
     legacySplit: FEE_SPLIT,
-    paymentsLive: !!paymentsContract(),
+    paymentsLive: !!usdgToken() && !!W,
     sources: [
       { label: 'tips', note: 'net of the platform fee; the fee slice follows the active split' },
       { label: 'subscriptions', note: 'creator tiers and unlocks credit here' },

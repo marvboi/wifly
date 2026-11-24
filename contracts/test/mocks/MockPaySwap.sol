@@ -2,6 +2,7 @@
 pragma solidity ^0.8.24;
 
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import {IERC20Metadata} from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {IWifToWifSwap} from "../../src/interfaces/IWiflyPayments.sol";
 
@@ -22,7 +23,12 @@ contract MockPaySwap is IWifToWifSwap {
 
     function swapTokenForWif(address token, uint256 amount, uint256) external returns (uint256 wifOut) {
         IERC20(token).transferFrom(msg.sender, address(this), amount);
-        wifOut = amount;
+        // USDG is 6 decimals; WIF is 18 — 1:1 token parity in tests.
+        try IERC20Metadata(token).decimals() returns (uint8 d) {
+            wifOut = d < 18 ? amount * 10 ** (18 - d) : amount;
+        } catch {
+            wifOut = amount;
+        }
         wif.transfer(msg.sender, wifOut);
     }
 

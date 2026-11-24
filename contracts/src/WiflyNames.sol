@@ -14,6 +14,8 @@ import {Base64} from "@openzeppelin/contracts/utils/Base64.sol";
 import {IBurnableERC20} from "./interfaces/IBurnableERC20.sol";
 import {IWiflyNameRenderer} from "./interfaces/IWiflyNameRenderer.sol";
 import {IWiflyPot} from "./interfaces/IWiflyPot.sol";
+import {IWifToWifSwap} from "./interfaces/IWiflyPayments.sol";
+import {UsdMath} from "./UsdMath.sol";
 
 /// @title WiflyNames
 /// @notice `.wif` names as ERC-721 tokens paid in $WIF, with resolver records and a built-in marketplace.
@@ -83,11 +85,16 @@ contract WiflyNames is
     uint256 public claimFee3;
     /// @notice 2-char claim fee; 0 = 2-char names closed.
     uint256 public claimFee2;
-    /// @notice Multi-token checkout (WiflyPayments) allowed to mint via claimFor; 0 = off.
+    /// @notice Deprecated: kept for storage layout; no longer used.
     address public paymentRouter;
 
-    /// @dev Reserved storage for future upgrades (50 - 3).
-    uint256[47] private __gap;
+    // ---------------------------------------------------------------- v3 checkout (appended; uses 3 gap slots)
+    IERC20 public usdg;
+    address public swapRouter;
+    uint256 public usdgPerWif;
+
+    /// @dev Reserved storage for future upgrades (50 - 3 - 3).
+    uint256[44] private __gap;
 
     /// @notice `fee` is the claim fee paid (0 for reserved names).
     event NameClaimed(uint256 indexed tokenId, string name, address indexed owner, uint256 fee);
@@ -102,6 +109,10 @@ contract WiflyNames is
     /// @notice All four length tiers: 5+, 4, 3, 2 chars.
     event TierFeesSet(uint256 fee5, uint256 fee4, uint256 fee3, uint256 fee2);
     event PaymentRouterSet(address router);
+    event UsdgSet(address token);
+    event SwapRouterSet(address router);
+    event UsdgPerWifSet(uint256 usdgPerWif);
+    event NamePaid(address indexed payer, string name, address indexed to, address payToken, uint256 wifAmount);
     event FeeSet(uint256 feeBps);
     event TreasurySet(address treasury);
     event ReservationsLocked();
@@ -136,6 +147,10 @@ contract WiflyNames is
     error BadTheme();
     error TierClosed();
     error NotRouter();
+    error SwapFailed();
+    error InsufficientWif();
+
+    address public constant USDG_ROBINHOOD = 0x5fc5360D0400a0Fd4f2af552ADD042D716F1d168;
 
     /// @custom:oz-upgrades-unsafe-allow constructor
     constructor() {
@@ -174,6 +189,14 @@ contract WiflyNames is
         _setTierFees(fee5, fee4, fee3, fee2);
     }
 
+    /// @notice v3: USDG / ETH claim checkout (run once via upgradeToAndCall).
+    function initializeV3() external reinitializer(3) onlyOwner {
+        usdg = IERC20(USDG_ROBINHOOD);
+        usdgPerWif = UsdMath.USDG_UNIT;
+        emit UsdgSet(USDG_ROBINHOOD);
+        emit UsdgPerWifSet(usdgPerWif);
+    }
+
     /// @dev UUPS: only the owner can upgrade.
     function _authorizeUpgrade(address) internal override onlyOwner {}
 
@@ -191,14 +214,65 @@ contract WiflyNames is
         emit NameClaimed(tokenId, label, msg.sender, fee);
     }
 
-    /// @notice Checkout router mints a name it already charged for (USDG / ETH). Fee 0 here: paid in the router.
+    /// @notice Internal-only mint after off-chain-router migration; do not call.
     function claimFor(string calldata name, address to) external nonReentrant whenNotPaused returns (uint256 tokenId) {
-        if (msg.sender != paymentRouter || paymentRouter == address(0)) revert NotRouter();
+        if (msg.sender != address(this)) revert NotRouter();
         if (to == address(0)) revert ZeroAddress();
         string memory label = toLabel(name);
-        _feeOf(label); // validates, and keeps closed tiers closed
+        _feeOf(label);
         tokenId = _mintName(label, to);
         emit NameClaimed(tokenId, label, to, 0);
+    }
+
+    function setUsdg(address token) external onlyOwner {
+        usdg = IERC20(token);
+        emit UsdgSet(token);
+    }
+
+    function setSwapRouter(address router) external onlyOwner {
+        swapRouter = router;
+        emit SwapRouterSet(router);
+    }
+
+    function setUsdgPerWif(uint256 rate) external onlyOwner {
+        if (rate == 0) revert ZeroAmount();
+        usdgPerWif = rate;
+        emit UsdgPerWifSet(rate);
+    }
+
+    function quoteUsdgForWif(uint256 wifWei) external view returns (uint256) {
+        return UsdMath.usdgForWif(wifWei, usdgPerWif);
+    }
+
+    function payClaimUsdg(string calldata name, address to, uint256 usdgAmount) external nonReentrant whenNotPaused {
+        if (usdgAmount == 0) revert ZeroAmount();
+        if (address(usdg) == address(0)) revert ZeroAddress();
+        string memory label = toLabel(name);
+        uint256 fee = _feeOf(label);
+        usdg.safeTransferFrom(msg.sender, address(this), usdgAmount);
+        uint256 got = _swapUsdgForWif(usdgAmount);
+        if (got < fee) revert InsufficientWif();
+        address beneficiary = to == address(0) ? msg.sender : to;
+        _payoutClaimFee(fee);
+        uint256 tokenId = _mintName(label, beneficiary);
+        emit NameClaimed(tokenId, label, beneficiary, fee);
+        emit NamePaid(msg.sender, label, beneficiary, address(usdg), fee);
+        if (got > fee) _refundWif(got - fee);
+    }
+
+    function payClaimEth(string calldata name, address to) external payable nonReentrant whenNotPaused {
+        if (msg.value == 0) revert ZeroAmount();
+        string memory label = toLabel(name);
+        uint256 fee = _feeOf(label);
+        uint256 got = _swapEthForWif(msg.value);
+        if (got < fee) revert InsufficientWif();
+        address beneficiary = to == address(0) ? msg.sender : to;
+        _payoutClaimFee(fee);
+        uint256 tokenId = _mintName(label, beneficiary);
+        emit NameClaimed(tokenId, label, beneficiary, fee);
+        emit NamePaid(msg.sender, label, beneficiary, address(0), fee);
+        if (got > fee) _refundWif(got - fee);
+        _refundEth();
     }
 
     /// @notice Owner mints a reserved name for free, until `lockReservations`.
@@ -550,4 +624,38 @@ contract WiflyNames is
         if (useBurnFunction) IBurnableERC20(address(wif)).burn(amount);
         else wif.safeTransfer(DEAD, amount);
     }
+
+    function _payoutClaimFee(uint256 fee) internal {
+        (uint256 toTreasury, uint256 toPot) = quoteClaimSplit(fee);
+        _payOut(toTreasury, toPot, 0);
+    }
+
+    function _swapUsdgForWif(uint256 usdgAmount) internal returns (uint256 wifOut) {
+        if (swapRouter == address(0)) revert SwapFailed();
+        usdg.forceApprove(swapRouter, usdgAmount);
+        uint256 before = wif.balanceOf(address(this));
+        wifOut = IWifToWifSwap(swapRouter).swapTokenForWif(address(usdg), usdgAmount, 0);
+        if (wifOut == 0) wifOut = wif.balanceOf(address(this)) - before;
+    }
+
+    function _swapEthForWif(uint256 ethIn) internal returns (uint256 wifOut) {
+        if (swapRouter == address(0)) revert SwapFailed();
+        uint256 before = wif.balanceOf(address(this));
+        wifOut = IWifToWifSwap(swapRouter).swapEthForWif{value: ethIn}(0);
+        if (wifOut == 0) wifOut = wif.balanceOf(address(this)) - before;
+    }
+
+    function _refundWif(uint256 amount) internal {
+        if (amount != 0) wif.safeTransfer(msg.sender, amount);
+    }
+
+    function _refundEth() internal {
+        uint256 bal = address(this).balance;
+        if (bal != 0) {
+            (bool ok,) = msg.sender.call{value: bal}("");
+            require(ok, "eth");
+        }
+    }
+
+    receive() external payable {}
 }

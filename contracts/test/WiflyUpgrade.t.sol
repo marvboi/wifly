@@ -85,8 +85,8 @@ contract WiflyUpgradeTest is Test {
     }
 
     function test_implementations_cannotBeInitialized() public {
-        Wifly wi = Wifly(_impl(address(w)));
-        WiflyNames ni = WiflyNames(_impl(address(n)));
+        Wifly wi = Wifly(payable(_impl(address(w))));
+        WiflyNames ni = WiflyNames(payable(_impl(address(n))));
         WiflyBadges bi = WiflyBadges(_impl(address(b)));
         WiflyDCA di = WiflyDCA(_impl(address(dca)));
         WiflyGlyphs gi = WiflyGlyphs(_impl(address(g)));
@@ -185,7 +185,7 @@ contract WiflyUpgradeTest is Test {
         w.upgradeToAndCall(v2, "");
 
         assertEq(_impl(address(w)), v2);
-        assertEq(WiflyV2(address(w)).version(), "v2");
+        assertEq(WiflyV2(payable(address(w))).version(), "v2");
         assertEq(w.owner(), owner);
         assertEq(address(w.wif()), address(token));
         assertTrue(w.useBurnFunction());
@@ -226,7 +226,7 @@ contract WiflyUpgradeTest is Test {
         vm.prank(owner);
         n.upgradeToAndCall(v2, "");
 
-        assertEq(WiflyNamesV2(address(n)).version(), "v2");
+        assertEq(WiflyNamesV2(payable(address(n))).version(), "v2");
         assertEq(n.owner(), owner);
         assertEq(n.name(), "WIF Names");
         assertEq(n.symbol(), "WIFNAME");

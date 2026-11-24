@@ -11,6 +11,8 @@ import {PausableUpgradeable} from "@openzeppelin/contracts-upgradeable/utils/Pau
 import {EIP712Upgradeable} from "@openzeppelin/contracts-upgradeable/utils/cryptography/EIP712Upgradeable.sol";
 import {ECDSA} from "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
 import {IBurnableERC20} from "./interfaces/IBurnableERC20.sol";
+import {IWifToWifSwap} from "./interfaces/IWiflyPayments.sol";
+import {UsdMath} from "./UsdMath.sol";
 
 /// @title Wifly
 /// @notice Social payments on $WIF: tips, subscriptions, unlocks, payments, Top Spot, weekly votes and agents.
@@ -47,6 +49,8 @@ contract Wifly is
     uint256 public constant MIN_GRACE = 1 days;
     uint256 public constant MAX_GRACE = 30 days;
     address public constant DEAD = 0x000000000000000000000000000000000000dEaD;
+    /// @notice Official USDG on Robinhood Chain (4663), 6 decimals.
+    address public constant USDG_ROBINHOOD = 0x5fc5360D0400a0Fd4f2af552ADD042D716F1d168;
 
     bytes32 public constant LINK_TYPEHASH =
         keccak256("LinkHandle(bytes32 handleHash,address account,uint256 nonce,uint256 deadline)");
@@ -161,8 +165,16 @@ contract Wifly is
     /// @notice false = legacy 90% pot / 10% burn split.
     bool public feeSplitSet;
 
-    /// @dev Reserved storage for future upgrades (48 - 1).
-    uint256[47] private __gap;
+    // ---------------------------------------------------------------- v3 checkout (appended; uses 4 gap slots)
+    IERC20 public usdg;
+    address public swapRouter;
+    /// @notice Micro-USDG (6 decimals) per 1e18 WIF wei for quotes when no swap.
+    uint256 public usdgPerWif;
+    /// @notice Minimum WIF wei per vote (Flat default 30 WIF).
+    uint256 public minVoteAmount;
+
+    /// @dev Reserved storage for future upgrades (48 - 1 - 4).
+    uint256[43] private __gap;
 
     // ------------------------------------------------------------------ events
     event Deposited(address indexed user, uint256 amount);
@@ -224,6 +236,12 @@ contract Wifly is
     event FeeSharesSet(uint256 treasuryBps, uint256 burnBps, uint256 potBps);
     /// @notice Treasury share of a platform fee, credited to the treasury's balance.
     event TreasuryFee(address indexed treasury, uint256 amount);
+    event UsdgSet(address token);
+    event SwapRouterSet(address router);
+    event UsdgPerWifSet(uint256 usdgPerWif);
+    event MinVoteSet(uint256 minVote);
+    event PlusPaid(address indexed payer, uint8 plan, address payToken, uint256 wifAmount);
+    event BoostPaid(address indexed payer, bytes32 postId, address payToken, uint256 wifAmount);
 
     // ------------------------------------------------------------------ errors
     error ZeroAmount();
@@ -259,6 +277,9 @@ contract Wifly is
     error NotRenewable();
     error BadGrace();
     error BadShares();
+    error SwapFailed();
+    error InsufficientWif();
+    error VoteTooLow(uint256 minimum);
 
     /// @custom:oz-upgrades-unsafe-allow constructor
     constructor() {
@@ -303,6 +324,16 @@ contract Wifly is
     /// @notice v2 (Flat): turn on the proposed split, 70% pot / 10% burn / 20% treasury. Run once via upgradeToAndCall.
     function initializeFlat() external reinitializer(2) onlyOwner {
         _setFeeShares(2_000, 1_000);
+    }
+
+    /// @notice v3: USDG checkout + vote floor (run once via upgradeToAndCall).
+    function initializeV3() external reinitializer(3) onlyOwner {
+        usdg = IERC20(USDG_ROBINHOOD);
+        usdgPerWif = UsdMath.USDG_UNIT;
+        minVoteAmount = 30e18;
+        emit UsdgSet(USDG_ROBINHOOD);
+        emit UsdgPerWifSet(usdgPerWif);
+        emit MinVoteSet(minVoteAmount);
     }
 
     /// @dev UUPS: only the owner can upgrade.
@@ -423,17 +454,6 @@ contract Wifly is
         _subscribe(msg.sender, creator, tier, plan, price);
     }
 
-    /// @notice Checkout router pays from its wallet and credits `user`.
-    function subscribePlanPaidFor(address user, address creator, uint8 tier, uint8 plan)
-        external
-        nonReentrant
-        whenNotPaused
-    {
-        uint256 price = _priceOf(creator, tier, plan);
-        _pull(msg.sender, price);
-        _subscribe(user, creator, tier, plan, price);
-    }
-
     /// @notice Monthly subscribe/renew from `user`'s deposited balance. Callable by the user or their agent.
     function subscribeFor(address user, address creator, uint8 tier) external {
         subscribeForPlan(user, creator, tier, MONTHLY);
@@ -517,11 +537,79 @@ contract Wifly is
         _takeTopSpot(user, postId, amount);
     }
 
-    /// @notice Checkout router pays from its wallet and credits `user` as holder.
-    function takeTopSpotPaidFor(address user, bytes32 postId, uint256 amount) external nonReentrant whenNotPaused {
-        _checkTopSpotBid(amount);
-        _pull(msg.sender, amount);
-        _takeTopSpot(user, postId, amount);
+    // =================================================================== multi-token checkout (v3)
+    function setUsdg(address token) external onlyOwner {
+        usdg = IERC20(token);
+        emit UsdgSet(token);
+    }
+
+    function setSwapRouter(address router) external onlyOwner {
+        swapRouter = router;
+        emit SwapRouterSet(router);
+    }
+
+    function setUsdgPerWif(uint256 rate) external onlyOwner {
+        if (rate == 0) revert ZeroAmount();
+        usdgPerWif = rate;
+        emit UsdgPerWifSet(rate);
+    }
+
+    function setMinVoteAmount(uint256 amount) external onlyOwner {
+        if (amount == 0) revert ZeroAmount();
+        minVoteAmount = amount;
+        emit MinVoteSet(amount);
+    }
+
+  function quoteUsdgForWif(uint256 wifWei) external view returns (uint256) {
+        return UsdMath.usdgForWif(wifWei, usdgPerWif);
+    }
+
+    function payPlusUsdg(address creator, uint8 tier, uint8 plan, uint256 usdgAmount)
+        external
+        nonReentrant
+        whenNotPaused
+    {
+        if (usdgAmount == 0) revert ZeroAmount();
+        if (address(usdg) == address(0)) revert ZeroAddress();
+        uint256 price = _priceOf(creator, tier, plan);
+        usdg.safeTransferFrom(msg.sender, address(this), usdgAmount);
+        uint256 got = _acquireWifForUsdg(usdgAmount);
+        if (got < price) revert InsufficientWif();
+        _subscribe(msg.sender, creator, tier, plan, price);
+        _refundWif(got - price);
+        emit PlusPaid(msg.sender, plan, address(usdg), price);
+    }
+
+    function payPlusEth(address creator, uint8 tier, uint8 plan) external payable nonReentrant whenNotPaused {
+        if (msg.value == 0) revert ZeroAmount();
+        uint256 price = _priceOf(creator, tier, plan);
+        uint256 got = _swapEthForWif(msg.value);
+        if (got < price) revert InsufficientWif();
+        _subscribe(msg.sender, creator, tier, plan, price);
+        _refundWif(got - price);
+        _refundEth();
+        emit PlusPaid(msg.sender, plan, address(0), price);
+    }
+
+    function payBoostUsdg(bytes32 postId, uint256 usdgAmount) external nonReentrant whenNotPaused {
+        if (usdgAmount == 0) revert ZeroAmount();
+        if (address(usdg) == address(0)) revert ZeroAddress();
+        usdg.safeTransferFrom(msg.sender, address(this), usdgAmount);
+        uint256 got = _acquireWifForUsdg(usdgAmount);
+        if (got == 0) revert InsufficientWif();
+        _checkTopSpotBid(got);
+        _takeTopSpot(msg.sender, postId, got);
+        emit BoostPaid(msg.sender, postId, address(usdg), got);
+    }
+
+    function payBoostEth(bytes32 postId) external payable nonReentrant whenNotPaused {
+        if (msg.value == 0) revert ZeroAmount();
+        uint256 got = _swapEthForWif(msg.value);
+        if (got < minTopSpotBid()) revert InsufficientWif();
+        _checkTopSpotBid(got);
+        _takeTopSpot(msg.sender, postId, got);
+        _refundEth();
+        emit BoostPaid(msg.sender, postId, address(0), got);
     }
 
     // =================================================================== community pot
@@ -538,6 +626,7 @@ contract Wifly is
     function vote(bytes32 postId, address creator, uint256 amount) external nonReentrant whenNotPaused {
         if (creator == address(0)) revert ZeroAddress();
         if (creator == msg.sender) revert SelfPayment();
+        if (minVoteAmount != 0 && amount < minVoteAmount) revert VoteTooLow(minVoteAmount);
         _pull(msg.sender, amount);
         uint256 epoch = currentEpoch();
         uint256 total = creatorVotes[epoch][creator] + amount;
@@ -948,4 +1037,37 @@ contract Wifly is
     function _today() internal view returns (uint64) {
         return uint64(block.timestamp / 1 days);
     }
+
+    function _acquireWifForUsdg(uint256 usdgAmount) internal returns (uint256 wifOut) {
+        return _swapTokenForWif(address(usdg), usdgAmount);
+    }
+
+    function _swapEthForWif(uint256 ethIn) internal returns (uint256 wifOut) {
+        if (swapRouter == address(0)) revert SwapFailed();
+        uint256 before = wif.balanceOf(address(this));
+        wifOut = IWifToWifSwap(swapRouter).swapEthForWif{value: ethIn}(0);
+        if (wifOut == 0) wifOut = wif.balanceOf(address(this)) - before;
+    }
+
+    function _swapTokenForWif(address token, uint256 amount) internal returns (uint256 wifOut) {
+        if (swapRouter == address(0)) revert SwapFailed();
+        IERC20(token).forceApprove(swapRouter, amount);
+        uint256 before = wif.balanceOf(address(this));
+        wifOut = IWifToWifSwap(swapRouter).swapTokenForWif(token, amount, 0);
+        if (wifOut == 0) wifOut = wif.balanceOf(address(this)) - before;
+    }
+
+    function _refundWif(uint256 amount) internal {
+        if (amount != 0) wif.safeTransfer(msg.sender, amount);
+    }
+
+    function _refundEth() internal {
+        uint256 bal = address(this).balance;
+        if (bal != 0) {
+            (bool ok,) = msg.sender.call{value: bal}("");
+            require(ok, "eth");
+        }
+    }
+
+    receive() external payable {}
 }

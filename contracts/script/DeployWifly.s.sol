@@ -59,17 +59,17 @@ contract DeployWifly is Script {
 
         vm.startBroadcast();
         d.wiflyImpl = address(new Wifly());
-        d.wifly = Wifly(
+        d.wifly = Wifly(payable(
             _proxy(d.wiflyImpl, abi.encodeCall(Wifly.initialize, (WIF, useBurn, owner, attester, treasury, floor)))
-        );
+        ));
         if (vm.envOr("DEPLOY_NAMES", true)) {
             d.namesImpl = address(new WiflyNames());
-            d.names = WiflyNames(
+            d.names = WiflyNames(payable(
                 _proxy(
                     d.namesImpl,
                     abi.encodeCall(WiflyNames.initialize, (WIF, useBurn, owner, treasury, claimFee, shortFee))
                 )
-            );
+            ));
             // on-chain name art: glyphs (proxy) and renderer (plain contract)
             d.glyphsImpl = address(new WiflyGlyphs());
             d.glyphs = WiflyGlyphs(_proxy(d.glyphsImpl, abi.encodeCall(WiflyGlyphs.initialize, (owner))));

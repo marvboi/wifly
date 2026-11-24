@@ -15,7 +15,9 @@ import { PLUS_NAME } from '../brand'
 import { PREVIEW_NOTE, useStore } from '../state/store'
 import { userError, failArgs, plans, useNeedsApprove, usePlusStatus, useSendPlan, type PlusPlanId } from '../lib/wifly'
 import { PriceTag, Token } from '../components/Bits'
-import { USDG_LOGO } from '../config'
+import { PayTokenPicker } from '../components/PayTokenPicker'
+import { usePayRails } from '../api/usePayRails'
+import { altPayEnabled, formatPayLine, quotePayAmount, type PayToken } from '../lib/payToken'
 import { FeeSplit } from '../components/FeeSplit'
 import { PageHead } from '../components/Shell'
 import { Icon, type IconName } from '../components/Icon'
@@ -56,6 +58,8 @@ export function Plus() {
   const chain = usePlusStatus(localPlus)
   const send = useSendPlan()
   const [busy, setBusy] = useState<string | null>(null)
+  const [payToken, setPayToken] = useState<PayToken>('wif')
+  const { rails } = usePayRails()
   const isTeam = !!chain.team && !!address && chain.team.toLowerCase() === address.toLowerCase()
   const name = PLUS_NAME.toLowerCase()
   const wif = useWifBalance(address).value
@@ -92,6 +96,8 @@ export function Plus() {
   const newEnd = base + (plan === 'year' ? 365 : 30) * DAY
   const showPay = !has || switching || extend || v.state === 'grace'
   const shortBy = wif !== undefined && wif < price
+  const quoted = quotePayAmount(price, payToken)
+  const payLabel = (verb: string) => `${verb} for ${formatPayLine(quoted, payToken)}`
 
   // auto-renew is set onchain by the wallet that holds the sub (the server tells which one after reading every wallet
   // on the account). from any other wallet it would land on a wallet with no plus, so ask to switch instead.
@@ -107,7 +113,7 @@ export function Plus() {
     setBusy(kind)
     try {
       // Receipt first, then the toast and the badge stamp (refetched subStatus flips it).
-      const r = await send(plans.plus(chain.team, price, plan))
+      const r = await send(plans.plus(chain.team, price, plan, payToken))
       if (r.sent) {
         companion.celebrate('plus', kind === 'renew' ? 'renewed. the check stays green ✓' : undefined)
         toast(switching && plan === 'year' ? 'upgraded to yearly' : kind === 'renew' ? 'extended' : `welcome to ${name}`, `confirmed onchain. ${addsLabel} added.`)
@@ -146,7 +152,7 @@ export function Plus() {
   const stateTag = v.state === 'grace' ? `grace period · ${Math.max(0, Math.ceil(((v.graceEndsAt ?? 0) - Date.now()) / DAY))} days left` : v.state === 'expired' ? 'expired' : v.state === 'active' ? 'active' : null
 
   return (
-    <div className="plus-page plusx">
+    <div className="plus-page plusx plusx--scroll">
       <PageHead title={name} back sub="optional. everything else stays free." />
 
       <section className={`plusx-hero plusx-hero--${v.state}`}>
@@ -162,8 +168,9 @@ export function Plus() {
           {v.state === 'active' && <>active until <b>{fmtDate(v.expiresAt)}</b>.{v.renewsOn ? <> renews on <b>{fmtDate(v.renewsOn)}</b>.</> : v.autoRenew ? null : ' auto-renew is off.'}</>}
           {v.state === 'grace' && <>it ended on {fmtDate(v.expiresAt)}. you keep the check until <b>{fmtDate(v.graceEndsAt)}</b>. renew before then.</>}
           {v.state === 'expired' && <>it ended on {fmtDate(v.expiresAt)} and the grace period is over. renew anytime to get the check back.</>}
-          {v.state === 'none' && <>a monthly or yearly pass, paid in wif, usdg or eth once the treasury sets the usdg address.</>}
+          {v.state === 'none' && <>a monthly or yearly pass, paid in wif.</>}
         </p>
+        {v.state === 'none' && showPay && altPayEnabled(rails) && <p className="plusx-paynote muted small">checkout can also settle in USDG or ETH on Wifly.</p>}
 
         {v.priceChanged && (
           <div className="plusx-alert" role="alert">
@@ -181,31 +188,26 @@ export function Plus() {
             <button role="radio" aria-checked={plan === 'month'} className={plan === 'month' ? 'is-on' : ''} onClick={() => { setPlan('month'); setCap(monthPrice) }}>monthly</button>
             <button role="radio" aria-checked={plan === 'year'} className={plan === 'year' ? 'is-on' : ''} onClick={() => { setPlan('year'); setCap(yearPrice) }}>yearly <span className="plusx-pill">2 months free</span></button>
           </div>
+          {showPay && <PayTokenPicker value={payToken} onChange={setPayToken} rails={rails} className="plusx-paytoken" />}
           {open ? <div className="plusx-price">
-            <PriceTag value={price} size={32} />
+            {payToken === 'wif' ? <PriceTag value={price} size={32} /> : <span className="plusx-price__alt num strong" style={{ fontSize: 32 }}>{formatPayLine(quoted, payToken)}</span>}
             <span className="plusx-price__per">{plan === 'year' ? 'per year' : 'per month'}</span>
           </div> : <div className="plusx-price plusx-price--soon" data-testid="plus-soon">
             <b>{chain.pricesLoading ? 'checking the price…' : `${plan === 'year' ? 'yearly ' : ''}plus opens soon`}</b>
             {soon && <span className="small muted">the price isn’t set yet. this turns on by itself once it is.</span>}
           </div>}
           {showPay && <PayingFrom />}
-          {showPay ? <button className="btn btn--lg btn--dark btn--block" data-testid="plus-pay" disabled={!open || isTeam || !!busy} onClick={() => pay(has ? 'renew' : 'buy')}>
+          {showPay ? <button className="btn btn--lg btn--dark btn--block" data-testid="plus-pay" disabled={!open || isTeam || !!busy || (payToken !== 'wif' && !altPayEnabled(rails))} onClick={() => pay(has ? 'renew' : 'buy')}>
             {!open ? (chain.pricesLoading ? 'loading…' : 'opens soon') : busy === 'buy' || busy === 'renew' ? 'waiting for confirmation…'
-              : switching ? (plan === 'year' ? `upgrade to yearly · ${price.toLocaleString()} wif` : `switch to monthly · ${price.toLocaleString()} wif`)
-              : v.state === 'grace' ? `renew for ${price.toLocaleString()} wif`
-              : extend ? `extend ${addsLabel} · ${price.toLocaleString()} wif`
-              : v.state === 'expired' ? `renew for ${price.toLocaleString()} wif` : `get plus for ${price.toLocaleString()} wif`}
+              : switching ? (plan === 'year' ? payLabel('upgrade to yearly') : payLabel('switch to monthly'))
+              : v.state === 'grace' ? payLabel('renew')
+              : extend ? payLabel(`extend ${addsLabel}`)
+              : v.state === 'expired' ? payLabel('renew') : payLabel(has ? 'renew' : 'get plus')}
           </button> : <div className="plusx-on" data-testid="plus-on"><Icon name="check" size={16} /> <span>you’re covered until <b>{fmtDate(v.expiresAt)}</b></span>
             {open && <button className="plusx-link" data-testid="plus-extend" onClick={() => setExtend(true)}>extend</button>}</div>}
           {has && (switching || extend || v.state === 'grace') && open && <p className="small muted plusx-note plusx-stack" data-testid="plus-stack-note">
             adds {addsLabel} from {fmtDate(base)} · new end <b>{fmtDate(newEnd)}</b>. no proration: every day you paid for stays.
             {extend && !switching && <> <button className="plusx-link" onClick={() => setExtend(false)}>cancel</button></>}</p>}
-          <div className="plusx-payways" aria-label="payment options">
-            <span className="small muted payway"><Token size={18} /> wif</span>
-            <span className="small muted payway"><img src={USDG_LOGO} alt="" width={18} height={18} className="payway__img" /> usdg</span>
-            <span className="small muted payway">eth</span>
-          </div>
-          <p className="muted small">usdg and eth go through the payments router when it is live.</p>
           <div className="plusx-wallet">
             <span className="small muted"><Token size={16} /> {wif === undefined ? 'connect a wallet to see your balance' : <>you have <b className="num">{Math.floor(wif).toLocaleString()} wif</b></>}</span>
             {open && (shortBy || wif === undefined) && <button className="btn btn--ghost btn--sm" onClick={getWif}>get wif</button>}
