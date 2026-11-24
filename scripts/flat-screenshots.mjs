@@ -91,10 +91,10 @@ const shots = [
     dark: false,
     action: async page => {
       await pickUsdg(page)
-      await page.getByTestId('plus-perks').waitFor({ state: 'visible', timeout: 15000 })
-      await page.getByText(/3[,.]?000|~.*USDG/i).first().waitFor({ state: 'visible', timeout: 10000 })
-      await page.locator('text=where your wif goes').first().scrollIntoViewIfNeeded()
-      await page.evaluate(() => window.scrollBy(0, -72))
+      await page.getByTestId('plus-pay').waitFor({ state: 'visible', timeout: 15000 })
+      await page.getByText(/~[\d,.]+ USDG|3[,.]?000/i).first().waitFor({ state: 'visible', timeout: 10000 })
+      await page.locator('.plusx-buy').scrollIntoViewIfNeeded()
+      await page.evaluate(() => window.scrollTo(0, 0))
     },
   },
   {
@@ -102,8 +102,10 @@ const shots = [
     path: '/plus',
     dark: true,
     action: async page => {
-      await page.getByText(/3[,.]?000/).first().waitFor({ state: 'visible', timeout: 10000 })
-      await page.locator('text=where your wif goes').first().scrollIntoViewIfNeeded()
+      await pickUsdg(page)
+      await page.getByTestId('plus-pay').waitFor({ state: 'visible', timeout: 10000 })
+      await page.locator('.plusx-buy').scrollIntoViewIfNeeded()
+      await page.evaluate(() => window.scrollTo(0, 0))
     },
   },
   {
@@ -112,8 +114,9 @@ const shots = [
     dark: false,
     viewport: DESKTOP,
     action: async page => {
-      await page.getByText(/3[,.]?000/).first().waitFor({ state: 'visible', timeout: 10000 })
-      await page.getByTestId('plus-perks').scrollIntoViewIfNeeded()
+      await pickUsdg(page)
+      await page.getByTestId('plus-pay').waitFor({ state: 'visible', timeout: 10000 })
+      await page.locator('.plusx-buy').scrollIntoViewIfNeeded()
       await page.evaluate(() => window.scrollTo(0, 0))
     },
   },

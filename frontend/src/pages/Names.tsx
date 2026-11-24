@@ -221,7 +221,7 @@ export function ClaimBox({ initial = '', onClaimed, onState, compact, andPrimary
                 </p>
               )
             })()}
-            {ok && <PayingFrom className="names-claim__payer" />}
+            {ok && <PayingFrom className="names-claim__payer" compact />}
             {ok && more && wif !== undefined && wif < claimFee && <LowBalance need={claimFee} what={`claim ${name}.wif`} />}
             <button className="btn btn--dark btn--lg btn--block" data-testid="claim-go" disabled={!ok || !!busy} onClick={() => claim()}>{busy ? 'confirm in your wallet…' : ok ? (() => {
               const feeWif = claimFee

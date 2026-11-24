@@ -463,8 +463,10 @@ function BoostSheet({ postId }: { postId: string }) {
   const [feeOpen, setFeeOpen] = useState(false)
   const rules = useTopSpotRules()
   const now = useNow()
-  const min = rules?.minBid !== undefined ? Math.ceil(rules.minBid) : topSpotMinBid(topSpot.paid)
+  const rawMin = rules?.minBid !== undefined ? Math.ceil(rules.minBid) : topSpotMinBid(topSpot.paid)
+  const min = Math.max(100, rawMin || 0)
   const [bid, setBid] = useState(min)
+  useEffect(() => { if (bid < min) setBid(min) }, [min]) // eslint-disable-line react-hooks/exhaustive-deps
   const empty = rules ? rules.empty : !topSpot.holder
   const lockedFor = rules?.unlocksAt ? Math.max(0, rules.unlocksAt - Math.floor(now / 1000)) : 0
   const holder = topSpot.holder ? users[topSpot.holder] : undefined
@@ -476,7 +478,7 @@ function BoostSheet({ postId }: { postId: string }) {
   return (
     <Sheet title="boost this post" className="sheet--pay" onClose={closeSheet}
       footer={<>
-        <PayingFrom />
+        <PayingFrom compact />
         {feeOpen && <TxSteps pull={payToken === 'wif' ? bid : 0} action="boost this post" payer={false} />}
         <button className="btn btn--dark btn--block btn--lg" disabled={!ok || busy}
           onClick={() => run(plans.takeTopSpot(postId, bid, payToken), 'this drop is boosted', () => takeTopSpot(postId, bid))}>

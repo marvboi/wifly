@@ -44,3 +44,13 @@ No copy was reworded or removed from source; lines were hidden, collapsed, or mo
 ## USDG / eth quotes (related fix)
 
 Checkout labels use **USD per WIF** from `/api/price` (USDG ≈ same dollars), not 1:1 WIF count. See `frontend/src/lib/payToken.ts` and `backend/test/payToken.test.ts`.
+
+## Round 2 (post-a16c13d review)
+
+| Area | Change |
+|------|--------|
+| USDG / eth UI | `formatPayLine`: USDG **2** dp; eth up to **4** sig figs (`quotePayAmount` unchanged for contracts) |
+| Payer | `PayingFrom compact` on names claim, Plus, boost: one row (avatar · addr · chip · balance · **details**); connect / gas / copy / switch in disclosure |
+| Plus | **payment details** moved inside `plusx-buy` with chevron; join bar hidden on `/plus` when logged out (topbar sign in kept) |
+| Earnings | **fee split details** inside withdrawable card (`<details>`); USDG InfoTip on **payouts** title |
+| Boost | Bid presets floor **100** wif when chain min is 0 |

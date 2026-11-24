@@ -22,9 +22,21 @@ export function payTokenLabel(token: PayToken): string {
   return token === 'usdg' ? 'USDG' : token
 }
 
+function formatAltUiAmount(amount: number, token: PayToken): string {
+  if (token === 'usdg') {
+    return amount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+  }
+  if (token === 'eth') {
+    if (amount === 0) return '0'
+    if (amount >= 0.01) return amount.toLocaleString(undefined, { maximumFractionDigits: 4 })
+    return Number(amount.toPrecision(4)).toString()
+  }
+  return amount.toLocaleString()
+}
+
+/** UI display only (onchain / quote math stays full precision via `quotePayAmount`). */
 export function formatPayLine(amount: number, token: PayToken): string {
-  const max = token === 'usdg' ? USDG_DECIMALS : token === 'eth' ? 6 : 0
-  const n = max ? amount.toLocaleString(undefined, { maximumFractionDigits: max, minimumFractionDigits: 0 }) : amount.toLocaleString()
+  const n = token === 'wif' ? amount.toLocaleString() : formatAltUiAmount(amount, token)
   return `${n} ${payTokenLabel(token)}`
 }
 

@@ -135,16 +135,60 @@ export function PayerGas({ o, empty = true, eth }: { o: PayerOption; empty?: boo
  * note when it has none (or when an embedded wallet is low on gas), and the linked-wallet shortcut. "switch" opens the top wallet menu,
  * where the choice lives. Renders nothing when there's no account wallet list. Reads well on light and dark cards.
  */
-export function PayingFrom({ className = '' }: { className?: string }) {
+export function PayingFrom({ className = '', compact = false }: { className?: string; compact?: boolean }) {
   const ps = usePayerState()
   const o = ps.options.find(x => x.address === ps.address) ?? null
   const bal = usePayerBalances(ps.options.map(x => x.address))
   const sw = usePayerSwitch()
+  const [open, setOpen] = useState(false)
   if (!o) return null
   const b = bal.data?.[o.address]
   const noGas = b !== undefined && b.eth === 0n
   const others = ps.options.filter(x => x.address !== o.address)
   const linked = others.find(x => x.kind === 'linked')
+  const gasNote = noGas || showEmbeddedFundLine(o.kind === 'embedded' ? b?.eth : undefined)
+  const extra = (
+    <>
+      {!o.ready && o.kind === 'linked' && (
+        <button type="button" className="btn btn--ghost btn--sm payer__connect" disabled={sw.busy === o.address} onClick={() => void sw.use(o)}>{sw.busy === o.address ? 'connecting…' : `connect ${shortA(o.address)}`}</button>
+      )}
+      {gasNote && <PayerGas o={o} empty={noGas} eth={b?.eth} />}
+      {linked && o.kind === 'embedded' && (
+        <div className="payer__links">
+          <button type="button" className="linkbtn" disabled={sw.busy === linked.address} onClick={() => void sw.use(linked)}>{sw.busy === linked.address ? 'connecting…' : linkedButton(linked.address)}</button>
+        </div>
+      )}
+      {compact && (
+        <p className="payer__bal tiny num sr-only" data-testid="payer-bal-sr">{fmtUnits(b?.eth, 'eth')} · {fmtUnits(b?.wif, 'wif')} <span>in this wallet</span></p>
+      )}
+      {sw.err && <p className="tiny payer__err">{sw.err}</p>}
+    </>
+  )
+  if (compact) {
+    return (
+      <div className={`payer payer--compact ${className}`} data-testid="paying-from">
+        <div className="payer__row payer__row--compact">
+          <WalletAvatar address={o.address} size={24} />
+          <span className="payer__who small">
+            <span className="payer__lbl sr-only"><span className="payer__lbl-pre">paying </span>from</span>
+            <code className="mono payer__addr" title={o.address} data-testid="payer-addr">{addrLabel(o.address)}</code>
+            <KindPill kind={o.kind} />
+          </span>
+          <span className="payer__bal-inline tiny num" data-testid="payer-bal">{fmtUnits(b?.eth, 'eth')} · {fmtUnits(b?.wif, 'wif')}</span>
+          <button type="button" className="linkbtn payer__fold" aria-expanded={open} onClick={() => setOpen(v => !v)}>details</button>
+        </div>
+        {open && (
+          <div className="payer__more">
+            <div className="payer__acts payer__acts--more">
+              <CopyAddr address={o.address} />
+              {others.length > 0 && <button type="button" className="payer__switch" data-testid="payer-switch" onClick={openWalletMenu}>switch</button>}
+            </div>
+            {extra}
+          </div>
+        )}
+      </div>
+    )
+  }
   return (
     <div className={`payer ${className}`} data-testid="paying-from">
       <div className="payer__row">
@@ -159,16 +203,7 @@ export function PayingFrom({ className = '' }: { className?: string }) {
         </span>
       </div>
       <p className="payer__bal tiny num" data-testid="payer-bal">{fmtUnits(b?.eth, 'eth')} · {fmtUnits(b?.wif, 'wif')} <span>in this wallet</span></p>
-      {!o.ready && o.kind === 'linked' && (
-        <button type="button" className="btn btn--ghost btn--sm payer__connect" disabled={sw.busy === o.address} onClick={() => void sw.use(o)}>{sw.busy === o.address ? 'connecting…' : `connect ${shortA(o.address)}`}</button>
-      )}
-      {(noGas || showEmbeddedFundLine(o.kind === 'embedded' ? b?.eth : undefined)) && <PayerGas o={o} empty={noGas} eth={b?.eth} />}
-      {linked && o.kind === 'embedded' && (
-        <div className="payer__links">
-          <button type="button" className="linkbtn" disabled={sw.busy === linked.address} onClick={() => void sw.use(linked)}>{sw.busy === linked.address ? 'connecting…' : linkedButton(linked.address)}</button>
-        </div>
-      )}
-      {sw.err && <p className="tiny payer__err">{sw.err}</p>}
+      {extra}
     </div>
   )
 }

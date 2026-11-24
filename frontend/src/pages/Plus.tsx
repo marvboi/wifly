@@ -199,7 +199,7 @@ export function Plus() {
             <b>{chain.pricesLoading ? 'checking the price…' : `${plan === 'year' ? 'yearly ' : ''}plus opens soon`}</b>
             {soon && <span className="small muted">the price isn’t set yet. this turns on by itself once it is.</span>}
           </div>}
-          {showPay && <PayingFrom />}
+          {showPay && <PayingFrom compact />}
           {showPay ? <button className="btn btn--lg btn--dark btn--block" data-testid="plus-pay" disabled={!open || isTeam || !!busy} onClick={() => pay(has ? 'renew' : 'buy')}>
             {!open ? (chain.pricesLoading ? 'loading…' : 'opens soon') : busy === 'buy' || busy === 'renew' ? 'waiting for confirmation…'
               : switching ? (plan === 'year' ? payLabel('upgrade to yearly') : payLabel('switch to monthly'))
@@ -217,6 +217,26 @@ export function Plus() {
             {open && (shortBy || wif === undefined) && <button className="btn btn--ghost btn--sm" onClick={getWif}>get wif</button>}
           </div>}
           {isTeam && <p className="small muted plusx-note"><Icon name="shield" size={14} /> this is the team wallet. it can’t subscribe to itself.</p>}
+          {open && showPay && (
+            <details className="plusx-paydetails">
+              <summary className="plusx-paydetails__sum">payment details <Icon name="chevron" size={14} /></summary>
+              <h3 className="plusx-h">where your wif goes<InfoTip label="about plus payments">paid to the wifly team. the 2% burn is 100% burned — nothing to the pot or treasury (same for USDG and eth checkout after swap-to-wif).</InfoTip></h3>
+              <section className="card plusx-card">
+                <FeeSplit amount={price} recipientLabel="wifly team gets" kind="plus" />
+              </section>
+              <h3 className="plusx-h">how paying works</h3>
+              <ol className="plusx-steps">
+                <li className={needsApprove ? '' : 'is-done'}>
+                  <span className="plusx-steps__n">{needsApprove ? 1 : <Icon name="check" size={12} />}</span>
+                  <div><b>allow {price.toLocaleString()} wif</b><p className="small muted">{needsApprove ? 'your wallet asks once.' : 'already done.'}</p></div>
+                </li>
+                <li>
+                  <span className="plusx-steps__n">2</span>
+                  <div><b>confirm the payment</b><p className="small muted">plus turns on in a few seconds.</p></div>
+                </li>
+              </ol>
+            </details>
+          )}
         </div>
       </section>
 
@@ -248,26 +268,6 @@ export function Plus() {
         ))}
       </ul>
 
-      {open && showPay && (
-        <details className="plusx-paydetails">
-          <summary className="plusx-h plusx-paydetails__sum">payment details</summary>
-          <h3 className="plusx-h">where your wif goes<InfoTip label="about plus payments">paid to the wifly team. the 2% burn is 100% burned — nothing to the pot or treasury (same for USDG and eth checkout after swap-to-wif).</InfoTip></h3>
-          <section className="card plusx-card">
-            <FeeSplit amount={price} recipientLabel="wifly team gets" kind="plus" />
-          </section>
-          <h3 className="plusx-h">how paying works</h3>
-          <ol className="plusx-steps">
-            <li className={needsApprove ? '' : 'is-done'}>
-              <span className="plusx-steps__n">{needsApprove ? 1 : <Icon name="check" size={12} />}</span>
-              <div><b>allow {price.toLocaleString()} wif</b><p className="small muted">{needsApprove ? 'your wallet asks once.' : 'already done.'}</p></div>
-            </li>
-            <li>
-              <span className="plusx-steps__n">2</span>
-              <div><b>confirm the payment</b><p className="small muted">plus turns on in a few seconds.</p></div>
-            </li>
-          </ol>
-        </details>
-      )}
       {open && !showPay && <>
       <h3 className="plusx-h">where your wif goes<InfoTip label="about plus payments">paid to the wifly team. the 2% burn is 100% burned — nothing to the pot or treasury (same for USDG and eth checkout after swap-to-wif).</InfoTip></h3>
       <section className="card plusx-card">

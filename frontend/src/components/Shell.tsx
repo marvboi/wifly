@@ -143,7 +143,7 @@ export function AppShell() {
         {right.filter(n => n.to === '/@you').map(n => <DockLink key={n.to} n={me && !me.needsHandle ? { ...n, to: profilePath(me.handle) } : n} />)}
       </nav>}
       <AnimatePresence>{more && <MoreSheet key="more" onClose={() => setMore(false)} />}</AnimatePresence>
-      {out && <JoinBar />}
+      {out && !['/plus', '/names', '/earnings'].includes(pathname) && <JoinBar />}
       <Companion />
     </div>
   )

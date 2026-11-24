@@ -1311,6 +1311,20 @@ a.wifname:hover .wifname__label { text-decoration: underline; text-underline-off
 .earnings-card__head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 8px; }
 .earnings-card__head .earnings-card__title { margin: 0; }
 .earnings-meta-toggle { align-self: flex-start; margin: -4px 0 4px; }
+.earnings-fee-fold { margin-top: 12px; border-top: 1px solid var(--line); padding-top: 10px; }
+.earnings-fee-fold__sum { cursor: pointer; list-style: none; display: flex; align-items: center; gap: 6px; font-size: 14px; font-weight: 600; }
+.earnings-fee-fold__sum::-webkit-details-marker { display: none; }
+.earnings-fee-fold[open] .earnings-fee-fold__sum [data-icon="chevron"] { transform: rotate(180deg); }
+.plusx-paydetails { margin-top: 10px; border-top: 1px solid var(--line); padding-top: 8px; }
+.plusx-paydetails__sum { cursor: pointer; list-style: none; display: flex; align-items: center; gap: 8px; font-size: 14px; font-weight: 600; padding: 4px 0; }
+.plusx-paydetails__sum::-webkit-details-marker { display: none; }
+.plusx-paydetails[open] .plusx-paydetails__sum svg { transform: rotate(180deg); }
+.payer--compact { padding: 8px 10px; gap: 0; }
+.payer--compact .payer__row--compact { flex-wrap: nowrap; gap: 8px; align-items: center; }
+.payer--compact .payer__bal-inline { flex: 1; min-width: 0; text-align: right; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.payer--compact .payer__fold { flex: none; font-size: 12px; }
+.payer--compact .payer__more { padding-top: 8px; border-top: 1px solid var(--line); margin-top: 6px; }
+.payer--compact .payer__acts--more { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; }
 .names-claim__theme { display: grid; gap: 8px; margin: 4px 0 0; padding-top: 12px; border-top: 1px solid var(--line); }
 .manage-name .names-claim__theme { margin-top: 0; padding-bottom: 14px; border-bottom: 1px solid var(--line); justify-items: start; }
 .themepick { display: grid; grid-template-columns: repeat(2, minmax(0, 132px)); gap: 10px; }

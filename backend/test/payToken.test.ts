@@ -35,4 +35,6 @@ test('payToken.ts wires live pay rates and usdPerWif', () => {
   assert.match(payTokenSrc(), /getPayRates\(\)/)
   assert.match(priceSrc(), /payRatesFromPrice/)
   assert.match(readFileSync(join(import.meta.dirname, '../../frontend/src/config.ts'), 'utf8'), /usdPerWif/)
+  assert.match(payTokenSrc(), /maximumFractionDigits: 2/)
+  assert.match(payTokenSrc(), /toPrecision\(4\)/)
 })
