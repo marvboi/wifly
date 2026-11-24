@@ -19,13 +19,13 @@ import { useWifBalance } from '../lib/chain'
 import { PREVIEW_NOTE, useStore } from '../state/store'
 import { PageHead } from '../components/Shell'
 import { Amount, Avatar } from '../components/Bits'
-import { usdText, useWifPrice } from '../lib/price'
+import { usdText, usePayRates, useWifPrice } from '../lib/price'
 import { Icon, type IconName } from '../components/Icon'
 import { LowBalance } from '../components/Swap'
 import { TxSteps } from '../components/TxSteps'
 import { PayTokenPicker } from '../components/PayTokenPicker'
 import { usePayRails } from '../api/usePayRails'
-import { altPayEnabled, formatPayQuote, quotePayAmount, type PayToken } from '../lib/payToken'
+import { altPayEnabled, formatPayLine, formatPayQuote, quotePayAmount, type PayToken } from '../lib/payToken'
 import { PayingFrom } from '../components/Payer'
 import { Mascot, type Mood } from '../components/Mascot'
 import { NameCard, ThemePicker, WifName, defaultThemeOf, nameArtUrl } from '../components/WifName'
@@ -62,8 +62,17 @@ export function Names() {
       {tab === 'claim' && <ClaimTab />}
       {tab === 'mine' && (me ? <MineTab /> : <SignInNote />)}
       {tab === 'market' && <MarketTab />}
-      <WifHow />
+      {tab === 'claim' ? <WifHowCollapsed /> : <WifHow />}
     </div>
+  )
+}
+
+function WifHowCollapsed() {
+  return (
+    <details className="wifhow-fold">
+      <summary className="linkbtn wifhow-fold__sum">how .wif works</summary>
+      <WifHow />
+    </details>
   )
 }
 
@@ -150,6 +159,7 @@ export function ClaimBox({ initial = '', onClaimed, onState, compact, andPrimary
   const [claimed, setClaimed] = useState<string | null>(null)
   const [pick, setPick] = useState<1 | 2 | null>(null)
   const [more, setMore] = useState(false)
+  const payRates = usePayRates()
   const look = pick ?? defaultThemeOf(name)
   const ok = LIVE && !!check?.available
   const state: ClaimState = !LIVE ? 'soon' : claimed === name && name ? 'yours' : !name ? 'idle' : !check ? 'idle' : check.available ? 'available' : check.reason === 'reserved' ? 'reserved' : check.reason === 'yours' ? 'yours' : check.reason === 'invalid' ? 'idle' : 'taken'
@@ -199,23 +209,23 @@ export function ClaimBox({ initial = '', onClaimed, onState, compact, andPrimary
             <PayTokenPicker value={payToken} onChange={setPayToken} rails={rails} className="names-claim__paytoken" />
             {(() => {
               const feeWif = name ? (claimFee || claimFeeOf(name)) : claimFeeOf('abcde')
-              const altLine = payToken !== 'wif' ? formatPayQuote(quotePayAmount(feeWif, payToken), payToken) : null
+              const altLine = payToken !== 'wif' ? formatPayQuote(quotePayAmount(feeWif, payToken, payRates), payToken) : null
               const shown = payToken === 'wif' ? `${fmt(feeWif)} wif` : altLine
               return (
                 <p className="names-claim__price" data-testid="claim-price">
                   <b>{shown}</b>
-                  {payToken === 'wif' && altPayEnabled(rails) && <span className="muted small names-claim__est">≈ {formatPayQuote(quotePayAmount(feeWif, 'usdg'), 'usdg')} · {formatPayQuote(quotePayAmount(feeWif, 'eth'), 'eth')}</span>}
+                  {payToken === 'wif' && altPayEnabled(rails) && <span className="muted small names-claim__est">≈ {formatPayLine(quotePayAmount(feeWif, 'usdg', payRates), 'usdg')} · {formatPayLine(quotePayAmount(feeWif, 'eth', payRates), 'eth')}</span>}
                   {payToken === 'wif' && <WifUsdNote wif={feeWif} />}
-                  <InfoTip label="about the claim fee">one-time. 2 letters {fmt(claimFeeOf('ab'))} wif, 3 letters {fmt(claimFeeOf('abc'))} wif, 4 letters {fmt(claimFeeOf('abcd'))} wif, 5+ letters {fmt(claimFeeOf('abcde'))} wif. minted to your wallet.</InfoTip>
+                  <InfoTip label="about the claim fee">one-time. 2 letters {fmt(claimFeeOf('ab'))} wif, 3 letters {fmt(claimFeeOf('abc'))} wif, 4 letters {fmt(claimFeeOf('abcd'))} wif, 5+ letters {fmt(claimFeeOf('abcde'))} wif. minted to your wallet.{altPayEnabled(rails) ? ' checkout can also settle in USDG or eth on wifly.' : ''}</InfoTip>
                   <button type="button" className="linkbtn names-claim__more" aria-expanded={more} onClick={() => setMore(v => !v)}>details</button>
                 </p>
               )
             })()}
             {ok && <PayingFrom className="names-claim__payer" />}
-            {ok && wif !== undefined && wif < claimFee && <LowBalance need={claimFee} what={`claim ${name}.wif`} />}
+            {ok && more && wif !== undefined && wif < claimFee && <LowBalance need={claimFee} what={`claim ${name}.wif`} />}
             <button className="btn btn--dark btn--lg btn--block" data-testid="claim-go" disabled={!ok || !!busy} onClick={() => claim()}>{busy ? 'confirm in your wallet…' : ok ? (() => {
               const feeWif = claimFee
-              const line = payToken === 'wif' ? `claim ${name}.wif` : `claim ${name}.wif for ${formatPayQuote(quotePayAmount(feeWif, payToken), payToken)}`
+              const line = payToken === 'wif' ? `claim ${name}.wif` : `claim ${name}.wif for ${formatPayQuote(quotePayAmount(feeWif, payToken, payRates), payToken)}`
               return line
             })() : name ? `claim ${name}.wif` : 'claim'}</button>
           </div>

@@ -3,7 +3,8 @@
  * ETH/USD, caches it, and pushes each new price). Falls back to polling /api/price if the stream drops.
  */
 import { animate, useMotionValue, useMotionValueEvent } from 'motion/react'
-import { useEffect, useState, useSyncExternalStore } from 'react'
+import { useEffect, useMemo, useState, useSyncExternalStore } from 'react'
+import { PLACEHOLDER_PAY_QUOTES } from '../config'
 
 export type WifPrice = { usd: number; eth: number; wifPerEth: number; ethUsd: number; updatedAt: number; stale: boolean; source?: { wif: string; ethUsd: string } }
 
@@ -48,6 +49,24 @@ export function useWifPrice() {
   const [now, setNow] = useState(() => Date.now())
   useEffect(() => { const t = setInterval(() => setNow(Date.now()), 15_000); return () => clearInterval(t) }, [])
   return { price: p, usd: p?.usd, ethUsd: p?.ethUsd, stale: !!p && (p.stale || now - p.updatedAt > STALE_MS) }
+}
+
+export type PayRates = { usdPerWif: number; wifPerEth: number }
+
+export function payRatesFromPrice(p: WifPrice | null | undefined): PayRates {
+  return {
+    usdPerWif: p?.usd ?? PLACEHOLDER_PAY_QUOTES.usdPerWif,
+    wifPerEth: p?.wifPerEth ?? PLACEHOLDER_PAY_QUOTES.wifPerEth,
+  }
+}
+
+export function getPayRates(): PayRates {
+  return payRatesFromPrice(price)
+}
+
+export function usePayRates(): PayRates {
+  const { price: p } = useWifPrice()
+  return useMemo(() => payRatesFromPrice(p), [p?.usd, p?.wifPerEth, p?.updatedAt])
 }
 
 /** $ amounts: 1,234 · 12.34 · 0.42 · 0.0013 (two significant digits under a cent). */

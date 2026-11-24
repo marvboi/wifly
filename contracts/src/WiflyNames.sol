@@ -192,7 +192,7 @@ contract WiflyNames is
     /// @notice v3: USDG / ETH claim checkout (run once via upgradeToAndCall).
     function initializeV3() external reinitializer(3) onlyOwner {
         usdg = IERC20(USDG_ROBINHOOD);
-        usdgPerWif = UsdMath.USDG_UNIT;
+        usdgPerWif = 0;
         emit UsdgSet(USDG_ROBINHOOD);
         emit UsdgPerWifSet(usdgPerWif);
     }

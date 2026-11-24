@@ -1301,6 +1301,16 @@ a.wifname:hover .wifname__label { text-decoration: underline; text-underline-off
 .names-row__card { display: block; width: min(260px, 100%); margin: 0 auto 12px; border-radius: 14px; border: 1px solid var(--line); }
 .names-claim__checkout { display: grid; gap: 10px; }
 .names-claim__est { display: block; margin-top: 2px; font-size: 13px; }
+.wifhow-fold { margin-top: 16px; }
+.wifhow-fold__sum { list-style: none; cursor: pointer; margin-bottom: 8px; }
+.wifhow-fold[open] .wifhow__title { display: none; }
+.plusx-paydetails { margin-top: 12px; }
+.plusx-paydetails__sum { cursor: pointer; list-style: none; }
+.plusx-paydetails__sum::-webkit-details-marker { display: none; }
+.plusx-details-toggle { align-self: flex-start; margin-top: 4px; }
+.earnings-card__head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 8px; }
+.earnings-card__head .earnings-card__title { margin: 0; }
+.earnings-meta-toggle { align-self: flex-start; margin: -4px 0 4px; }
 .names-claim__theme { display: grid; gap: 8px; margin: 4px 0 0; padding-top: 12px; border-top: 1px solid var(--line); }
 .manage-name .names-claim__theme { margin-top: 0; padding-bottom: 14px; border-bottom: 1px solid var(--line); justify-items: start; }
 .themepick { display: grid; grid-template-columns: repeat(2, minmax(0, 132px)); gap: 10px; }

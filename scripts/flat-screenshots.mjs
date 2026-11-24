@@ -34,6 +34,14 @@ async function assertTheme(page, dark) {
   console.log('  theme', theme, 'body bg', bg)
 }
 
+async function pickUsdg(page) {
+  const usdg = page.getByRole('radio', { name: /^USDG$/i })
+  if (await usdg.count()) {
+    await usdg.click()
+    await page.waitForTimeout(200)
+  }
+}
+
 async function snap(page, name) {
   const path = `${out}/${name}.png`
   await page.screenshot({ path, fullPage: false })
@@ -82,8 +90,9 @@ const shots = [
     path: '/plus',
     dark: false,
     action: async page => {
+      await pickUsdg(page)
       await page.getByTestId('plus-perks').waitFor({ state: 'visible', timeout: 15000 })
-      await page.getByText(/3[,.]?000/).first().waitFor({ state: 'visible', timeout: 10000 })
+      await page.getByText(/3[,.]?000|~.*USDG/i).first().waitFor({ state: 'visible', timeout: 10000 })
       await page.locator('text=where your wif goes').first().scrollIntoViewIfNeeded()
       await page.evaluate(() => window.scrollBy(0, -72))
     },
@@ -148,6 +157,7 @@ const shots = [
     action: async page => {
       await page.locator('input[aria-label="name to claim"]').fill(CLAIM2)
       await page.getByText(`${CLAIM2}.wif is available`, { exact: false }).waitFor({ state: 'visible', timeout: 15000 })
+      await pickUsdg(page)
       await page.getByTestId('claim-price').waitFor({ state: 'visible', timeout: 8000 })
       await page.locator('.names-claim__checkout').scrollIntoViewIfNeeded()
     },
@@ -160,6 +170,7 @@ const shots = [
     action: async page => {
       await page.locator('input[aria-label="name to claim"]').fill(CLAIM2)
       await page.getByText(`${CLAIM2}.wif is available`, { exact: false }).waitFor({ state: 'visible', timeout: 15000 })
+      await pickUsdg(page)
       await page.locator('.names-claim__checkout').scrollIntoViewIfNeeded()
     },
   },
@@ -172,6 +183,7 @@ const shots = [
     action: async page => {
       await page.locator('input[aria-label="name to claim"]').fill(CLAIM2)
       await page.getByText(`${CLAIM2}.wif is available`, { exact: false }).waitFor({ state: 'visible', timeout: 15000 })
+      await pickUsdg(page)
       await page.locator('.names-claim__checkout').scrollIntoViewIfNeeded()
     },
   },

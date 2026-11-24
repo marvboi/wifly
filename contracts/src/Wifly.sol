@@ -337,7 +337,7 @@ contract Wifly is
     /// @notice v3: USDG checkout + vote floor (run once via upgradeToAndCall).
     function initializeV3() external reinitializer(3) onlyOwner {
         usdg = IERC20(USDG_ROBINHOOD);
-        usdgPerWif = UsdMath.USDG_UNIT;
+        usdgPerWif = 0;
         minVoteAmount = 30e18;
         emit UsdgSet(USDG_ROBINHOOD);
         emit UsdgPerWifSet(usdgPerWif);

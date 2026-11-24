@@ -115,10 +115,14 @@ export const USDG_TOKEN: Address = '0x5fc5360D0400a0Fd4f2af552ADD042D716F1d168'
 export const USDG_DECIMALS = 6
 /** Official token logo from Paxos / Global Dollar brand kit (framerusercontent.com/assets/llo5qqG8OQbvOU2QpFJPTdUyn0.zip). */
 export const USDG_LOGO = '/brand/usdg-token.svg'
-/** PLACEHOLDER display quotes only (not onchain rates). See docs/flat-prices.md. */
+/** PLACEHOLDER display quotes when /api/price is unavailable. `usdPerWif` is USD per 1 whole wif (USDG ≈ same dollars). */
 export const PLACEHOLDER_PAY_QUOTES = {
-  usdgPerWif: Number(import.meta.env.VITE_PLACEHOLDER_USDG_PER_WIF || 1),
-  wifPerEth: Number(import.meta.env.VITE_PLACEHOLDER_WIF_PER_ETH || 1_000_000),
+  usdPerWif: Number(
+    import.meta.env.VITE_PLACEHOLDER_USD_PER_WIF
+    || import.meta.env.VITE_PLACEHOLDER_USDG_PER_WIF
+    || 6.3 / 8000,
+  ),
+  wifPerEth: Number(import.meta.env.VITE_PLACEHOLDER_WIF_PER_ETH || 1_270_000),
 } as const
 export const claimFeeOf = (n: string) => {
   if (n.length === 2) return NAME_FEE_2

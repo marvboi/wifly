@@ -1,14 +1,21 @@
-import { PLACEHOLDER_PAY_QUOTES, USDG_DECIMALS, USDG_LOGO, USDG_TOKEN } from '../config'
+import { USDG_DECIMALS, USDG_LOGO, USDG_TOKEN } from '../config'
+import { getPayRates, type PayRates } from './price'
 
 const ETH_LOGO = '/brand/eth-token.svg'
 
 export type PayToken = 'wif' | 'usdg' | 'eth'
 
-/** Display quotes for checkout labels (6-decimal USDG; see docs/flat-prices.md). */
-export function quotePayAmount(wifAmount: number, token: PayToken): number {
+export type { PayRates }
+
+const round = (n: number, decimals: number) => Math.round(n * 10 ** decimals) / 10 ** decimals
+
+/** Display quotes for checkout labels (6-decimal USDG; live USD when /api/price is up). */
+export function quotePayAmount(wifAmount: number, token: PayToken, rates?: PayRates): number {
   if (token === 'wif') return wifAmount
-  if (token === 'usdg') return Math.round(wifAmount * PLACEHOLDER_PAY_QUOTES.usdgPerWif * 10 ** USDG_DECIMALS) / 10 ** USDG_DECIMALS
-  return Math.round((wifAmount / PLACEHOLDER_PAY_QUOTES.wifPerEth) * 1e6) / 1e6
+  const r = rates ?? getPayRates()
+  if (token === 'usdg') return round(wifAmount * r.usdPerWif, USDG_DECIMALS)
+  if (!r.wifPerEth || r.wifPerEth <= 0) return 0
+  return round(wifAmount / r.wifPerEth, 6)
 }
 
 export function payTokenLabel(token: PayToken): string {

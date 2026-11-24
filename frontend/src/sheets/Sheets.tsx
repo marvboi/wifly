@@ -31,12 +31,14 @@ import { Icon } from '../components/Icon'
 import { SignInForm } from '../components/SignInForm'
 import { BumpNotice, MakeItYours } from '../components/Identity'
 import { LowBalance, SwapPanel } from '../components/Swap'
+import { PayingFrom } from '../components/Payer'
 import { TxSteps } from '../components/TxSteps'
 import { isWifName, useResolve } from '../lib/names'
 import { useDebounced } from '../api/hooks'
 import { PayTokenPicker } from '../components/PayTokenPicker'
 import { usePayRails } from '../api/usePayRails'
 import { formatPayQuote, quotePayAmount, type PayToken } from '../lib/payToken'
+import { usePayRates } from '../lib/price'
 
 // Top Spot shares as labels (TOP_SPOT_PREV_BPS 9000 onchain)
 const pct = (x: number) => `${Math.round(x * 100)}%`
@@ -456,7 +458,9 @@ function BoostSheet({ postId }: { postId: string }) {
   const { closeSheet, topSpot, takeTopSpot } = useStore()
   const { run, busy } = useAction()
   const { rails } = usePayRails()
+  const payRates = usePayRates()
   const [payToken, setPayToken] = useState<PayToken>('wif')
+  const [feeOpen, setFeeOpen] = useState(false)
   const rules = useTopSpotRules()
   const now = useNow()
   const min = rules?.minBid !== undefined ? Math.ceil(rules.minBid) : topSpotMinBid(topSpot.paid)
@@ -466,33 +470,35 @@ function BoostSheet({ postId }: { postId: string }) {
   const holder = topSpot.holder ? users[topSpot.holder] : undefined
   const ok = bid >= min && lockedFor === 0 && !!postId
   const split = topSpotSplit(bid, empty)
-  const quoted = quotePayAmount(bid, payToken)
+  const quoted = quotePayAmount(bid, payToken, payRates)
   const boostLabel = `boost for ${formatPayQuote(quoted, payToken)}`
   const n = (v: number) => v.toLocaleString(undefined, { maximumFractionDigits: 0 })
   return (
     <Sheet title="boost this post" className="sheet--pay" onClose={closeSheet}
       footer={<>
-        <TxSteps pull={payToken === 'wif' ? bid : 0} action="boost this post" />
+        <PayingFrom />
+        {feeOpen && <TxSteps pull={payToken === 'wif' ? bid : 0} action="boost this post" payer={false} />}
         <button className="btn btn--dark btn--block btn--lg" disabled={!ok || busy}
           onClick={() => run(plans.takeTopSpot(postId, bid, payToken), 'this drop is boosted', () => takeTopSpot(postId, bid))}>
           <Icon name="pin" size={18} /> {busy ? 'sending…' : lockedFor ? `locked for ${lockedFor}s` : boostLabel}
         </button>
         <PreviewNote />
       </>}>
-      <p className="muted">promote this drop to the top spot until someone outbids you.</p>
+      <p className="muted">promote this drop to the top spot until someone outbids you.<InfoTip label="about promotion">it stays above every feed until someone pays more.</InfoTip></p>
       <PayTokenPicker value={payToken} onChange={setPayToken} rails={rails} />
       <AmountPicker value={bid} onChange={setBid} presets={[min, Math.ceil(min * 1.25), Math.ceil(min * 1.5)]} />
-      {payToken !== 'wif' && <p className="small muted">est. {formatPayQuote(quoted, payToken)} from config quotes (not a live swap rate)</p>}
+      {payToken !== 'wif' && <InfoTip label="USDG or eth quote">est. {formatPayQuote(quoted, payToken)} from config quotes (not a live swap rate)</InfoTip>}
       {bid < min && <p className="small error">minimum bid is {min.toLocaleString()} wif.</p>}
       {lockedFor > 0 && <p className="small warn">the current holder is in the minimum hold. bidding opens in {lockedFor}s.</p>}
-      <LowBalance need={bid} />
-      <div className="fee">
+      {feeOpen && <LowBalance need={bid} />}
+      <button type="button" className="linkbtn small" aria-expanded={feeOpen} onClick={() => setFeeOpen(v => !v)}>fee details</button>
+      {feeOpen && <div className="fee">
         <div className="fee__rows">
           {!empty && <div className="fee__row"><span>{`${holder?.name ?? 'current holder'} gets back · ${pct(TOPSPOT_HOLDER_SHARE)}`}</span><span className="num strong">{n(split.toHolder)} wif</span></div>}
           <div className="fee__row"><span>promotion fee</span><span className="num">{n(split.fee)} wif</span></div>
         </div>
         <FeeParts fee={split.fee} />
-      </div>
+      </div>}
     </Sheet>
   )
 }

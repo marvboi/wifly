@@ -7,7 +7,7 @@ library UsdMath {
     uint256 internal constant USDG_UNIT = 1e6;
 
     /// @notice USDG smallest-units (6 decimals) required for a WIF wei amount at `usdgPerWif`.
-    /// @dev `usdgPerWif` is micro-USDG per 1e18 WIF wei (default 1e6 = 1:1 dollar per token).
+    /// @dev `usdgPerWif` is micro-USDG per 1 whole WIF (1e18 wei), e.g. 788 ≈ $0.000788/WIF. Set via `setUsdgPerWif` (not 1:1 with WIF count).
     function usdgForWif(uint256 wifWei, uint256 usdgPerWif) internal pure returns (uint256) {
         if (usdgPerWif == 0) return 0;
         return (wifWei * usdgPerWif) / WIF_UNIT;

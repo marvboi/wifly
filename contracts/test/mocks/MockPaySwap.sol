@@ -11,9 +11,15 @@ contract MockPaySwap is IWifToWifSwap {
     using SafeERC20 for IERC20;
 
     IERC20 public wif;
+    /// @dev micro-USDG per 1e18 WIF wei; 0 = legacy test parity (1 USDG unit → 1 WIF).
+    uint256 public usdgPerWif;
 
     constructor(IERC20 wif_) {
         wif = wif_;
+    }
+
+    function setUsdgPerWif(uint256 rate) external {
+        usdgPerWif = rate;
     }
 
     function swapEthForWif(uint256) external payable returns (uint256 wifOut) {
@@ -23,9 +29,13 @@ contract MockPaySwap is IWifToWifSwap {
 
     function swapTokenForWif(address token, uint256 amount, uint256) external returns (uint256 wifOut) {
         IERC20(token).transferFrom(msg.sender, address(this), amount);
-        // USDG is 6 decimals; WIF is 18 — 1:1 token parity in tests.
         try IERC20Metadata(token).decimals() returns (uint8 d) {
-            wifOut = d < 18 ? amount * 10 ** (18 - d) : amount;
+            if (d == 6 && usdgPerWif != 0) {
+                wifOut = (amount * 1e18) / usdgPerWif;
+            } else {
+                // USDG 6 decimals → 18: legacy 1:1 token count in tests when rate unset.
+                wifOut = d < 18 ? amount * 10 ** (18 - d) : amount;
+            }
         } catch {
             wifOut = amount;
         }

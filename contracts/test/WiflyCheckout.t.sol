@@ -38,6 +38,10 @@ contract WiflyCheckoutTest is Test {
         w.setUsdg(address(usdg));
         n.setUsdg(address(usdg));
         w.initializeV4(team);
+        uint256 usdgRate = 788; // micro-USDG per 1 WIF ($0.000788)
+        w.setUsdgPerWif(usdgRate);
+        n.setUsdgPerWif(usdgRate);
+        swap.setUsdgPerWif(usdgRate);
         vm.stopPrank();
 
         token.mint(address(swap), 10_000_000e18);
@@ -55,8 +59,12 @@ contract WiflyCheckoutTest is Test {
     function test_initializeV3_usdgAndVoteFloor() public view {
         assertEq(address(w.usdg()), address(usdg));
         assertEq(w.minVoteAmount(), 30e18);
-        assertEq(w.usdgPerWif(), UsdMath.USDG_UNIT);
-        assertEq(UsdMath.usdgForWif(3_000e18, w.usdgPerWif()), 3_000e6);
+        assertEq(w.usdgPerWif(), 788);
+        assertEq(UsdMath.usdgForWif(3_000e18, w.usdgPerWif()), 2_364_000);
+    }
+
+    function test_usdgForWif_8k_at_oracle_rate() public view {
+        assertEq(UsdMath.usdgForWif(8_000e18, 788), 6_304_000); // 6.304 USDG (6 decimals)
     }
 
     function test_vote_revertsBelowMin() public {

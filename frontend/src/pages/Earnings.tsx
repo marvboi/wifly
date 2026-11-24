@@ -1,4 +1,6 @@
 import { useQuery } from '@tanstack/react-query'
+import { useState } from 'react'
+import { InfoTip } from '../components/InfoTip'
 import { useSearchParams } from 'react-router-dom'
 import { api } from '../api/client'
 import { useSession } from '../api/session'
@@ -34,12 +36,13 @@ function fmtWif(n: number) {
   return `${n.toLocaleString(undefined, { maximumFractionDigits: 2 })} wif`
 }
 
-function KvRow({ label, value, note }: { label: string; value?: string; note?: string }) {
+function KvRow({ label, value, note, hideNote }: { label: string; value?: string; note?: string; hideNote?: boolean }) {
   return (
     <li className="earnings-kv__row">
       <div className="earnings-kv__left">
         <span className="earnings-kv__label">{label}</span>
-        {note ? <span className="earnings-kv__note muted small">{note}</span> : null}
+        {note && !hideNote ? <span className="earnings-kv__note muted small">{note}</span> : null}
+        {note && hideNote ? <span className="earnings-kv__note muted small sr-only">{note}</span> : null}
       </div>
       {value !== undefined ? <span className="earnings-kv__value num tabular-nums">{value}</span> : null}
     </li>
@@ -58,6 +61,8 @@ export function Earnings() {
   })
   const d = demoLocal ? DEMO_EARNINGS : q.data
   const loading = !demoLocal && q.isLoading
+  const [sourceDetails, setSourceDetails] = useState(false)
+  const [metaDetails, setMetaDetails] = useState(false)
   return (
     <>
       <PageHead title="creator earnings" back sub="what you earned on wifly" />
@@ -75,20 +80,26 @@ export function Earnings() {
             <p className="hero-num"><Amount value={d?.withdrawableWif ?? 0} size={32} /></p>
             {!d?.live && !demoLocal && <p className="muted small">preview: the wifly contract is not linked in this build yet.</p>}
           </section>
+          {metaDetails && (
+            <section className="card card--pad earnings-card">
+              <h3 className="strong small earnings-card__title">platform fee split (flat)</h3>
+              <ul className="earnings-kv plain">
+                <KvRow label="community pot" value={`${FLAT_FEE_SPLIT.pot}%`} />
+                <KvRow label="burned" value={`${FLAT_FEE_SPLIT.burn}%`} />
+                <KvRow label="treasury" value={`${FLAT_FEE_SPLIT.treasury}%`} />
+              </ul>
+              <p className="muted small earnings-card__foot">name claims keep their own 50/50 treasury and pot split.</p>
+            </section>
+          )}
+          <button type="button" className="linkbtn small earnings-meta-toggle" aria-expanded={metaDetails} onClick={() => setMetaDetails(v => !v)}>fee split details</button>
           <section className="card card--pad earnings-card">
-            <h3 className="strong small earnings-card__title">platform fee split (flat)</h3>
-            <ul className="earnings-kv plain">
-              <KvRow label="community pot" value={`${FLAT_FEE_SPLIT.pot}%`} />
-              <KvRow label="burned" value={`${FLAT_FEE_SPLIT.burn}%`} />
-              <KvRow label="treasury" value={`${FLAT_FEE_SPLIT.treasury}%`} />
-            </ul>
-            <p className="muted small earnings-card__foot">name claims keep their own 50/50 treasury and pot split.</p>
-          </section>
-          <section className="card card--pad earnings-card">
-            <h3 className="strong small earnings-card__title">by source</h3>
+            <div className="earnings-card__head">
+              <h3 className="strong small earnings-card__title">by source</h3>
+              <button type="button" className="linkbtn small" aria-expanded={sourceDetails} onClick={() => setSourceDetails(v => !v)}>details</button>
+            </div>
             <ul className="earnings-kv plain">
               {(d?.sources ?? []).map(s => (
-                <KvRow key={s.label} label={s.label} value={s.valueWif !== undefined ? fmtWif(s.valueWif) : undefined} note={s.note} />
+                <KvRow key={s.label} label={s.label} value={s.valueWif !== undefined ? fmtWif(s.valueWif) : undefined} note={s.note} hideNote={!sourceDetails} />
               ))}
             </ul>
           </section>
@@ -96,12 +107,15 @@ export function Earnings() {
             <h3 className="strong small earnings-card__title">payouts</h3>
             <ul className="earnings-kv plain">
               {(d?.payouts ?? []).map(p => (
-                <KvRow key={p.label} label={p.label} value={p.valueWif !== undefined ? fmtWif(p.valueWif) : undefined} note={p.note} />
+                <KvRow key={p.label} label={p.label} value={p.valueWif !== undefined ? fmtWif(p.valueWif) : undefined} note={p.note} hideNote={!sourceDetails} />
               ))}
             </ul>
-            <p className="muted small earnings-card__foot"><Token size={16} /> withdraw from the wifly contract from any wallet that holds the balance.</p>
+            {sourceDetails && <p className="muted small earnings-card__foot"><Token size={16} /> withdraw from the wifly contract from any wallet that holds the balance.</p>}
           </section>
-          {d?.paymentsLive && <p className="muted small center earnings-page__foot">plus, names and boosts can also settle in USDG or eth on wifly.</p>}
+          {d?.paymentsLive && <>
+            <p className="muted small center earnings-page__foot sr-only">plus, names and boosts can also settle in USDG or eth on wifly.</p>
+            <p className="center earnings-page__foot"><InfoTip label="USDG or eth">plus, names and boosts can also settle in USDG or eth on wifly.</InfoTip></p>
+          </>}
         </div>
       )}
     </>

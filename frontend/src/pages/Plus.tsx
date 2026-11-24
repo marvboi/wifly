@@ -17,6 +17,7 @@ import { PriceTag, Token } from '../components/Bits'
 import { PayTokenPicker } from '../components/PayTokenPicker'
 import { usePayRails } from '../api/usePayRails'
 import { altPayEnabled, formatPayQuote, quotePayAmount, type PayToken } from '../lib/payToken'
+import { usePayRates } from '../lib/price'
 import { FeeSplit } from '../components/FeeSplit'
 import { PageHead } from '../components/Shell'
 import { Icon, type IconName } from '../components/Icon'
@@ -95,7 +96,9 @@ export function Plus() {
   const newEnd = base + (plan === 'year' ? 365 : 30) * DAY
   const showPay = !has || switching || extend || v.state === 'grace'
   const shortBy = wif !== undefined && wif < price
-  const quoted = quotePayAmount(price, payToken)
+  const payRates = usePayRates()
+  const quoted = quotePayAmount(price, payToken, payRates)
+  const [checkoutDetails, setCheckoutDetails] = useState(false)
   const payLabel = (verb: string) => `${verb} for ${formatPayQuote(quoted, payToken)}`
 
   // auto-renew is set onchain by the wallet that holds the sub (the server tells which one after reading every wallet
@@ -169,8 +172,6 @@ export function Plus() {
           {v.state === 'expired' && <>it ended on {fmtDate(v.expiresAt)} and the grace period is over. renew anytime to get the check back.</>}
           {v.state === 'none' && <>a monthly or yearly pass, paid in wif.</>}
         </p>
-        {v.state === 'none' && showPay && altPayEnabled(rails) && <p className="plusx-paynote muted small">checkout can also settle in USDG or eth on wifly.</p>}
-
         {v.priceChanged && (
           <div className="plusx-alert" role="alert">
             <b>the price changed. confirm the new price.</b>
@@ -187,7 +188,10 @@ export function Plus() {
             <button role="radio" aria-checked={plan === 'month'} className={plan === 'month' ? 'is-on' : ''} onClick={() => { setPlan('month'); setCap(monthPrice) }}>monthly</button>
             <button role="radio" aria-checked={plan === 'year'} className={plan === 'year' ? 'is-on' : ''} onClick={() => { setPlan('year'); setCap(yearPrice) }}>yearly <span className="plusx-pill">2 months free</span></button>
           </div>
-          {showPay && <PayTokenPicker value={payToken} onChange={setPayToken} rails={rails} className="plusx-paytoken" />}
+          {showPay && <>
+            <PayTokenPicker value={payToken} onChange={setPayToken} rails={rails} className="plusx-paytoken" />
+            {altPayEnabled(rails) && <InfoTip label="checkout currency">checkout can also settle in USDG or eth on wifly.</InfoTip>}
+          </>}
           {open ? <div className="plusx-price">
             {payToken === 'wif' ? <PriceTag value={price} size={32} /> : <span className="plusx-price__alt num strong" style={{ fontSize: 32 }}>{formatPayQuote(quoted, payToken)}</span>}
             <span className="plusx-price__per">{plan === 'year' ? 'per year' : 'per month'}</span>
@@ -204,13 +208,14 @@ export function Plus() {
               : v.state === 'expired' ? payLabel('renew') : payLabel(has ? 'renew' : 'get plus')}
           </button> : <div className="plusx-on" data-testid="plus-on"><Icon name="check" size={16} /> <span>you’re covered until <b>{fmtDate(v.expiresAt)}</b></span>
             {open && <button className="plusx-link" data-testid="plus-extend" onClick={() => setExtend(true)}>extend</button>}</div>}
-          {has && (switching || extend || v.state === 'grace') && open && <p className="small muted plusx-note plusx-stack" data-testid="plus-stack-note">
+          {has && (switching || extend || v.state === 'grace') && open && checkoutDetails && <p className="small muted plusx-note plusx-stack" data-testid="plus-stack-note">
             adds {addsLabel} from {fmtDate(base)} · new end <b>{fmtDate(newEnd)}</b>. no proration: every day you paid for stays.
             {extend && !switching && <> <button className="plusx-link" onClick={() => setExtend(false)}>cancel</button></>}</p>}
-          <div className="plusx-wallet">
+          {showPay && <button type="button" className="linkbtn small plusx-details-toggle" aria-expanded={checkoutDetails} onClick={() => setCheckoutDetails(v => !v)}>details</button>}
+          {showPay && checkoutDetails && <div className="plusx-wallet">
             <span className="small muted"><Token size={16} /> {wif === undefined ? 'connect a wallet to see your balance' : <>you have <b className="num">{Math.floor(wif).toLocaleString()} wif</b></>}</span>
             {open && (shortBy || wif === undefined) && <button className="btn btn--ghost btn--sm" onClick={getWif}>get wif</button>}
-          </div>
+          </div>}
           {isTeam && <p className="small muted plusx-note"><Icon name="shield" size={14} /> this is the team wallet. it can’t subscribe to itself.</p>}
         </div>
       </section>
@@ -243,23 +248,31 @@ export function Plus() {
         ))}
       </ul>
 
-      {open && <>
+      {open && showPay && (
+        <details className="plusx-paydetails">
+          <summary className="plusx-h plusx-paydetails__sum">payment details</summary>
+          <h3 className="plusx-h">where your wif goes<InfoTip label="about plus payments">paid to the wifly team. the 2% burn is 100% burned — nothing to the pot or treasury (same for USDG and eth checkout after swap-to-wif).</InfoTip></h3>
+          <section className="card plusx-card">
+            <FeeSplit amount={price} recipientLabel="wifly team gets" kind="plus" />
+          </section>
+          <h3 className="plusx-h">how paying works</h3>
+          <ol className="plusx-steps">
+            <li className={needsApprove ? '' : 'is-done'}>
+              <span className="plusx-steps__n">{needsApprove ? 1 : <Icon name="check" size={12} />}</span>
+              <div><b>allow {price.toLocaleString()} wif</b><p className="small muted">{needsApprove ? 'your wallet asks once.' : 'already done.'}</p></div>
+            </li>
+            <li>
+              <span className="plusx-steps__n">2</span>
+              <div><b>confirm the payment</b><p className="small muted">plus turns on in a few seconds.</p></div>
+            </li>
+          </ol>
+        </details>
+      )}
+      {open && !showPay && <>
       <h3 className="plusx-h">where your wif goes<InfoTip label="about plus payments">paid to the wifly team. the 2% burn is 100% burned — nothing to the pot or treasury (same for USDG and eth checkout after swap-to-wif).</InfoTip></h3>
       <section className="card plusx-card">
         <FeeSplit amount={price} recipientLabel="wifly team gets" kind="plus" />
       </section>
-
-      <h3 className="plusx-h">how paying works</h3>
-      <ol className="plusx-steps">
-        <li className={needsApprove ? '' : 'is-done'}>
-          <span className="plusx-steps__n">{needsApprove ? 1 : <Icon name="check" size={12} />}</span>
-          <div><b>allow {price.toLocaleString()} wif</b><p className="small muted">{needsApprove ? 'your wallet asks once.' : 'already done.'}</p></div>
-        </li>
-        <li>
-          <span className="plusx-steps__n">2</span>
-          <div><b>confirm the payment</b><p className="small muted">plus turns on in a few seconds.</p></div>
-        </li>
-      </ol>
       </>}
 
       <h3 className="plusx-h">questions</h3>
