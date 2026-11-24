@@ -6,8 +6,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { companion } from '../lib/companion'
 import { api } from '../api/client'
 import { useSession } from '../api/session'
-import { AGENT_CAP_FREE, AGENT_CAP_PLUS, AGENT_READY, FEE_SPLIT, FREE_AI_MSGS_PER_DAY_FALLBACK, PLUS_PRICE_FALLBACK, PLUS_PRICE_YEAR_FALLBACK } from '../config'
-import { FEE_PERCENT_LABEL } from '../lib/fees'
+import { AGENT_CAP_FREE, AGENT_CAP_PLUS, AGENT_READY, FREE_AI_MSGS_PER_DAY_FALLBACK, PLUS_PRICE_FALLBACK, PLUS_PRICE_YEAR_FALLBACK } from '../config'
 import { plusTopUp } from '../components/Swap'
 import { useWifBalance } from '../lib/chain'
 import { motion } from 'motion/react'
@@ -170,7 +169,7 @@ export function Plus() {
           {v.state === 'expired' && <>it ended on {fmtDate(v.expiresAt)} and the grace period is over. renew anytime to get the check back.</>}
           {v.state === 'none' && <>a monthly or yearly pass, paid in wif.</>}
         </p>
-        {v.state === 'none' && showPay && altPayEnabled(rails) && <p className="plusx-paynote muted small">checkout can also settle in USDG or eth on Wifly.</p>}
+        {v.state === 'none' && showPay && altPayEnabled(rails) && <p className="plusx-paynote muted small">checkout can also settle in USDG or eth on wifly.</p>}
 
         {v.priceChanged && (
           <div className="plusx-alert" role="alert">
@@ -245,9 +244,9 @@ export function Plus() {
       </ul>
 
       {open && <>
-      <h3 className="plusx-h">where your wif goes<InfoTip label="about plus payments">paid to the wifly team. the {FEE_PERCENT_LABEL} fee: {FEE_SPLIT.pot}% weekly pot, {FEE_SPLIT.burn}% burned.</InfoTip></h3>
+      <h3 className="plusx-h">where your wif goes<InfoTip label="about plus payments">paid to the wifly team. the 2% burn is 100% burned — nothing to the pot or treasury (same for USDG and eth checkout after swap-to-WIF).</InfoTip></h3>
       <section className="card plusx-card">
-        <FeeSplit amount={price} recipientLabel="wifly team gets" />
+        <FeeSplit amount={price} recipientLabel="wifly team gets" kind="plus" />
       </section>
 
       <h3 className="plusx-h">how paying works</h3>

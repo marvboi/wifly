@@ -9,7 +9,7 @@ Live app: https://app.wifly.fun
 - Tips carry a 2% fee. Fees on tips, votes and other payments go 90% to the weekly jar and 10% is burned.
 - `.wif` name claims cost 100 WIF (5-20 characters) or 1,000 WIF (3-4 characters). Claim fees are split 50/50 between the treasury and the weekly jar.
 - Fees on `.wif` name sales follow the same 90% jar / 10% burn split.
-- Wifly Plus costs 1,500 WIF a month or 15,000 WIF a year.
+- Wifly Plus costs 3,000 WIF a month or 30,000 WIF a year (2% fee is 100% burned).
 
 ## Repository layout
 

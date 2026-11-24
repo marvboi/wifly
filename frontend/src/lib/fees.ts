@@ -2,12 +2,14 @@ import { CLAIM_SPLIT, FEE_BPS, FEE_SPLIT, TOPSPOT_FEE_SHARE, TOPSPOT_HOLDER_SHAR
 
 export type FeeParts = { treasury: number; pot: number; burn: number }
 export type FeeSplit = { amount: number; fee: number; receives: number } & FeeParts
-/** Which split a fee follows: 'fee' (every fee, FEE_SPLIT) or 'claim' (.wif name claims, CLAIM_SPLIT). */
-export type SplitKind = 'fee' | 'claim'
+/** Which split a fee follows: 'fee' (tips, boosts, …), 'claim' (.wif name claims), 'plus' (100% burned). */
+export type SplitKind = 'fee' | 'claim' | 'plus'
+
+export const PLUS_FEE_SPLIT = { pot: 0, burn: 100, treasury: 0 } as const
 
 /** The split as whole percents, with zero shares filled in. */
 export const shares = (kind: SplitKind = 'fee'): FeeParts => {
-  const s: Partial<FeeParts> = kind === 'claim' ? CLAIM_SPLIT : FEE_SPLIT
+  const s: Partial<FeeParts> = kind === 'claim' ? CLAIM_SPLIT : kind === 'plus' ? PLUS_FEE_SPLIT : FEE_SPLIT
   return { treasury: s.treasury ?? 0, pot: s.pot ?? 0, burn: s.burn ?? 0 }
 }
 
@@ -23,12 +25,20 @@ export const splitLabel = (kind: SplitKind = 'fee', sep = ' · ') =>
   (['treasury', 'pot', 'burn'] as const).filter(k => shares(kind)[k] > 0).map(k => `${shares(kind)[k]}% ${PART_NAME[k]}`).join(sep)
 export const FEE_SPLIT_LABEL = splitLabel('fee')
 export const CLAIM_SPLIT_LABEL = splitLabel('claim')
+export const PLUS_FEE_SPLIT_LABEL = splitLabel('plus')
 
 /** Fee is taken out of the amount: the recipient receives amount minus the fee. */
 export function feeSplit(amount: number): FeeSplit {
   const a = Math.max(0, amount || 0)
   const fee = (a * FEE_BPS) / 10_000
   return { amount: a, fee, receives: a - fee, ...splitFee(fee) }
+}
+
+/** Plus checkout: full fee burned; team receives amount minus fee. */
+export function plusFeeSplit(amount: number): FeeSplit {
+  const a = Math.max(0, amount || 0)
+  const fee = (a * FEE_BPS) / 10_000
+  return { amount: a, fee, receives: a - fee, treasury: 0, pot: 0, burn: fee }
 }
 
 /** A promotion bid: the outbid holder gets 90% back, the rest is the fee. On an empty spot the whole bid is the fee. */

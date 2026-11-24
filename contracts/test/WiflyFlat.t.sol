@@ -60,6 +60,13 @@ contract WiflyFlatTest is Test {
         assertEq(n.claimFeeOf("ab"), 2_000e18);
     }
 
+    function test_plus_fee_fully_burned() public view {
+        (uint256 fee, uint256 burn, uint256 net) = w.quotePlusFee(3_000e18);
+        assertEq(fee, 60e18);
+        assertEq(burn, 60e18);
+        assertEq(net, 2_940e18);
+    }
+
     function test_setFeeShares_caps() public {
         vm.startPrank(owner);
         vm.expectRevert(Wifly.BadShares.selector);

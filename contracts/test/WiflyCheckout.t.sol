@@ -37,14 +37,10 @@ contract WiflyCheckoutTest is Test {
         n.setSwapRouter(address(swap));
         w.setUsdg(address(usdg));
         n.setUsdg(address(usdg));
+        w.initializeV4(team);
         vm.stopPrank();
 
         token.mint(address(swap), 10_000_000e18);
-
-        vm.startPrank(team);
-        w.setTier(0, 1_500e18);
-        w.setYearlyPrice(0, 15_000e18);
-        vm.stopPrank();
 
         usdg.mint(alice, 1_000_000e6);
         token.mint(alice, 1_000_000e18);
@@ -60,7 +56,7 @@ contract WiflyCheckoutTest is Test {
         assertEq(address(w.usdg()), address(usdg));
         assertEq(w.minVoteAmount(), 30e18);
         assertEq(w.usdgPerWif(), UsdMath.USDG_UNIT);
-        assertEq(UsdMath.usdgForWif(1_500e18, w.usdgPerWif()), 1_500e6);
+        assertEq(UsdMath.usdgForWif(3_000e18, w.usdgPerWif()), 3_000e6);
     }
 
     function test_vote_revertsBelowMin() public {
@@ -72,7 +68,7 @@ contract WiflyCheckoutTest is Test {
     }
 
     function test_payPlus_usdg() public {
-        uint256 usdgDue = UsdMath.usdgForWif(1_500e18, w.usdgPerWif());
+        uint256 usdgDue = UsdMath.usdgForWif(3_000e18, w.usdgPerWif());
         vm.prank(alice);
         w.payPlusUsdg(team, 0, 0, usdgDue);
         (bool active,,,,,) = w.subStatus(alice, team);

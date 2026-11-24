@@ -134,16 +134,16 @@ test('plus: active → grace → expired, auto-renew rules, price changed', asyn
   const day = 86400_000, t0 = Date.now()
   await applyPlusPayment(u.uid, 'month', false, t0)
   let v = await plusView(u.uid, t0 + day)
-  assert.equal(v.state, 'active'); assert.equal(v.check, true); assert.equal(v.price, 1500)
-  assert.deepEqual(v.plans.map((p: any) => p.price), [1500, 15000])
+  assert.equal(v.state, 'active'); assert.equal(v.check, true);   assert.equal(v.price, 3000)
+  assert.deepEqual(v.plans.map((p: any) => p.price), [3000, 30000])
   assert.equal((await call('POST', '/api/plus/auto-renew', { cookie: u.cookie, body: { on: true, agreedPrice: 1000, plan: 'month' } })).status, 400, 'agreed price must cover the plan')
-  const on = await call('POST', '/api/plus/auto-renew', { cookie: u.cookie, body: { on: true, agreedPrice: 1500, plan: 'month' } })
+  const on = await call('POST', '/api/plus/auto-renew', { cookie: u.cookie, body: { on: true, agreedPrice: 3000, plan: 'month' } })
   assert.equal(on.body.autoRenew, true)
   v = await plusView(u.uid, t0 + 31 * day)
   assert.equal(v.state, 'grace'); assert.equal(v.check, true); assert.equal(v.renewableNow, true)
   assert.equal((await duePlusRenewals(t0 + 31 * day)).filter(r => r.userId === u.uid).length, 1)
   // price goes up above the agreed price: renewal stops and asks to confirm
-  process.env.PLUS_PRICE_MONTH = '2000'
+  process.env.PLUS_PRICE_MONTH = '4000'
   v = await plusView(u.uid, t0 + 31 * day)
   assert.equal(v.priceChanged, true); assert.equal(v.renewableNow, false)
   assert.equal((await duePlusRenewals(t0 + 31 * day)).filter(r => r.userId === u.uid).length, 0)

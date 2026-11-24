@@ -18,9 +18,9 @@ export const WIF_DECIMALS = 18
 export const BURN_ADDRESS: Address = '0x000000000000000000000000000000000000dEaD'
 
 /**
- * The one fee rule. A small platform fee on every tip, subscription, plus, unlock, pay link, vote and promotion bid (2%,
- * Top Spot is its own slice below) and on .wif name sales (2.5%). Every fee splits the same way: 90% to the weekly
- * community pot (rewards only), 10% burned. The treasury takes nothing from fees.
+ * The one fee rule. A small platform fee on every tip, subscription, unlock, pay link, vote and promotion bid (2%,
+ * Top Spot is its own slice below) and on .wif name sales (2.5%). Most fees split per FLAT_FEE_SPLIT.
+ * Wifly Plus: the full 2% is burned (no pot or treasury).
  * .wif name claims are the one exception: 50% treasury, 50% weekly community pot, nothing burned (CLAIM_SPLIT).
  * Badge burns are not a fee: they stay 100% burned. Scheduled WIF buys (DCA) have no fee.
  * Shares are whole percents.
@@ -88,9 +88,9 @@ export const WIFLY_TEAM_WALLET: Address | undefined = envAddr(import.meta.env.VI
 /** Tier index (0-2) on the team wallet that is Plus. */
 export const PLUS_TIER = 0
 /** Shown until tierPrices(teamWallet) can be read. */
-export const PLUS_PRICE_FALLBACK = 1500
+export const PLUS_PRICE_FALLBACK = 3000
 /** Yearly Plus (plan 1). */
-export const PLUS_PRICE_YEAR_FALLBACK = 15000
+export const PLUS_PRICE_YEAR_FALLBACK = 30000
 /** true once a contract address is set: reads come from the contract instead of showing empty states. */
 export const LIVE = !!WIFLY_ADDRESS
 /**

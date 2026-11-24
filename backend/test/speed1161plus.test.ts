@@ -165,22 +165,22 @@ test('auto-renew on a sub the mirror hadn’t seen yet: no “get plus first”,
   const a = key(), paid = key()
   const c = await signIn(a); await onboard(c, 'plusauto')
   assert.equal((await linkWallet(c, paid)).status, 200)
-  // like the live report: paid monthly from one wallet, setAutoRenew(1500) already went through onchain, the app mirror is empty
+  // like the live report: paid monthly from one wallet, setAutoRenew(3000) already went through onchain, the app mirror is empty
   subs.set(lc(paid.address), { expiry: now() + 30 * DAY, plan: 0 })
-  autos.set(lc(paid.address), 1500n * 10n ** 18n)
+  autos.set(lc(paid.address), 3000n * 10n ** 18n)
   const uid = Number((await one<{ id: number }>('SELECT id FROM users WHERE handle = ?', ['plusauto']))!.id)
   assert.equal(await one('SELECT 1 FROM plus_subs WHERE user_id = ?', [uid]), undefined)
   resetRateLimits()
-  const r = await call('POST', '/api/plus/auto-renew', { body: { on: true, agreedPrice: 1500, plan: 'month' }, cookie: c })
+  const r = await call('POST', '/api/plus/auto-renew', { body: { on: true, agreedPrice: 3000, plan: 'month' }, cookie: c })
   assert.equal(r.status, 200, JSON.stringify(r.body)); assert.equal(r.body.autoRenew, true); assert.equal(r.body.state, 'active')
   fresh(); const v = (await call('GET', '/api/plus', { cookie: c })).body
   assert.equal(v.wallet, lc(paid.address), 'the page knows which wallet must send setAutoRenew')
-  assert.equal(v.autoRenew, true); assert.equal(v.agreedPrice, 1500)
+  assert.equal(v.autoRenew, true); assert.equal(v.agreedPrice, 3000)
   // turned off onchain → the mirror follows on the next sync
   autos.delete(lc(paid.address)); fresh(); resetRateLimits()
   assert.equal((await call('POST', '/api/plus/sync', { cookie: c })).body.plus.autoRenew, false)
   // no sub anywhere: still a clear 409
   const n = await signIn(key()); await onboard(n, 'plusnoauto'); resetRateLimits()
-  const x = await call('POST', '/api/plus/auto-renew', { body: { on: true, agreedPrice: 1500 }, cookie: n })
+  const x = await call('POST', '/api/plus/auto-renew', { body: { on: true, agreedPrice: 3000 }, cookie: n })
   assert.equal(x.status, 409); assert.match(x.body.error, /get plus first/)
 })

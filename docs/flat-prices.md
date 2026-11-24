@@ -13,10 +13,19 @@ Values are in WIF unless noted. **Marv-approved** rows are marked.
 
 ## Wifly Plus
 
-| Plan | Old | New |
+| Plan | Old | New (pending Marv final OK on yearly) |
 |------|-----|-----|
-| Monthly | 1,500 / 30 days | 1,500 / 30 days |
-| Yearly | 15,000 / 365 days | 15,000 / 365 days |
+| Monthly | 1,500 / 30 days | **3,000 / 30 days** |
+| Yearly | 15,000 / 365 days | **30,000 / 365 days** (keeps “2 months free” vs 12× monthly) |
+
+### Plus fee (Marv approved)
+
+| Item | Other platform fees (2%) | Wifly Plus (WIF, USDG, eth) |
+|------|--------------------------|-------------------------------|
+| Split | 70% pot / 10% burn / 20% treasury (`FLAT_FEE_SPLIT`) | **100% burned** (no pot, no treasury) |
+| Example @ 3,000 WIF / month | — | burn **60 wif**, team gets **2,940 wif** |
+
+USDG/eth Plus: swap to WIF first, then the same 2% is burned onchain (or held for burn when the swap router is unset).
 
 ## Top Spot / post boost
 
@@ -36,7 +45,8 @@ Values are in WIF unless noted. **Marv-approved** rows are marked.
 | Item | Old | New |
 |------|-----|-----|
 | .wif resale fee | 2.5% | 2.5% |
-| Platform fee (tips, plus, unlocks, etc.) | 2% | 2% |
+| Platform fee (tips, boosts, unlocks, etc.) | 2% | 2% (`FLAT_FEE_SPLIT`) |
+| Platform fee (**Wifly Plus** only) | 2% (same split as above) | 2% **100% burned** |
 
 ## Payment methods (new)
 

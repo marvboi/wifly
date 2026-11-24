@@ -628,27 +628,29 @@ contract WiflyTest is WiflyBase {
     }
 
     function test_plusYearly_andRenew_split() public {
-        // Plus = a normal subscription to the team wallet (here: treasury) -> 98% credited, 2% split 90/10
+        // Plus = team wallet subscription -> 98% credited, 2% fee 100% burned
+        vm.prank(owner);
+        w.setPlusCreator(treasury);
         vm.startPrank(treasury);
-        w.setTier(0, 1_500e18);
-        w.setYearlyPrice(0, 15_000e18);
+        w.setTier(0, 3_000e18);
+        w.setYearlyPrice(0, 30_000e18);
         vm.stopPrank();
-        token.mint(alice, 20_000e18);
+        token.mint(alice, 50_000e18);
         uint256 supply = token.totalSupply();
         vm.startPrank(alice);
-        w.subscribePlan(treasury, 0, 1); // fee 300e18
-        w.setAutoRenew(treasury, 0, 0, 1_500e18);
+        w.subscribePlan(treasury, 0, 1); // fee 600e18 burned
+        w.setAutoRenew(treasury, 0, 0, 3_000e18);
         vm.stopPrank();
-        assertEq(w.balances(treasury), 14_700e18);
-        assertEq(w.epochPot(), 270e18);
-        assertEq(supply - token.totalSupply(), 30e18);
+        assertEq(w.balances(treasury), 29_400e18);
+        assertEq(w.epochPot(), 0);
+        assertEq(supply - token.totalSupply(), 600e18);
         assertEq(token.balanceOf(treasury), 0);
         (, , , uint64 expiry, , ) = w.subStatus(alice, treasury);
         vm.warp(expiry);
-        w.renew(alice, treasury); // monthly renewal, fee 30e18
-        assertEq(w.balances(treasury), 14_700e18 + 1_470e18);
-        assertEq(w.epochPot(), 270e18 + 27e18);
-        assertEq(supply - token.totalSupply(), 33e18);
+        w.renew(alice, treasury); // monthly renewal, fee 60e18 burned
+        assertEq(w.balances(treasury), 29_400e18 + 2_940e18);
+        assertEq(w.epochPot(), 0);
+        assertEq(supply - token.totalSupply(), 660e18);
         _assertSolvent();
     }
 

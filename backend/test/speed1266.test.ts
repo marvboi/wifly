@@ -16,7 +16,7 @@ import {
   orientationNorm,
   playNorm,
 } from '../../frontend/src/lib/playfulMarksMotion'
-import { handleFaceMood, handleFieldError, handleLogoReplacesError, type HandleCheck } from '../../frontend/src/lib/handleName'
+import { handleFaceMood, handleFieldError, handleLogoReplacesError, HANDLE_MIN, type HandleCheck } from '../../frontend/src/lib/handleName'
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '../..')
 const src = (rel: string) => readFileSync(join(root, 'frontend/src', rel), 'utf8')
@@ -93,7 +93,7 @@ test('reserved and taken drop their status word and reuse the picker Mascot in t
   assert.equal(handleFieldError(taken, 'bad'), 'taken')
   assert.equal(handleFieldError(listed, 'bad'), 'taken · for sale')
   assert.equal(handleFieldError(onchain, 'bad'), 'taken onchain')
-  assert.equal(handleFieldError(short, 'bad'), 'at least 2 characters')
+  assert.equal(handleFieldError(short, 'bad'), `at least ${HANDLE_MIN} characters`)
 
   assert.equal(handleFaceMood('admin', 'bad', 'reserved'), 'oops')
   assert.equal(handleFaceMood('blue', 'bad', 'taken'), 'oops')

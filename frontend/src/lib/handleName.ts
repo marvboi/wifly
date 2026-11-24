@@ -1,5 +1,5 @@
-/** Shared @username rules (keep in sync with config NAME_MIN / NAME_MAX). */
-export const HANDLE_MIN = 2, HANDLE_MAX = 20
+/** Shared @username rules (@handle only; .wif names use NAME_MIN in config). */
+export const HANDLE_MIN = 3, HANDLE_MAX = 20
 
 export type HandleCheck = {
   handle: string; available: boolean; reason?: 'invalid' | 'reserved' | 'taken' | 'listed' | 'x-reserved' | 'wif-owned' | 'yours'
@@ -37,7 +37,7 @@ export function handleFaceMood(value: string, state: HandleUi, reason?: HandleCh
   if (state === 'ok') return 'happy'
   if (reason === 'reserved' || reason === 'taken' || reason === 'x-reserved' || reason === 'listed' || reason === 'wif-owned') return 'oops'
   if (!value) return 'calm'
-  if (state === 'checking' || reason === 'invalid' || value.length < HANDLE_MIN) return 'think'
+  if (state === 'checking' || (reason === 'invalid' && value.length < HANDLE_MIN) || value.length < HANDLE_MIN) return 'think'
   return 'oops'
 }
 

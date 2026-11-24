@@ -1,5 +1,5 @@
 import { FEE_PERCENT_LABEL, shares, splitLabel, type SplitKind } from '../lib/fees'
-import { useQuoteFee, useQuoteSplit } from '../lib/wifly'
+import { useQuoteFee, useQuotePlusFee, useQuoteSplit } from '../lib/wifly'
 import { Icon } from './Icon'
 import { InfoTip } from './InfoTip'
 
@@ -31,14 +31,20 @@ export function FeeParts({ fee, showBar = true, kind = 'fee' }: { fee: number; s
   )
 }
 
-/** The one fee rule, shown wherever money moves. Fee and net come from Wifly.quoteFee when the contract is set. */
-export function FeeSplit({ amount, recipientLabel = 'creator receives' }: { amount: number; recipientLabel?: string }) {
-  const s = useQuoteFee(amount)
+/** The one fee rule, shown wherever money moves. Fee and net come from Wifly.quoteFee / quotePlusFee when live. */
+export function FeeSplit({ amount, recipientLabel = 'creator receives', kind = 'fee' as SplitKind }: { amount: number; recipientLabel?: string; kind?: SplitKind }) {
+  const fee = useQuoteFee(amount)
+  const plus = useQuotePlusFee(amount)
+  const s = kind === 'plus' ? plus : fee
+  const tip = kind === 'plus'
+    ? `the full ${FEE_PERCENT_LABEL} is burned. nothing goes to the weekly pot or treasury.`
+    : `${splitLabel('fee')}. ${f(s.pot)} wif to the weekly pot, ${f(s.burn)} wif burned.`
+  const feeLabel = kind === 'plus' ? 'burn' : 'fee'
   return (
     <div className="fee">
       <div className="fee__rows">
         <div className="fee__row"><span>{recipientLabel}</span><span className="num strong">{f(s.receives)} wif</span></div>
-        <div className="fee__row"><span>fee · {FEE_PERCENT_LABEL}<InfoTip label="where the fee goes">{splitLabel('fee')}. {f(s.pot)} wif to the weekly pot, {f(s.burn)} wif burned.</InfoTip></span><span className="num">{f(s.fee)} wif</span></div>
+        <div className="fee__row"><span>{feeLabel} · {FEE_PERCENT_LABEL}<InfoTip label="where the fee goes">{tip}</InfoTip></span><span className="num">{f(s.fee)} wif</span></div>
       </div>
     </div>
   )

@@ -105,7 +105,7 @@ ABIs regenerated from peg's final feev2 build (`ABI_OUT=/workspace/wifly-contrac
 - Companion: the fuzzy command parser (backend/src/commandParse.ts) understands typos like "by 5 wif evry mondy" and turns them into a DCA draft the user confirms in the app.
 
 ## Wifly Plus gate (backend/src/plusGate.ts)
-- Price: 1,500 WIF a month or 15,000 WIF a year (`subscribeForPlan` to the team creator).
+- Price: 3,000 WIF a month or 30,000 WIF a year (`subscribeForPlan` to the team creator). Plus fee: 2% fully burned.
 - Reads `Wifly.subStatus(user, team)`. Access while the period runs **or inside the 5-day grace**. A failed read **denies** (fail closed) with a "couldn't check Plus right now" reason.
 - Preview (contracts not deployed): the app mirror `plus_subs` uses the same active/grace rule, so the demo states `/plus?state=active|grace|expired|price` work without a tx.
 - Plus-gated: companion agent commands (tip, subscribe, Top Spot, DCA through the agent) and the DCA keeper. Free for everyone: chat itself, the swap, names, badges and creating a DCA plan.

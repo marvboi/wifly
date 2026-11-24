@@ -43,8 +43,7 @@ Solvency invariant: `WIF.balanceOf(wifly) >= totalBalances + totalEscrow + epoch
   - within grace: new expiry = old expiry + plan period; after grace: a fresh period from now;
   - once per period: after a renewal the sub is active again, so another call reverts `NotRenewable` until the next expiry.
 - The frontend should approve a **capped** allowance (3, 6 or 12 months of the price, or 1-2 years for yearly), never unlimited.
-- **Wifly Plus** is just a creator account run by the team wallet: it calls `setTier(0, 1_500e18)` and `setYearlyPrice(0, 15_000e18)`
-  (defaults: **1,500 WIF/month, 15,000 WIF/year**). The deploy script does not set these; the team wallet sends the two txs.
+- **Wifly Plus** is a creator account on the team wallet. After `initializeV4(plusCreator)`, tier 0 is **3,000 WIF/month** and **30,000 WIF/year** onchain; the owner can still adjust via the team wallet’s `setTier` / `setYearlyPrice`. Plus subscription fees are **100% burned** (not the 70/10/20 platform split).
 
 ## .wif names (`WiflyNames`, ERC-721 "WIF Names" / WIFNAME)
 A mini ENS for the WIF ecosystem on Robinhood Chain. Each token is a name shown as `<label>.wif` (token metadata

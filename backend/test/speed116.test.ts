@@ -89,7 +89,7 @@ test('settings "your name": usable is a held .wif that is not the current name, 
 
 test('plus opens only once the onchain price is set (0 = opens soon), month and year separately', () => {
   assert.deepEqual(plusOpen(true, true, 0n, 0n), { monthOpen: false, yearOpen: false })
-  assert.deepEqual(plusOpen(true, true, 1500n * 10n ** 18n, 0n), { monthOpen: true, yearOpen: false })
+  assert.deepEqual(plusOpen(true, true, 3000n * 10n ** 18n, 0n), { monthOpen: true, yearOpen: false })
   assert.deepEqual(plusOpen(true, true, 1n, 1n), { monthOpen: true, yearOpen: true })
   assert.deepEqual(plusOpen(true, false, undefined, undefined), { monthOpen: false, yearOpen: false }, 'not read yet: not buyable')
   assert.deepEqual(plusOpen(false, false), { monthOpen: true, yearOpen: true }, 'preview stays as it was')

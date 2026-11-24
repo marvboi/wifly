@@ -383,7 +383,7 @@ export const shortfallWif = (need: number, have: number) => {
   const short = Math.max(0, need - have)
   return short > 0 ? Math.ceil(Number(formatUnits(withBuffer(parseUnits(short.toFixed(6), WIF_DECIMALS)), WIF_DECIMALS))) : 0
 }
-/** "Get WIF for Plus": 1,500 WIF + buffer, about 1,520 WIF. */
+/** "Get WIF for Plus": 3,000 WIF + buffer, about 3,060 WIF. */
 export const plusTopUp = (price: number) => Math.ceil(Number(formatUnits(withBuffer(parseUnits(String(price), WIF_DECIMALS)), WIF_DECIMALS)))
 
 /** Shown in money sheets when the wallet holds less WIF than the action needs. Opens the swap with an exact-out quote. */

@@ -2,9 +2,9 @@
 import { useEffect, useState, type FocusEventHandler, type Ref } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { api } from '../api/client'
-import { NAME_MAX, NAME_MIN, RESERVED_NAMES, claimFeeOf } from '../config'
+import { NAME_MAX, RESERVED_NAMES, claimFeeOf } from '../config'
 import { Icon } from './Icon'
-import { cleanHandle, handleFaceMood, handleFieldError, handleFieldState, handleLogoReplacesError, type HandleCheck } from '../lib/handleName'
+import { cleanHandle, handleFaceMood, handleFieldError, handleFieldState, handleLogoReplacesError, HANDLE_MIN, type HandleCheck } from '../lib/handleName'
 import { Mascot } from './Mascot'
 export type { HandleCheck } from '../lib/handleName'
 export { cleanHandle, handleFieldError, handleFieldState } from '../lib/handleName'
@@ -17,7 +17,7 @@ function useDebounced<T>(v: T, ms = 250) {
 
 export function useHandleCheck(handle: string) {
   const h = useDebounced(handle)
-  const local: HandleCheck | null = h.length < NAME_MIN ? { handle: h, available: false, reason: 'invalid', message: `at least ${NAME_MIN} characters`, suggestions: [], claimFee: claimFeeOf(h) }
+  const local: HandleCheck | null = h.length < HANDLE_MIN ? { handle: h, available: false, reason: 'invalid', message: `at least ${HANDLE_MIN} characters`, suggestions: [], claimFee: claimFeeOf(h) }
     : RESERVED_NAMES.includes(h) ? { handle: h, available: false, reason: 'reserved', message: 'that one is reserved', suggestions: [], claimFee: claimFeeOf(h) } : null
   const q = useQuery({ queryKey: ['handle-check', h], queryFn: () => api<HandleCheck>(`/handles/check?h=${encodeURIComponent(h)}`), enabled: !local && !!h, staleTime: 10_000 })
   const settled = h === handle

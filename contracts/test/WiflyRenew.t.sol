@@ -298,8 +298,8 @@ contract WiflyRenewTest is WiflyBase {
     }
 
     // ---------------------------------------------------------------- monthly / yearly plans
-    uint256 internal constant PLUS_MONTH = 1_500e18;
-    uint256 internal constant PLUS_YEAR = 15_000e18;
+    uint256 internal constant PLUS_MONTH = 3_000e18;
+    uint256 internal constant PLUS_YEAR = 30_000e18;
 
     function _plusPrices() internal {
         vm.startPrank(bob);

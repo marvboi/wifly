@@ -84,14 +84,14 @@ export const wiflyContract = () => addr(process.env.WIFLY_CONTRACT_ADDRESS)
 export const dcaContract = () => addr(process.env.DCA_CONTRACT_ADDRESS)
 export const plusCreator = () => addr(process.env.PLUS_CREATOR_ADDRESS)
 /**
- * Plus plans (WIF). Monthly 1,500 WIF / 30 days, yearly 15,000 WIF / 365 days (two months free).
- * Wifly Plus is a creator account run by the team wallet: tier 0, setTier(0, 1_500e18) + setYearlyPrice(0, 15_000e18).
+ * Plus plans (WIF). Monthly 3,000 WIF / 30 days, yearly 30,000 WIF / 365 days (two months free).
+ * Wifly Plus is a creator account run by the team wallet: tier 0, setTier(0, 3_000e18) + setYearlyPrice(0, 30_000e18).
  * Read from Wifly.tierPrices/yearlyPrices(PLUS_CREATOR_ADDRESS) once live; these are the defaults.
  */
 export type PlusPlan = 'month' | 'year'
 export const plusPlans = () => ({
-  month: { id: 'month' as const, price: Number(process.env.PLUS_PRICE_MONTH || 1500), days: 30 },
-  year: { id: 'year' as const, price: Number(process.env.PLUS_PRICE_YEAR || 15000), days: 365 },
+  month: { id: 'month' as const, price: Number(process.env.PLUS_PRICE_MONTH || 3000), days: 30 },
+  year: { id: 'year' as const, price: Number(process.env.PLUS_PRICE_YEAR || 30000), days: 365 },
 })
 export const PLUS_GRACE_MS = 5 * 86400_000
 /** Every fee (tips, subs, plus, unlocks, pay links 2%; name sales 2.5%; promotion bids; votes) splits 90% weekly

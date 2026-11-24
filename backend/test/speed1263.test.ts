@@ -73,7 +73,7 @@ test('handle field: empty is idle, spinner while checking, check when available,
 
   const short: HandleCheck = { handle: 'a', available: false, reason: 'invalid', message: `at least ${HANDLE_MIN} characters`, suggestions: [], claimFee: 0 }
   assert.equal(handleFieldState('ab', false, short), 'bad')
-  assert.equal(handleFieldError(short, 'bad'), 'at least 2 characters')
+  assert.equal(handleFieldError(short, 'bad'), `at least ${HANDLE_MIN} characters`)
 
   const taken: HandleCheck = { handle: 'blue', available: false, reason: 'taken', suggestions: ['blue1'], claimFee: 0 }
   assert.equal(handleFieldError(taken, 'bad'), 'taken')

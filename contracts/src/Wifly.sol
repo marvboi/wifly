@@ -41,6 +41,9 @@ contract Wifly is
     uint256 public constant MAX_TOP_SPOT_HOLD = 1 days;
     uint256 public constant SUB_PERIOD = 30 days; // monthly plan
     uint256 public constant YEAR_PERIOD = 365 days; // yearly plan
+    /// @notice Default Wifly Plus plan prices (set on plusCreator in initializeV4).
+    uint256 public constant PLUS_MONTH_WIF = 3_000e18;
+    uint256 public constant PLUS_YEAR_WIF = 30_000e18;
     uint8 public constant MONTHLY = 0;
     uint8 public constant YEARLY = 1;
     uint256 public constant MAX_TIERS = 3;
@@ -165,6 +168,9 @@ contract Wifly is
     /// @notice false = legacy 90% pot / 10% burn split.
     bool public feeSplitSet;
 
+    /// @notice Wifly Plus team wallet; only subscriptions to this address use full-fee burn (v4).
+    address public plusCreator;
+
     // ---------------------------------------------------------------- v3 checkout (appended; uses 4 gap slots)
     IERC20 public usdg;
     address public swapRouter;
@@ -192,6 +198,7 @@ contract Wifly is
     event HandleTipRefunded(uint256 indexed tipId, address indexed tipper, uint256 amount);
     event TierSet(address indexed creator, uint8 indexed tier, uint256 price); // monthly price
     event YearlyPriceSet(address indexed creator, uint8 indexed tier, uint256 price);
+    event PlusCreatorSet(address indexed plusCreator);
     event Subscribed(
         address indexed user,
         address indexed creator,
@@ -335,6 +342,24 @@ contract Wifly is
         emit UsdgSet(USDG_ROBINHOOD);
         emit UsdgPerWifSet(usdgPerWif);
         emit MinVoteSet(minVoteAmount);
+    }
+
+    /// @notice v4: Plus team wallet + default tier-0 prices (3,000 / 30,000 WIF). Run once via upgradeToAndCall.
+    function initializeV4(address plusCreator_) external reinitializer(4) onlyOwner {
+        if (plusCreator_ == address(0)) revert ZeroAddress();
+        plusCreator = plusCreator_;
+        _tierPrice[plusCreator_][0] = PLUS_MONTH_WIF;
+        _yearlyPrice[plusCreator_][0] = PLUS_YEAR_WIF;
+        emit PlusCreatorSet(plusCreator_);
+        emit TierSet(plusCreator_, 0, PLUS_MONTH_WIF);
+        emit YearlyPriceSet(plusCreator_, 0, PLUS_YEAR_WIF);
+    }
+
+    /// @notice Point Plus fee routing at the team wallet (e.g. before initializeV4 on a fresh deploy).
+    function setPlusCreator(address plusCreator_) external onlyOwner {
+        if (plusCreator_ == address(0)) revert ZeroAddress();
+        plusCreator = plusCreator_;
+        emit PlusCreatorSet(plusCreator_);
     }
 
     /// @dev UUPS: only the owner can upgrade.
@@ -844,6 +869,13 @@ contract Wifly is
         net = amount - fee;
     }
 
+    /// @notice Plus subscription fee: the full platform fee is burned (no pot / treasury share).
+    function quotePlusFee(uint256 amount) external view returns (uint256 fee, uint256 burnPart, uint256 net) {
+        fee = (amount * feeBps) / BPS;
+        burnPart = fee;
+        net = amount - fee;
+    }
+
     /// @notice Platform fee split of `amount`: (pot, burn, treasury). Pot takes rounding dust.
     function quotePlatformSplit(uint256 amount)
         public
@@ -907,7 +939,7 @@ contract Wifly is
         s.expiry = expiry;
         s.tier = tier;
         s.plan = plan;
-        uint256 fee = _takeFee(price);
+        uint256 fee = creator == plusCreator ? _takePlusFee(price) : _takeFee(price);
         _credit(creator, price - fee);
         emit Subscribed(user, creator, tier, expiry, price, fee, msg.sender, plan);
     }
@@ -933,6 +965,18 @@ contract Wifly is
     function _takeFee(uint256 amount) internal returns (uint256 fee) {
         fee = (amount * feeBps) / BPS;
         _splitPlatformFee(fee);
+    }
+
+    /// @dev Plus payments: feeBps of `amount`, 100% burned (WIF path or after USDG/ETH swap-to-WIF).
+    function _takePlusFee(uint256 amount) internal returns (uint256 fee) {
+        fee = (amount * feeBps) / BPS;
+        _splitPlusFee(fee);
+    }
+
+    function _splitPlusFee(uint256 amount) internal {
+        if (amount == 0) return;
+        emit FeeSplit(0, amount);
+        _burn(amount);
     }
 
     /// @dev Platform fee: pot / burn / treasury per quotePlatformSplit. Treasury share is credited, not sent.

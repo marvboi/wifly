@@ -107,18 +107,27 @@ contract WiflyFeeV2Test is WiflyBase {
 
     function test_v2_plus_monthlyAndYearly_2pct() public {
         address plus = makeAddr("PLUS_CREATOR_ADDRESS");
+        vm.prank(owner);
+        w.setPlusCreator(plus);
         vm.startPrank(plus);
-        w.setTier(0, 1_500e18);
-        w.setYearlyPrice(0, 15_000e18);
+        w.setTier(0, 3_000e18);
+        w.setYearlyPrice(0, 30_000e18);
         vm.stopPrank();
         _snap();
         vm.prank(alice);
-        w.subscribe(plus, 0); // 1500 WIF month
-        _assertSplit(30e18); // 27 pot, 3 burned
+        w.subscribe(plus, 0); // 3000 WIF month
+        _assertPlusBurn(60e18);
         _snap();
         vm.prank(bob);
-        w.subscribePlan(plus, 0, 1); // 15000 WIF year
-        _assertSplit(300e18); // 270 pot, 30 burned
+        w.subscribePlan(plus, 0, 1); // 30000 WIF year
+        _assertPlusBurn(600e18);
+    }
+
+    function _assertPlusBurn(uint256 fee) internal view {
+        assertEq(supply0 - token.totalSupply(), fee, "plus fee fully burned");
+        assertEq(w.epochPot() - pot0, 0, "plus fee not to pot");
+        assertEq(token.balanceOf(treasury), 0, "treasury got WIF");
+        _assertSolvent();
     }
 
     function test_v2_unlock_2pct() public {

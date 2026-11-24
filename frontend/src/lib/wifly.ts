@@ -29,7 +29,7 @@ import { quotePayAmount } from './payToken'
 import { namesAbi } from '../contracts/namesAbi'
 import { badgesAbi } from '../contracts/badgesAbi'
 import { wiflyAbi } from '../contracts/wiflyAbi'
-import { feeSplit, splitFee, type FeeParts, type FeeSplit, type SplitKind } from './fees'
+import { feeSplit, plusFeeSplit, splitFee, type FeeParts, type FeeSplit, type SplitKind } from './fees'
 
 const chainId = robinhoodChain.id
 const W = WIFLY_ADDRESS ?? zeroAddress
@@ -163,6 +163,16 @@ export function useQuoteFee(amount: number): FeeSplit & { source: 'contract' | '
     return { amount, fee: fromWei(fee), treasury: 0, pot: fromWei(pot), burn: fromWei(burn), receives: fromWei(net), source: 'contract' }
   }
   return { ...feeSplit(amount), source: 'sample' }
+}
+
+/** Plus price quote: quotePlusFee on Wifly, or local plusFeeSplit when not live. */
+export function useQuotePlusFee(amount: number): FeeSplit & { source: 'contract' | 'sample' } {
+  const q = useReadContract({ ...base, functionName: 'quotePlusFee', args: [toWei(amount)], ...on(amount > 0) })
+  if (LIVE && q.data) {
+    const [fee, burn, net] = q.data as readonly [bigint, bigint, bigint]
+    return { amount, fee: fromWei(fee), treasury: 0, pot: 0, burn: fromWei(burn), receives: fromWei(net), source: 'contract' }
+  }
+  return { ...plusFeeSplit(amount), source: 'sample' }
 }
 
 /** Fee split from the contracts: Wifly.quoteSplit -> (pot, burn); claims: WiflyNames.quoteClaimSplit -> (treasury, pot).

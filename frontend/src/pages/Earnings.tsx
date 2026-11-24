@@ -12,8 +12,8 @@ type Earnings = {
   withdrawableWif: number
   split: typeof FLAT_FEE_SPLIT
   paymentsLive: boolean
-  sources: { label: string; note: string }[]
-  payouts: { label: string; note: string }[]
+  sources: { label: string; note: string; valueWif?: number }[]
+  payouts: { label: string; note: string; valueWif?: number }[]
 }
 
 /** Local screenshot / demo only (not from the server). */
@@ -23,19 +23,25 @@ const DEMO_EARNINGS: Earnings = {
   split: FLAT_FEE_SPLIT,
   paymentsLive: true,
   sources: [
-    { label: 'tips', note: 'example local row' },
-    { label: 'subscriptions', note: 'example local row' },
-    { label: 'top spot', note: 'example local row' },
+    { label: 'tips', valueWif: 8_420.5, note: 'local preview totals' },
+    { label: 'subscriptions', valueWif: 3_250, note: 'local preview totals' },
+    { label: 'top spot', valueWif: 779.75, note: 'local preview totals' },
   ],
-  payouts: [{ label: 'withdraw', note: 'example local row' }],
+  payouts: [{ label: 'withdraw', valueWif: 12_450.25, note: 'matches withdrawable now' }],
+}
+
+function fmtWif(n: number) {
+  return `${n.toLocaleString(undefined, { maximumFractionDigits: 2 })} wif`
 }
 
 function KvRow({ label, value, note }: { label: string; value?: string; note?: string }) {
   return (
     <li className="earnings-kv__row">
-      <span className="earnings-kv__label">{label}</span>
+      <div className="earnings-kv__left">
+        <span className="earnings-kv__label">{label}</span>
+        {note ? <span className="earnings-kv__note muted small">{note}</span> : null}
+      </div>
       {value !== undefined ? <span className="earnings-kv__value num tabular-nums">{value}</span> : null}
-      {note ? <span className="earnings-kv__note muted small">{note}</span> : null}
     </li>
   )
 }
@@ -82,7 +88,7 @@ export function Earnings() {
             <h3 className="strong small earnings-card__title">by source</h3>
             <ul className="earnings-kv plain">
               {(d?.sources ?? []).map(s => (
-                <KvRow key={s.label} label={s.label} note={s.note} />
+                <KvRow key={s.label} label={s.label} value={s.valueWif !== undefined ? fmtWif(s.valueWif) : undefined} note={s.note} />
               ))}
             </ul>
           </section>
@@ -90,12 +96,12 @@ export function Earnings() {
             <h3 className="strong small earnings-card__title">payouts</h3>
             <ul className="earnings-kv plain">
               {(d?.payouts ?? []).map(p => (
-                <KvRow key={p.label} label={p.label} note={p.note} />
+                <KvRow key={p.label} label={p.label} value={p.valueWif !== undefined ? fmtWif(p.valueWif) : undefined} note={p.note} />
               ))}
             </ul>
             <p className="muted small earnings-card__foot"><Token size={16} /> withdraw from the wifly contract from any wallet that holds the balance.</p>
           </section>
-          {d?.paymentsLive && <p className="muted small center earnings-page__foot">plus, names and boosts can also settle in USDG or eth on Wifly.</p>}
+          {d?.paymentsLive && <p className="muted small center earnings-page__foot">plus, names and boosts can also settle in USDG or eth on wifly.</p>}
         </div>
       )}
     </>

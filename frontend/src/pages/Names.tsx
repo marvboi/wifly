@@ -25,7 +25,7 @@ import { LowBalance } from '../components/Swap'
 import { TxSteps } from '../components/TxSteps'
 import { PayTokenPicker } from '../components/PayTokenPicker'
 import { usePayRails } from '../api/usePayRails'
-import { formatPayQuote, quotePayAmount, type PayToken } from '../lib/payToken'
+import { altPayEnabled, formatPayQuote, quotePayAmount, type PayToken } from '../lib/payToken'
 import { PayingFrom } from '../components/Payer'
 import { Mascot, type Mood } from '../components/Mascot'
 import { NameCard, ThemePicker, WifName, defaultThemeOf, nameArtUrl } from '../components/WifName'
@@ -194,32 +194,37 @@ export function ClaimBox({ initial = '', onClaimed, onState, compact, andPrimary
         {!!check?.suggestions.length && !check.available && state !== 'yours' && <div className="names-sugg">{check.suggestions.slice(0, 3).map(s => <button key={s} className="chip chip--sm names-sugg__chip" onClick={() => setRaw(s)}>{s}<span className="muted">.wif</span></button>)}</div>}
         {check?.reason === 'listed' && <Link className="btn btn--ghost btn--sm" to={`/n/${name}`}>see the listing</Link>}
         {state === 'yours' && <div className="names-claim__look names-claim__look--yours"><NameCard size={compact ? 'sm' : 'md'} label={name} theme={look} state="yours" owner={address ? `${address.slice(0, 6)}…${address.slice(-4)}` : null} /></div>}
-        {state !== 'yours' && state !== 'taken' && state !== 'reserved' && <>
-          <PayTokenPicker value={payToken} onChange={setPayToken} rails={rails} className="names-claim__paytoken" />
-          {(() => {
-            const feeWif = name ? claimFee : claimFeeOf('abcde')
-            const shown = payToken === 'wif' ? `${fmt(feeWif)} wif` : formatPayQuote(quotePayAmount(feeWif, payToken), payToken)
-            return (
-          <p className="names-claim__price" data-testid="claim-price"><b>{shown}</b>{payToken === 'wif' && <WifUsdNote wif={feeWif} />}
-            <InfoTip label="about the claim fee">one-time. 2 letters {fmt(claimFeeOf('ab'))} wif, 3 letters {fmt(claimFeeOf('abc'))} wif, 4 letters {fmt(claimFeeOf('abcd'))} wif, 5+ letters {fmt(claimFeeOf('abcde'))} wif. minted to your wallet.</InfoTip>
-            <button type="button" className="linkbtn names-claim__more" aria-expanded={more} onClick={() => setMore(v => !v)}>details</button></p>
-            )
-          })()}
+        {state !== 'yours' && state !== 'taken' && state !== 'reserved' && valid && <>
+          <div className="names-claim__checkout">
+            <PayTokenPicker value={payToken} onChange={setPayToken} rails={rails} className="names-claim__paytoken" />
+            {(() => {
+              const feeWif = name ? (claimFee || claimFeeOf(name)) : claimFeeOf('abcde')
+              const altLine = payToken !== 'wif' ? formatPayQuote(quotePayAmount(feeWif, payToken), payToken) : null
+              const shown = payToken === 'wif' ? `${fmt(feeWif)} wif` : altLine
+              return (
+                <p className="names-claim__price" data-testid="claim-price">
+                  <b>{shown}</b>
+                  {payToken === 'wif' && altPayEnabled(rails) && <span className="muted small names-claim__est">≈ {formatPayQuote(quotePayAmount(feeWif, 'usdg'), 'usdg')} · {formatPayQuote(quotePayAmount(feeWif, 'eth'), 'eth')}</span>}
+                  {payToken === 'wif' && <WifUsdNote wif={feeWif} />}
+                  <InfoTip label="about the claim fee">one-time. 2 letters {fmt(claimFeeOf('ab'))} wif, 3 letters {fmt(claimFeeOf('abc'))} wif, 4 letters {fmt(claimFeeOf('abcd'))} wif, 5+ letters {fmt(claimFeeOf('abcde'))} wif. minted to your wallet.</InfoTip>
+                  <button type="button" className="linkbtn names-claim__more" aria-expanded={more} onClick={() => setMore(v => !v)}>details</button>
+                </p>
+              )
+            })()}
+            {ok && <PayingFrom className="names-claim__payer" />}
+            {ok && wif !== undefined && wif < claimFee && <LowBalance need={claimFee} what={`claim ${name}.wif`} />}
+            <button className="btn btn--dark btn--lg btn--block" data-testid="claim-go" disabled={!ok || !!busy} onClick={() => claim()}>{busy ? 'confirm in your wallet…' : ok ? (() => {
+              const feeWif = claimFee
+              const line = payToken === 'wif' ? `claim ${name}.wif` : `claim ${name}.wif for ${formatPayQuote(quotePayAmount(feeWif, payToken), payToken)}`
+              return line
+            })() : name ? `claim ${name}.wif` : 'claim'}</button>
+          </div>
+          <div className="names-claim__theme"><span className="field__label">card style</span><ThemePicker label={name} value={look} onChange={setPick} /></div>
           {more && <div className="names-claim__details" data-testid="claim-details">
-            <div className="fee fee--compact"><FeeParts fee={claimFee} showBar kind="claim" /></div>
-            <p className="tiny muted">two wallet steps: allow exactly {fmt(claimFee)} wif, then claim.</p>
-            <div className="names-claim__look">
-              <NameCard size="sm" label={name} theme={look} state={state === 'soon' ? 'idle' : state} fee={name ? claimFee : undefined} />
-              <div className="names-claim__theme"><span className="field__label">card style</span><ThemePicker label={name} value={look} onChange={setPick} /></div>
-            </div>
+            <div className="fee fee--compact"><FeeParts fee={claimFee || claimFeeOf(name)} showBar kind="claim" /></div>
+            <p className="tiny muted">two wallet steps: allow exactly {fmt(claimFee || claimFeeOf(name))} wif, then claim.</p>
+            <NameCard size="sm" label={name} theme={look} state={state === 'soon' ? 'idle' : state} fee={claimFee || claimFeeOf(name)} />
           </div>}
-          {ok && <PayingFrom className="names-claim__payer" />}
-          {ok && wif !== undefined && wif < claimFee && <LowBalance need={claimFee} what={`claim ${name}.wif`} />}
-          <button className="btn btn--dark btn--lg btn--block" data-testid="claim-go" disabled={!ok || !!busy} onClick={() => claim()}>{busy ? 'confirm in your wallet…' : ok ? (() => {
-            const feeWif = claimFee
-            const line = payToken === 'wif' ? `claim ${name}.wif` : `claim ${name}.wif for ${formatPayQuote(quotePayAmount(feeWif, payToken), payToken)}`
-            return line
-          })() : 'claim'}</button>
         </>}
       </>}
     </section>

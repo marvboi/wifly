@@ -1135,6 +1135,35 @@ export const wiflyAbi = [
   },
   {
     "type": "function",
+    "name": "quotePlusFee",
+    "inputs": [
+      {
+        "name": "amount",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "fee",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "burnPart",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "net",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
     "name": "quoteSplit",
     "inputs": [
       {

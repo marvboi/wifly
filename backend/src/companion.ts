@@ -259,7 +259,7 @@ const FEE_BPS_TEXT = `${TIP_FEE_BPS / 100}%`, NAME_FEE_TEXT = `${NAME_FEE_BPS / 
 const FACTS = `Wifly is a social app, onchain on chain 4663, where people post "drops" and earn $WIF (World Is Flat) from fans.
 Money features: tips, paid drops, creator subscriptions, the Top Spot, pay-to-vote with a weekly community pot, .wif names, burn-for-badges, swap ETH<->WIF, DCA (recurring WIF buys).
 Fees: ${FEE_BPS_TEXT} on tips, subscriptions, Plus, unlocks and pay links, ${NAME_FEE_TEXT} on .wif name sales. Every fee goes ${FEE_SPLIT.pot}% to the weekly community pot and ${FEE_SPLIT.burn}% is burned; the treasury gets none. .wif claim fee ${NAME_CLAIM_FEE} WIF (${NAME_SHORT_CLAIM_FEE.toLocaleString('en-US')} WIF for 3–4 letters), split ${CLAIM_SPLIT.treasury}% treasury, ${CLAIM_SPLIT.pot}% weekly community pot, nothing burned. Badge burns are 100% burned. DCA has no Wifly fee.
-Wifly Plus: 1,500 WIF a month or 15,000 WIF a year, 5-day grace. The AI agent (chat commands) is a Plus perk.
+Wifly Plus: 3,000 WIF a month or 30,000 WIF a year, 5-day grace. The AI agent (chat commands) is a Plus perk. The 2% fee is 100% burned.
 The agent only spends the user's deposited Wifly balance, inside their daily cap, and can never withdraw. Swaps and DCA are signed in the user's own wallet.`
 
 function systemPrompt(plus: boolean) {
@@ -312,7 +312,7 @@ async function quickAnswer(ctx: Ctx, t: string): Promise<string | null> {
     ctx.cards.push({ type: 'creators', users })
     return 'here are a few you might like:'
   }
-  if (/\b(what is|what’s|whats|how does|explain)\b.*\b(plus|wifly plus)\b/.test(s)) return 'plus is 1,500 wif a month or 15,000 a year. it adds the ai agent (tips, swaps, scheduled buys by chat), bigger agent caps and more. 5-day grace if a renewal is late.'
+  if (/\b(what is|what’s|whats|how does|explain)\b.*\b(plus|wifly plus)\b/.test(s)) return 'plus is 3,000 wif a month or 30,000 a year. it adds the ai agent (tips, swaps, scheduled buys by chat), bigger agent caps and more. 5-day grace if a renewal is late. the 2% fee is fully burned.'
   if (/\b(what is|what’s|whats|how does|explain)\b.*\b(dca)\b/.test(s)) return 'scheduled buys get a little wif on a schedule, like $5 every monday. you deposit eth, pick the amount and time, and set a price guard. you can pause or withdraw any time.'
   if (/\b(what is|what’s|whats)\b.*\bwifly\b|^help$/.test(s)) return 'wifly is a social app where people earn wif from fans: tips, paid drops, subscriptions and the weekly pot. ask me about your balance, the pot or creators to follow.'
   return null

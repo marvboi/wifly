@@ -5,8 +5,16 @@ Only **new** copy introduced on this branch. **USDG** is always uppercase in UI.
 ## Plus (`frontend/src/pages/Plus.tsx`)
 
 - Lede (unchanged): `a monthly or yearly pass, paid in wif.`
-- `checkout can also settle in USDG or ETH on Wifly.` (when alt pay is live)
-- Pay-token picker: **USDG**, **ETH**, **wif**
+- `checkout can also settle in USDG or eth on wifly.` (when alt pay is live)
+- Pay-token picker: **USDG**, **eth**, **wif**
+
+### Plus fee row + InfoTip (Marv approved)
+
+| Location | Before | After |
+|----------|--------|-------|
+| `FeeSplit` row label on Plus | `fee · 2%` | `burn · 2%` |
+| Plus section InfoTip (`about plus payments`) | `paid to the wifly team. the 2% fee: 70% weekly pot, 10% burned.` | `paid to the wifly team. the 2% burn is 100% burned — nothing to the pot or treasury (same for USDG and eth checkout after swap-to-WIF).` |
+| `FeeSplit` InfoTip body on Plus | `{splitLabel('fee')}. {pot} wif to the weekly pot, {burn} wif burned.` | `the full 2% is burned. nothing goes to the weekly pot or treasury.` |
 
 ## Names claim (`frontend/src/pages/Names.tsx`)
 
@@ -18,7 +26,7 @@ Only **new** copy introduced on this branch. **USDG** is always uppercase in UI.
 
 ## Creator earnings (`frontend/src/pages/Earnings.tsx`)
 
-- `plus, names and boosts can also settle in USDG or ETH on Wifly.`
+- `plus, names and boosts can also settle in USDG or eth on wifly.`
 
 ## USDG asset
 
