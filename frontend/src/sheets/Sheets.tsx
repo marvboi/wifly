@@ -6,6 +6,7 @@ import { CoinRain } from '../components/CoinRain'
 import { companion } from '../lib/companion'
 import { TipJar } from '../components/BrandSlots'
 import { useEffect, useRef, useState, type ReactNode } from 'react'
+import { createPortal } from 'react-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { PayoutLine } from '../components/WalletProofs'
 import { InfoTip } from '../components/InfoTip'
@@ -48,12 +49,13 @@ export function Sheet({ title, onClose, children, footer, size, className }: { t
     return () => { document.removeEventListener('keydown', onKey); document.body.classList.remove('no-scroll') }
   }, [onClose])
   const phone = typeof window !== 'undefined' && window.matchMedia('(max-width: 720px)').matches
-  return (
+  const panel = (
     <motion.div className="sheet-wrap" role="presentation" onMouseDown={e => { if (e.target === e.currentTarget) onClose() }}
       initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0, transition: { duration: 0.2 } }}>
       <motion.div className={[size ? `sheet sheet--${size}` : 'sheet', className].filter(Boolean).join(' ')} role="dialog" aria-modal="true" aria-label={title}
+        style={{ backgroundColor: 'var(--sheet-bg, var(--bg))', opacity: 1 }}
         initial={phone ? { y: '100%' } : { opacity: 0, y: 36, scale: 0.96 }}
-        animate={phone ? { y: 0 } : { opacity: 1, y: 0, scale: 1 }}
+        animate={phone ? { y: 0, opacity: 1 } : { opacity: 1, y: 0, scale: 1 }}
         exit={phone ? { y: '100%', transition: { duration: 0.22, ease: [0.4, 0, 1, 1] } } : { opacity: 0, y: 20, scale: 0.97, transition: { duration: 0.16 } }}
         transition={{ type: 'spring', stiffness: 360, damping: 32, mass: 0.9 }}>
         <div className="sheet__grab" aria-hidden="true" />
@@ -66,6 +68,7 @@ export function Sheet({ title, onClose, children, footer, size, className }: { t
       </motion.div>
     </motion.div>
   )
+  return typeof document !== 'undefined' ? createPortal(panel, document.body) : panel
 }
 
 export function AmountPicker({ value, onChange, presets }: { value: number; onChange: (n: number) => void; presets: number[] }) {
@@ -467,7 +470,7 @@ function BoostSheet({ postId }: { postId: string }) {
   const boostLabel = `boost for ${formatPayQuote(quoted, payToken)}`
   const n = (v: number) => v.toLocaleString(undefined, { maximumFractionDigits: 0 })
   return (
-    <Sheet title="boost this post" onClose={closeSheet}
+    <Sheet title="boost this post" className="sheet--pay" onClose={closeSheet}
       footer={<>
         <TxSteps pull={payToken === 'wif' ? bid : 0} action="boost this post" />
         <button className="btn btn--dark btn--block btn--lg" disabled={!ok || busy}

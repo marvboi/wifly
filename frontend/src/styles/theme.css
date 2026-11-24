@@ -1,14 +1,14 @@
 /* theme tokens, theme toggle and scrollbars. loaded right after app.css (main.tsx) */
 /* ---------- theme: light / dark tokens. theme-init.mjs sets html[data-themed][data-theme] on every page before first paint ---------- */
 html[data-themed] { --panel: #110E08; --panel-ink: #F7F5F0; --panel-muted: rgba(247, 245, 240, .64); --panel-line: rgba(247, 245, 240, .12);
-  --glass: rgba(255, 255, 255, .84); --shadow: rgba(17, 14, 8, .08); --shadow-2: rgba(17, 14, 8, .16); --card: #FFFFFF; }
+  --glass: rgba(255, 255, 255, .84); --shadow: rgba(17, 14, 8, .08); --shadow-2: rgba(17, 14, 8, .16); --card: #FFFFFF; --sheet-bg: #FFFFFF; }
 html[data-themed][data-theme="dark"] {
   color-scheme: dark;
   --bg: #0D0C0A; --ink: #F4F2EC; --ink-2: #D6D2C8; --muted: #A39E93; --subtle: #8A857B;
   --line: #25231F; --line-strong: #36332D; --fill: #191814; --fill-2: #22201C;
   --gold: #CFA56B; --danger: #FF7A66; --paper: #15140F; --card: #141310;
   --panel: #171612; --panel-ink: #F4F2EC; --panel-muted: rgba(244, 242, 236, .62); --panel-line: rgba(244, 242, 236, .1);
-  --glass: rgba(13, 12, 10, .78); --shadow: rgba(0, 0, 0, .35); --shadow-2: rgba(0, 0, 0, .55);
+  --glass: rgba(13, 12, 10, .78); --shadow: rgba(0, 0, 0, .35); --shadow-2: rgba(0, 0, 0, .55); --sheet-bg: #161511;
 }
 html[data-themed], html[data-themed] body { background: var(--bg); color: var(--ink); }
 html.theme-fade, html.theme-fade *, html.theme-fade *::before, html.theme-fade *::after {

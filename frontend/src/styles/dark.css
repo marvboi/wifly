@@ -33,7 +33,11 @@ html[data-themed][data-theme="dark"] {
 
 /* ---------- sheets, popovers, menus, toasts: one step above the page ---------- */
 [data-theme="dark"] .sheet-wrap { background: var(--scrim); }
-[data-theme="dark"] .sheet { background: var(--raise); box-shadow: 0 24px 64px rgba(0, 0, 0, .6), inset 0 0 0 1px var(--line); }
+[data-theme="dark"] .sheet { background-color: var(--raise); box-shadow: 0 24px 64px rgba(0, 0, 0, .6), inset 0 0 0 1px var(--line); }
+[data-theme="dark"] .sheet--pay .picker__field,
+[data-theme="dark"] .sheet--pay .fee,
+[data-theme="dark"] .sheet--pay .txblock,
+[data-theme="dark"] .sheet--pay .payer { background: var(--raise-2); border-color: var(--line-strong); }
 [data-theme="dark"] :is(.wallet-pop, .dmenu__pop, .pro-more__menu) { background: var(--raise-2); border-color: var(--line-strong); box-shadow: 0 16px 40px rgba(0, 0, 0, .55); }
 [data-theme="dark"] .toast { background: var(--raise-2); color: var(--ink); border-color: var(--line-strong); box-shadow: 0 12px 32px rgba(0, 0, 0, .5); }
 [data-theme="dark"] .toast--warn { background: #1F1A12; border-color: var(--warn-line); }
