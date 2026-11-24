@@ -34,7 +34,7 @@ export const COOKIE_DOMAIN = (process.env.COOKIE_DOMAIN || '').trim().replace(/^
 export const demoSeedAllowed = () => process.env.NODE_ENV !== 'production' || process.env.ALLOW_DEMO_SEED === '1'
 
 /** Limits shared with the frontend (it reads them from GET /api/config). */
-export const LIMITS = { dropChars: 400, bioChars: 160, nameChars: 40, handleMin: 3, handleMax: 20, imageBytes: 5 * 1024 * 1024, pageSize: 20 }
+export const LIMITS = { dropChars: 400, bioChars: 160, nameChars: 40, handleMin: 2, handleMax: 20, imageBytes: 5 * 1024 * 1024, pageSize: 20 }
 /** Profile photos (avatars) get their own, larger cap. Post media stays at LIMITS.imageBytes. The app shrinks photos before upload. */
 export const AVATAR_MAX_BYTES = 20 * 1024 * 1024
 export const AVATAR_TOO_BIG = 'photo must be under 20 MB'
@@ -98,6 +98,8 @@ export const PLUS_GRACE_MS = 5 * 86400_000
  *  community pot (rewards only), 10% burned; the treasury gets nothing. .wif name claims are the exception:
  *  50% treasury, 50% pot, no burn (CLAIM_SPLIT). Badge burns are not a fee: 100% burned. DCA has no fee.
  *  Shares are whole percents, same as the frontend's config. */
+/** Flat platform fee default once initializeFlat runs: 70% pot, 10% burn, 20% treasury. */
+export const FLAT_FEE_SPLIT = { pot: 70, burn: 10, treasury: 20 } as const
 export const FEE_SPLIT = { pot: 90, burn: 10 } as const
 export const CLAIM_SPLIT = { treasury: 50, pot: 50 } as const
 export const splitFee = (fee: number, kind: 'fee' | 'claim' = 'fee') => {
@@ -108,9 +110,22 @@ export const splitFee = (fee: number, kind: 'fee' | 'claim' = 'fee') => {
 /** Tip fee (Wifly.sol default feeBps): 2%, split like every fee. The rest goes straight to the creator's wallet. */
 export const TIP_FEE_BPS = Number(process.env.TIP_FEE_BPS || 200)
 export const NAME_FEE_BPS = Number(process.env.NAMES_FEE_BPS || 250)
-export const NAME_CLAIM_FEE = Number(process.env.NAMES_CLAIM_FEE || 100)        // 5-20 chars
-export const NAME_SHORT_CLAIM_FEE = Number(process.env.NAMES_SHORT_FEE || 1000) // 3-4 chars
-export const nameClaimFee = (name: string) => (name.length <= 4 ? NAME_SHORT_CLAIM_FEE : NAME_CLAIM_FEE)
+export const NAME_CLAIM_FEE = Number(process.env.NAMES_CLAIM_FEE || 200) // 5+ chars
+export const NAME_FEE_4 = Number(process.env.NAMES_FEE_4 || 2_000)
+export const NAME_FEE_3 = Number(process.env.NAMES_FEE_3 || 4_000)
+export const NAME_FEE_2 = Number(process.env.NAMES_FEE_2 || 8_000)
+/** @deprecated use nameClaimFee */
+export const NAME_SHORT_CLAIM_FEE = NAME_FEE_4
+export const nameClaimFee = (name: string) => {
+  const n = name.length
+  if (n === 2) return NAME_FEE_2
+  if (n === 3) return NAME_FEE_3
+  if (n === 4) return NAME_FEE_4
+  return NAME_CLAIM_FEE
+}
+/** USDG token for WiflyPayments; unset until treasury lists the contract. */
+export const usdgToken = () => addr(process.env.USDG_TOKEN_ADDRESS)
+export const paymentsContract = () => addr(process.env.PAYMENTS_CONTRACT_ADDRESS)
 /** WiflyBadges default thresholds (deploy script): 1k / 10k / 100k / 1M WIF burned, cumulative. Soulbound. */
 export const BADGE_TIERS = [
   { id: 'first-light', name: 'first light', min: 1_000 },

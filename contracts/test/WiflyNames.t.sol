@@ -42,7 +42,7 @@ contract WiflyNamesTest is Test {
         assertTrue(n.isValidName("abc"));
         assertTrue(n.isValidName("marv_01"));
         assertTrue(n.isValidName("abcdefghijklmnopqrst")); // 20
-        assertFalse(n.isValidName("ab"));
+        assertTrue(n.isValidName("ab"));
         assertFalse(n.isValidName("abcdefghijklmnopqrstu")); // 21
         assertFalse(n.isValidName("Marv"));
         assertFalse(n.isValidName("marv.eth"));
@@ -53,7 +53,7 @@ contract WiflyNamesTest is Test {
     }
 
     function testFuzz_isValidName_matchesReference(bytes memory b) public view {
-        bool ok = b.length >= 3 && b.length <= 20;
+        bool ok = b.length >= 2 && b.length <= 20;
         for (uint256 i; ok && i < b.length; ++i) {
             uint8 c = uint8(b[i]);
             ok = (c >= 97 && c <= 122) || (c >= 48 && c <= 57) || c == 95;

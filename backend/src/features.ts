@@ -20,11 +20,12 @@ import { charCount, fail, rateLimit } from './util'
 import { audit, isAdmin, listAccounts, softDeleteUser, uidForWallet, walletsOfUser } from './accounts'
 import { MAX_THEME, renderNameSvg, unclaimedPreview } from './names-art'
 import { setReconcileNotify } from './reconcile'
+import { mountEarnings } from './earnings'
 import { lazyPlusSync, plusWalletOf, syncPlusFromChain, verifyPlusTx } from './plusSync'
 import { chainListing, mirrorListing } from './market'
 
 const now = () => Date.now()
-/** Same rule as WiflyNames.isValidName: 3-20 bytes of [a-z0-9_]. Input is lowercased first. */
+/** Same rule as WiflyNames.isValidName: 2-20 bytes of [a-z0-9_]. Input is lowercased first. */
 export const HANDLE_RE = new RegExp(`^[a-z0-9_]{${LIMITS.handleMin},${LIMITS.handleMax}}$`)
 /** Route words, brand words and impersonation bait. */
 export const RESERVED = new Set([
@@ -809,4 +810,6 @@ export function registerFeatures(app: Hono<Env>, h: Helpers) {
     const verified = await (await import('./verify')).verifyBurn(b.txHash!).catch(() => false)
     return c.json({ ok: true, pending: !verified, verified })
   })
+
+  mountEarnings(app)
 }

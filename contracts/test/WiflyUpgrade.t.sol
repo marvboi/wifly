@@ -152,6 +152,15 @@ contract WiflyUpgradeTest is Test {
     }
 
     // ------------------------------------------------------------ state survives an upgrade
+    function test_upgradeWifly_flatInit() public {
+        address v2 = address(new WiflyV2());
+        vm.prank(owner);
+        w.upgradeToAndCall(v2, abi.encodeCall(Wifly.initializeFlat, ()));
+        assertTrue(w.feeSplitSet());
+        assertEq(w.feeTreasuryBps(), 2_000);
+        assertEq(w.feeBurnBps(), 1_000);
+    }
+
     function test_upgradeWifly_preservesState() public {
         vm.prank(alice);
         w.deposit(1_000e18);

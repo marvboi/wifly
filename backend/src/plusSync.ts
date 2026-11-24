@@ -7,7 +7,7 @@
 import { parseAbi, type Address, type Hex } from 'viem'
 import { walletsOfUser } from './accounts'
 import { chainClient } from './chain'
-import { plusCreator, wiflyContract } from './config'
+import { paymentsContract, plusCreator, wiflyContract } from './config'
 import { one, run } from './db'
 import { clearPlusGateCache } from './plusGate'
 
@@ -79,10 +79,12 @@ export async function lazyPlusSync(uid: number) {
 /** A Plus payment tx: confirmed, sent to the Wifly contract, from a wallet on this account. */
 export async function verifyPlusTx(uid: number, hash: Hex): Promise<boolean> {
   const W = wiflyContract()
+  const P = paymentsContract()
   if (!W) return false
+  const okTo = new Set([W.toLowerCase(), ...(P ? [P.toLowerCase()] : [])])
   try {
     const r = await chainClient().getTransactionReceipt({ hash })
-    if (r.status !== 'success' || r.to?.toLowerCase() !== W.toLowerCase()) return false
+    if (r.status !== 'success' || !r.to || !okTo.has(r.to.toLowerCase())) return false
     return (await walletsOfUser(uid)).has(r.from.toLowerCase())
   } catch { return false }
 }

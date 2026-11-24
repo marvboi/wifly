@@ -49,7 +49,7 @@ after(() => { db.close(); rmSync(dir, { recursive: true, force: true }) })
 
 test('handle check follows WiflyNames rules and shows the claim fee', async () => {
   resetRateLimits()
-  const bad = await call('GET', '/api/handles/check?h=ab')
+  const bad = await call('GET', '/api/handles/check?h=a')
   assert.equal(bad.body.reason, 'invalid')
   assert.equal((await call('GET', '/api/handles/check?h=has-dash')).body.reason, 'invalid')
   assert.equal((await call('GET', '/api/handles/check?h=robinhood')).body.reason, 'reserved')
@@ -59,8 +59,8 @@ test('handle check follows WiflyNames rules and shows the claim fee', async () =
   const free = await call('GET', '/api/handles/check?h=Fresh_Name_42')
   assert.equal(free.body.available, true)
   assert.equal(free.body.handle, 'fresh_name_42', 'lowercased like the contract')
-  assert.equal(free.body.claimFee, 100)
-  assert.equal((await call('GET', '/api/handles/check?h=zqx')).body.claimFee, 1000, '3-4 char names cost 1,000 WIF')
+  assert.equal(free.body.claimFee, 200)
+  assert.equal((await call('GET', '/api/handles/check?h=zqx')).body.claimFee, 4000, '3-char names cost 4,000 WIF')
 })
 
 test('onboarding sets handle, profile, follows and interests', async () => {
@@ -81,7 +81,7 @@ test('names: claim, list (not your primary), offer, accept, buy needs the contra
   const seller = await signIn(), buyer = await signIn()
   const cl = await call('POST', '/api/names/claim', { cookie: seller.cookie, body: { name: 'sunrise_club' } })
   assert.equal(cl.status, 201, JSON.stringify(cl.body))
-  assert.equal(cl.body.claimFee, 100)
+  assert.equal(cl.body.claimFee, 200)
   assert.equal(cl.body.primary, 'sunrise_club', 'first .wif becomes primary')
   assert.equal((await call('POST', '/api/names/sunrise_club/list', { cookie: seller.cookie, body: { price: 10 } })).status, 200, 'your main .wif can be listed from its pill (if it sells, the @name goes back to the name step)')
   assert.equal((await call('POST', '/api/names/claim', { cookie: seller.cookie, body: { name: 'sunrise_two' } })).status, 201)

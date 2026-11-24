@@ -26,6 +26,7 @@ export const BURN_ADDRESS: Address = '0x000000000000000000000000000000000000dEaD
  * Shares are whole percents.
  */
 export const FEE_BPS = 200 // 2%
+export const FLAT_FEE_SPLIT = { pot: 70, burn: 10, treasury: 20 } as const
 export const FEE_SPLIT = { pot: 90, burn: 10 } as const
 export const CLAIM_SPLIT = { treasury: 50, pot: 50 } as const
 
@@ -104,10 +105,19 @@ export const BADGES_ADDRESS: Address | undefined = envAddr(import.meta.env.VITE_
 /** Treasury: receives 50% of .wif name claims (CLAIM_SPLIT) and nothing from other fees. Public address. */
 export const TREASURY: Address = '0x8E5f84738C0fb29670F370F73E53BD234CEfeF21'
 /** Same rules as WiflyNames.isValidName and the backend. */
-export const NAME_MIN = 3, NAME_MAX = 20, NAME_SHORT_LEN = 4
-export const NAME_CLAIM_FEE = 100, NAME_SHORT_CLAIM_FEE = 1000, NAME_FEE_BPS = 250
+export const NAME_MIN = 2, NAME_MAX = 20, NAME_SHORT_LEN = 4
+export const NAME_CLAIM_FEE = 200, NAME_FEE_4 = 2_000, NAME_FEE_3 = 4_000, NAME_FEE_2 = 8_000
+export const NAME_SHORT_CLAIM_FEE = NAME_FEE_4
+export const NAME_FEE_BPS = 250
 export const RESERVED_NAMES = ['wifly', 'marv', 'wif']
-export const claimFeeOf = (n: string) => n.length <= NAME_SHORT_LEN ? NAME_SHORT_CLAIM_FEE : NAME_CLAIM_FEE
+/** Placeholder until the official USDG logo is available (see docs/flat-new-strings.md). */
+export const USDG_LOGO = '/brand/usdg-token-flat.svg'
+export const claimFeeOf = (n: string) => {
+  if (n.length === 2) return NAME_FEE_2
+  if (n.length === 3) return NAME_FEE_3
+  if (n.length === 4) return NAME_FEE_4
+  return NAME_CLAIM_FEE
+}
 /** WiflyBadges levels: cumulative WIF burned. */
 export const BADGE_LEVELS = [
   { id: 'first-light', min: 1_000, name: 'first light' }, { id: 'flat-earther', min: 10_000, name: 'flat earther' },

@@ -423,6 +423,17 @@ contract Wifly is
         _subscribe(msg.sender, creator, tier, plan, price);
     }
 
+    /// @notice Checkout router pays from its wallet and credits `user`.
+    function subscribePlanPaidFor(address user, address creator, uint8 tier, uint8 plan)
+        external
+        nonReentrant
+        whenNotPaused
+    {
+        uint256 price = _priceOf(creator, tier, plan);
+        _pull(msg.sender, price);
+        _subscribe(user, creator, tier, plan, price);
+    }
+
     /// @notice Monthly subscribe/renew from `user`'s deposited balance. Callable by the user or their agent.
     function subscribeFor(address user, address creator, uint8 tier) external {
         subscribeForPlan(user, creator, tier, MONTHLY);
@@ -503,6 +514,13 @@ contract Wifly is
     function takeTopSpotFor(address user, bytes32 postId, uint256 amount) external nonReentrant whenNotPaused {
         _checkTopSpotBid(amount);
         _spendBalance(user, amount);
+        _takeTopSpot(user, postId, amount);
+    }
+
+    /// @notice Checkout router pays from its wallet and credits `user` as holder.
+    function takeTopSpotPaidFor(address user, bytes32 postId, uint256 amount) external nonReentrant whenNotPaused {
+        _checkTopSpotBid(amount);
+        _pull(msg.sender, amount);
         _takeTopSpot(user, postId, amount);
     }
 

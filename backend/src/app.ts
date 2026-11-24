@@ -11,7 +11,10 @@ import { compress } from 'hono/compress'
 import { HTTPException } from 'hono/http-exception'
 import type { Hex } from 'viem'
 import { csrf, endSession, needUser, session, startSession, verifySiwe, issueNonce, type Env, type LoginVia } from './auth'
-import { ALLOWED_ORIGINS, AVATAR_MAX_BYTES, AVATAR_TOO_BIG, LIMITS, UPLOAD_DIR } from './config'
+import {
+  ALLOWED_ORIGINS, AVATAR_MAX_BYTES, AVATAR_TOO_BIG, FLAT_FEE_SPLIT, LIMITS, NAME_CLAIM_FEE, NAME_FEE_2, NAME_FEE_3, NAME_FEE_4,
+  UPLOAD_DIR, nameClaimFee, paymentsContract, usdgToken,
+} from './config'
 import { all, one, run, writeTx } from './db'
 import { lazyPlusSync } from './plusSync'
 import { registerOg } from './og'
@@ -151,7 +154,13 @@ async function feedResponse(items: FeedItem[], uid: number | null, next: string 
 }
 
 // ---------- config + auth ----------
-app.get('/api/config', c => c.json({ limits: LIMITS }))
+app.get('/api/config', c => c.json({
+  limits: LIMITS,
+  nameFees: { len5: NAME_CLAIM_FEE, len4: NAME_FEE_4, len3: NAME_FEE_3, len2: NAME_FEE_2, quote: nameClaimFee },
+  flatSplit: FLAT_FEE_SPLIT,
+  usdgConfigured: !!usdgToken(),
+  paymentsLive: !!paymentsContract(),
+}))
 app.get('/api/health', c => c.json({ ok: true }))
 /** Railway health check: answers once the database responds. */
 app.get('/healthz', async c => { await one('SELECT 1'); return c.json({ ok: true }) })

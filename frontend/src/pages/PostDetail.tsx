@@ -11,9 +11,14 @@ import { PageHead } from '../components/Shell'
 import { Sentinel } from '../components/Social'
 import { NotFound } from './NotFound'
 import { Blank, PostSkel } from '../components/Delight'
+import { useStore } from '../state/store'
+import { useSession } from '../api/session'
+import { Icon } from '../components/Icon'
 
 export function PostDetail() {
   const { id = '' } = useParams()
+  const { openSheet } = useStore()
+  const { me } = useSession()
   useRegistry()
   const q = useThread(id)
   const [more, setMore] = useState<{ posts: Post[]; next: string | null } | null>(null)
@@ -44,6 +49,12 @@ export function PostDetail() {
         </div>
       )}
       <PostCard post={drop} variant="focal" showReplyTo />
+      <div className="boost-bar">
+        <button className="btn btn--ghost btn--sm" type="button"
+          onClick={() => (me ? openSheet({ type: 'boost', postId: drop.id }) : openSheet({ type: 'signin', reason: 'sign in to boost this drop' }))}>
+          <Icon name="pin" size={16} /> boost this post
+        </button>
+      </div>
       <div className="thread-reply"><Composer replyTo={drop.id} compact placeholder={`reply to @${drop.author}`} /></div>
       <div className="section-label">{drop.replies ? `${drop.replies} ${drop.replies === 1 ? 'reply' : 'replies'}` : 'replies'}</div>
       <div className="feed">

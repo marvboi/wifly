@@ -19,6 +19,7 @@ export type SheetState =
   | { type: 'unlock'; postId: string }
   | { type: 'subscribe'; handle: string; tierId?: string }
   | { type: 'bid' }
+  | { type: 'boost'; postId: string }
   | { type: 'buy'; handle: string; itemId: string }
   | { type: 'paydm'; handle: string }
   | { type: 'vote'; handle: string; postId?: string }

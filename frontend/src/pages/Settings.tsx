@@ -25,6 +25,7 @@ function SettingsExtras() {
         <h2 className="sc-section__h">about</h2>
         <p className="sc-section__row"><span>version</span><span className="muted">0.12.6.17</span></p>
         <AppLink className="sc-section__row" to="/docs">docs</AppLink>
+        <AppLink className="sc-section__row" to="/earnings">creator earnings</AppLink>
         <a className="sc-section__row" href={LINKS.wifX} target="_blank" rel="noreferrer">$wif on x</a>
       </section>
     </div>

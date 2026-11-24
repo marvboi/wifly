@@ -446,6 +446,45 @@ function useNow(ms = 1000) {
   return now
 }
 
+function BoostSheet({ postId }: { postId: string }) {
+  const { closeSheet, topSpot, takeTopSpot } = useStore()
+  const { run, busy } = useAction()
+  const rules = useTopSpotRules()
+  const now = useNow()
+  const min = rules?.minBid !== undefined ? Math.ceil(rules.minBid) : topSpotMinBid(topSpot.paid)
+  const [bid, setBid] = useState(min)
+  const empty = rules ? rules.empty : !topSpot.holder
+  const lockedFor = rules?.unlocksAt ? Math.max(0, rules.unlocksAt - Math.floor(now / 1000)) : 0
+  const holder = topSpot.holder ? users[topSpot.holder] : undefined
+  const ok = bid >= min && lockedFor === 0 && !!postId
+  const split = topSpotSplit(bid, empty)
+  const n = (v: number) => v.toLocaleString(undefined, { maximumFractionDigits: 0 })
+  return (
+    <Sheet title="boost this post" onClose={closeSheet}
+      footer={<>
+        <TxSteps pull={bid} action="boost this post" />
+        <button className="btn btn--dark btn--block btn--lg" disabled={!ok || busy}
+          onClick={() => run(plans.takeTopSpot(postId, bid), 'this drop is boosted', () => takeTopSpot(postId, bid))}>
+          <Icon name="pin" size={18} /> {busy ? 'sending…' : lockedFor ? `locked for ${lockedFor}s` : `boost for ${bid.toLocaleString()} wif`}
+        </button>
+        <PreviewNote />
+      </>}>
+      <p className="muted">promote this drop to the top spot until someone outbids you.</p>
+      <AmountPicker value={bid} onChange={setBid} presets={[min, Math.ceil(min * 1.25), Math.ceil(min * 1.5)]} />
+      {bid < min && <p className="small error">minimum bid is {min.toLocaleString()} wif.</p>}
+      {lockedFor > 0 && <p className="small warn">the current holder is in the minimum hold. bidding opens in {lockedFor}s.</p>}
+      <LowBalance need={bid} />
+      <div className="fee">
+        <div className="fee__rows">
+          {!empty && <div className="fee__row"><span>{`${holder?.name ?? 'current holder'} gets back · ${pct(TOPSPOT_HOLDER_SHARE)}`}</span><span className="num strong">{n(split.toHolder)} wif</span></div>}
+          <div className="fee__row"><span>promotion fee</span><span className="num">{n(split.fee)} wif</span></div>
+        </div>
+        <FeeParts fee={split.fee} />
+      </div>
+    </Sheet>
+  )
+}
+
 function BidSheet() {
   const { closeSheet, topSpot, takeTopSpot } = useStore()
   const { run, busy } = useAction()
@@ -796,7 +835,7 @@ export function Sheets() {
 const GUEST_ASK: Partial<Record<NonNullable<SheetState>['type'], string>> = {
   tip: 'sign up to send a tip', vote: 'sign up to vote', compose: 'sign up to post and reply', drop: 'sign up to post',
   unlock: 'sign up to unlock this', subscribe: 'sign up to subscribe', paydm: 'sign up to send a message', buy: 'sign up to buy this',
-  bid: 'sign up to bid', burn: 'sign up to earn badges', tiers: 'sign up to set up memberships',
+  bid: 'sign up to bid', boost: 'sign up to boost a post', burn: 'sign up to earn badges', tiers: 'sign up to set up memberships',
 }
 
 /** A signed-in account still without a picked @name browses freely; the first action takes it to the name step. */
@@ -820,6 +859,7 @@ function SheetSwitch({ sheet }: { sheet: NonNullable<SheetState> }) {
     case 'unlock': return <UnlockSheet postId={sheet.postId} />
     case 'subscribe': return <SubscribeSheet handle={sheet.handle} tierId={sheet.tierId} />
     case 'bid': return <BidSheet />
+    case 'boost': return <BoostSheet postId={sheet.postId} />
     case 'buy': return <BuySheet handle={sheet.handle} itemId={sheet.itemId} />
     case 'paydm': return <PayDmSheet handle={sheet.handle} />
     case 'vote': return <VoteSheet handle={sheet.handle} postId={sheet.postId} />

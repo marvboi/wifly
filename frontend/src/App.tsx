@@ -18,6 +18,7 @@ import { Notifications } from './pages/Notifications'
 import { Inbox, Thread } from './pages/Messages'
 import { Agent } from './pages/Agent'
 import { Plus } from './pages/Plus'
+import { Earnings } from './pages/Earnings'
 import { Vote } from './pages/Vote'
 import GetWif from './pages/GetWif'
 import { PayLink } from './pages/PayLink'
@@ -114,6 +115,7 @@ export function App() {
           <Route path="/notifications" element={<Notifications />} />
           <Route path="/agent" element={<Agent />} />
           <Route path="/plus" element={<Plus />} />
+          <Route path="/earnings" element={<Earnings />} />
           <Route path="/names" element={<Names />} />
           <Route path="/names/:name/manage" element={<ManageName />} />
           <Route path="/n/:name" element={<PublicName />} />

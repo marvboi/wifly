@@ -81,8 +81,8 @@ contract WiflyNamesResolverTest is Test {
         assertEq(n.claimFeeOf("alice.wif"), 100e18);
         assertEq(n.claimFeeOf("wif.wif"), 1_000e18);
         vm.startPrank(alice);
-        vm.expectRevert(WiflyNames.InvalidName.selector);
-        n.claim("ab.wif"); // label too short
+        vm.expectRevert(WiflyNames.TierClosed.selector);
+        n.claim("ab.wif"); // 2-char tier closed until claimFee2 is set
         vm.expectRevert(WiflyNames.InvalidName.selector);
         n.claim("marv.wif.wif");
         vm.expectRevert(WiflyNames.InvalidName.selector);

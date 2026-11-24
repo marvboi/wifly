@@ -79,7 +79,7 @@ test('reserved and taken drop their status word and reuse the picker Mascot in t
   const taken: HandleCheck = { handle: 'blue', available: false, reason: 'taken', suggestions: ['blue1'], claimFee: 0 }
   const listed: HandleCheck = { handle: 'for', available: false, reason: 'listed', suggestions: [], claimFee: 0, price: 10 }
   const onchain: HandleCheck = { handle: 'held', available: false, reason: 'wif-owned', suggestions: [], claimFee: 0 }
-  const short: HandleCheck = { handle: 'ab', available: false, reason: 'invalid', message: 'at least 3 characters', suggestions: [], claimFee: 0 }
+  const short: HandleCheck = { handle: 'a', available: false, reason: 'invalid', message: 'at least 2 characters', suggestions: [], claimFee: 0 }
 
   assert.equal(handleLogoReplacesError('reserved'), true)
   assert.equal(handleLogoReplacesError('taken'), true)
@@ -93,7 +93,7 @@ test('reserved and taken drop their status word and reuse the picker Mascot in t
   assert.equal(handleFieldError(taken, 'bad'), 'taken')
   assert.equal(handleFieldError(listed, 'bad'), 'taken · for sale')
   assert.equal(handleFieldError(onchain, 'bad'), 'taken onchain')
-  assert.equal(handleFieldError(short, 'bad'), 'at least 3 characters')
+  assert.equal(handleFieldError(short, 'bad'), 'at least 2 characters')
 
   assert.equal(handleFaceMood('admin', 'bad', 'reserved'), 'oops')
   assert.equal(handleFaceMood('blue', 'bad', 'taken'), 'oops')

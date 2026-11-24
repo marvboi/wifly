@@ -15,6 +15,7 @@ import { PLUS_NAME } from '../brand'
 import { PREVIEW_NOTE, useStore } from '../state/store'
 import { userError, failArgs, plans, useNeedsApprove, usePlusStatus, useSendPlan, type PlusPlanId } from '../lib/wifly'
 import { PriceTag, Token } from '../components/Bits'
+import { USDG_LOGO } from '../config'
 import { FeeSplit } from '../components/FeeSplit'
 import { PageHead } from '../components/Shell'
 import { Icon, type IconName } from '../components/Icon'
@@ -161,7 +162,7 @@ export function Plus() {
           {v.state === 'active' && <>active until <b>{fmtDate(v.expiresAt)}</b>.{v.renewsOn ? <> renews on <b>{fmtDate(v.renewsOn)}</b>.</> : v.autoRenew ? null : ' auto-renew is off.'}</>}
           {v.state === 'grace' && <>it ended on {fmtDate(v.expiresAt)}. you keep the check until <b>{fmtDate(v.graceEndsAt)}</b>. renew before then.</>}
           {v.state === 'expired' && <>it ended on {fmtDate(v.expiresAt)} and the grace period is over. renew anytime to get the check back.</>}
-          {v.state === 'none' && <>a monthly or yearly pass, paid in wif.</>}
+          {v.state === 'none' && <>a monthly or yearly pass, paid in wif, usdg or eth once the treasury sets the usdg address.</>}
         </p>
 
         {v.priceChanged && (
@@ -199,6 +200,12 @@ export function Plus() {
           {has && (switching || extend || v.state === 'grace') && open && <p className="small muted plusx-note plusx-stack" data-testid="plus-stack-note">
             adds {addsLabel} from {fmtDate(base)} · new end <b>{fmtDate(newEnd)}</b>. no proration: every day you paid for stays.
             {extend && !switching && <> <button className="plusx-link" onClick={() => setExtend(false)}>cancel</button></>}</p>}
+          <div className="plusx-payways" aria-label="payment options">
+            <span className="small muted payway"><Token size={18} /> wif</span>
+            <span className="small muted payway"><img src={USDG_LOGO} alt="" width={18} height={18} className="payway__img" /> usdg</span>
+            <span className="small muted payway">eth</span>
+          </div>
+          <p className="muted small">usdg and eth go through the payments router when it is live.</p>
           <div className="plusx-wallet">
             <span className="small muted"><Token size={16} /> {wif === undefined ? 'connect a wallet to see your balance' : <>you have <b className="num">{Math.floor(wif).toLocaleString()} wif</b></>}</span>
             {open && (shortBy || wif === undefined) && <button className="btn btn--ghost btn--sm" onClick={getWif}>get wif</button>}
